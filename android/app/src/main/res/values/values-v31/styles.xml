@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <!-- Window background color -->
+        <item name="android:windowBackground">@color/splash_bg</item>
+        <!-- Forces the Android 12+ icon container box to match your brand purple -->
+        <item name="android:windowSplashScreenBackground">@color/splash_bg</item>
+        <item name="android:windowSplashScreenIconBackground">@color/splash_bg</item>
+    </style>
+</resources>

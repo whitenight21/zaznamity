@@ -1,0 +1,12 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^& \"\\$env:LOCALAPPDATA\\\\Android\\\\sdk\\\\cmdline-tools\\\\latest\\\\bin\\\\avdmanager\\.bat\" create avd -n Stable_API35 -k \"system-images;android-35;google_apis_playstore_tablet;x86_64\" -d pixel_tablet$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^Test-Path \"\\$env:USERPROFILE\\\\\\.android\\\\avd\\\\Stable_API35\\.avd\\\\config\\.ini\"; Get-ChildItem \"\\$env:USERPROFILE\\\\\\.android\\\\avd\" -Filter \"Stable_API35\\*\" \\| Select-Object -ExpandProperty Name$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
