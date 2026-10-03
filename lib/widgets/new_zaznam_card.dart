@@ -348,8 +348,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                           items: const [
                             DropdownMenuItem(value: 'Mathias', child: Text('Mathias', style: TextStyle(fontSize: 13))),
                             DropdownMenuItem(value: 'Julia', child: Text('Julia', style: TextStyle(fontSize: 13))),
-                            DropdownMenuItem(value: 'Shared', child: Text('Shared', style: TextStyle(fontSize: 13))),
-                          ],
+                            ],
                           onChanged: (val) => setState(() => _owner = val ?? 'Mathias'),
                         ),
                       ],
@@ -419,9 +418,9 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                                   ),
                                   items: const [
+                                    DropdownMenuItem(value: 'Daily', child: Text('Daily', style: TextStyle(fontSize: 12))),
                                     DropdownMenuItem(value: 'Weekly', child: Text('Weekly', style: TextStyle(fontSize: 12))),
                                     DropdownMenuItem(value: 'Monthly', child: Text('Monthly', style: TextStyle(fontSize: 12))),
-                                    DropdownMenuItem(value: 'Nth of the month', child: Text('Nth of the month', style: TextStyle(fontSize: 12))),
                                     DropdownMenuItem(value: 'Yearly', child: Text('Yearly', style: TextStyle(fontSize: 12))),
                                   ],
                                   onChanged: (val) => setState(() => _frequency = val ?? 'Monthly'),
@@ -503,8 +502,8 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color.fromARGB(255, 88, 47, 149),
-                    foregroundColor: Colors.white,
+                    backgroundColor: Color(0xFF64748B),
+                    foregroundColor: const Color.fromARGB(255, 88, 47, 149),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
