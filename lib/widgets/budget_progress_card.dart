@@ -105,8 +105,8 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color.fromARGB(255, 206, 207, 207),
-                foregroundColor: const Color.fromARGB(255, 88, 47, 149),
+                backgroundColor: const Color(0xFFF1F5F9),
+                foregroundColor: const Color(0xFF334155),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
               ),
@@ -244,17 +244,17 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
           ),
           const SizedBox(height: 14),
 
-          // Underneath Title: Purple Plus Button & Month Picker Box
+          // Underneath Title: Plus Button & Month Picker Box
           Row(
             children: [
-              // Purple Plus Button
+              // Plus Button
               SizedBox(
                 height: 42,
                 width: 42,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color.fromARGB(255, 232, 232, 232),
-                    foregroundColor: const Color.fromARGB(255, 88, 47, 149),
+                    backgroundColor: const Color(0xFFF1F5F9), // Updated to match unselected Recurring Entry background color
+                    foregroundColor: const Color(0xFF334155), // Updated to match unselected Recurring Entry text color
                     padding: EdgeInsets.zero,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     elevation: 0,

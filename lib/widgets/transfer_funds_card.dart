@@ -355,8 +355,8 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color.fromARGB(255, 232, 232, 232),
-                    foregroundColor: const Color.fromARGB(255, 88, 47, 149),
+                    backgroundColor: const Color(0xFFF1F5F9), // Updated to match unselected Recurring Entry background color
+                    foregroundColor: const Color(0xFF334155), // Updated to match unselected Recurring Entry text color
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
