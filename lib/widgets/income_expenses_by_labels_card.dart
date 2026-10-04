@@ -207,7 +207,79 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
+
+              // Date Selection Row (Moved right under title)[cite: 15, 16]
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 42,
+                          child: Text('START:', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                        ),
+                        Expanded(
+                          child: InkWell(
+                            onTap: widget.onSelectStartDate,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: const Color(0xFFCBD5E1)),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  widget.startDate != null ? DateFormat('MM/dd/yyyy').format(widget.startDate!) : '09/01/2026',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 36,
+                          child: Text('END:', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                        ),
+                        Expanded(
+                          child: InkWell(
+                            onTap: widget.onSelectEndDate,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: const Color(0xFFCBD5E1)),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  widget.endDate != null ? DateFormat('MM/dd/yyyy').format(widget.endDate!) : '09/30/2026',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 20),
+
+              // Total Income & Total Expenses Cards
               Column(
                 children: [
                   Container(
@@ -284,74 +356,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                 ],
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          width: 42,
-                          child: Text('START:', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        ),
-                        Expanded(
-                          child: InkWell(
-                            onTap: widget.onSelectStartDate,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: const Color(0xFFCBD5E1)),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  widget.startDate != null ? DateFormat('MM/dd/yyyy').format(widget.startDate!) : '09/01/2026',
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          width: 36,
-                          child: Text('END:', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        ),
-                        Expanded(
-                          child: InkWell(
-                            onTap: widget.onSelectEndDate,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: const Color(0xFFCBD5E1)),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  widget.endDate != null ? DateFormat('MM/dd/yyyy').format(widget.endDate!) : '09/30/2026',
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
+
+              // Filter Owner & Chart Display Mode Row
               Row(
                 children: [
                   Expanded(
@@ -411,126 +417,62 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                 ],
               ),
               const SizedBox(height: 16),
-              // CHART TYPE TOGGLE & LABEL MULTI-SELECT ROW
-              Row(
+
+              // Labels Multi-Select Row
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('CHART VIEW', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        const SizedBox(height: 4),
-                        Container(
-                          height: 38,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xFFCBD5E1)),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () => setState(() => chartType = 'Bar'),
-                                  child: Container(
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      color: chartType == 'Bar' ? const Color(0xFF582F95) : Colors.transparent,
-                                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
-                                    ),
-                                    child: Text(
-                                      'Bar',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        color: chartType == 'Bar' ? Colors.white : const Color(0xFF64748B),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () => setState(() => chartType = 'Donut'),
-                                  child: Container(
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      color: chartType == 'Donut' ? const Color(0xFF582F95) : Colors.transparent,
-                                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
-                                    ),
-                                    child: Text(
-                                      'Donut',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        color: chartType == 'Donut' ? Colors.white : const Color(0xFF64748B),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                  Text(chartDisplayMode == 'Show Income' ? 'INCOME LABELS' : 'EXPENSE LABELS', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 4),
+                  InkWell(
+                    onTap: () => _showMultiSelectDialog(
+                      context,
+                      chartDisplayMode == 'Show Income' ? 'Select Income Labels' : 'Select Expense Labels',
+                      widget.labels,
+                      chartDisplayMode == 'Show Income' ? selectedIncomeLabels : selectedExpenseLabels,
+                      (updatedIds) {
+                        setState(() {
+                          if (chartDisplayMode == 'Show Income') {
+                            selectedIncomeLabels.clear();
+                            selectedIncomeLabels.addAll(updatedIds);
+                          } else {
+                            selectedExpenseLabels.clear();
+                            selectedExpenseLabels.addAll(updatedIds);
+                          }
+                        });
+                      },
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(chartDisplayMode == 'Show Income' ? 'INCOME LABELS' : 'EXPENSE LABELS', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        const SizedBox(height: 4),
-                        InkWell(
-                          onTap: () => _showMultiSelectDialog(
-                            context,
-                            chartDisplayMode == 'Show Income' ? 'Select Income Labels' : 'Select Expense Labels',
-                            widget.labels,
-                            chartDisplayMode == 'Show Income' ? selectedIncomeLabels : selectedExpenseLabels,
-                            (updatedIds) {
-                              setState(() {
-                                if (chartDisplayMode == 'Show Income') {
-                                  selectedIncomeLabels.clear();
-                                  selectedIncomeLabels.addAll(updatedIds);
-                                } else {
-                                  selectedExpenseLabels.clear();
-                                  selectedExpenseLabels.addAll(updatedIds);
-                                }
-                              });
-                            },
-                          ),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      (chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length) == widget.labels.length
-                                          ? 'All Labels'
-                                          : '${chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length} selected',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ),
-                                ),
-                                const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
-                              ],
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                (chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length) == widget.labels.length
+                                    ? 'All Labels'
+                                    : '${chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length} selected',
+                                style: const TextStyle(fontSize: 12),
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                          const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 24),
+
+              // Chart Rendering Section (Bar/Donut visualization)
               sortedEntries.isEmpty
                   ? const SizedBox(
                       height: 150,
@@ -691,7 +633,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                               ),
                             ),
                             const SizedBox(height: 20),
-                            // CUSTOM LEGEND WITH MONETARY AMOUNTS & PERCENTAGES
                             Wrap(
                               spacing: 12,
                               runSpacing: 8,
@@ -735,6 +676,67 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             ),
                           ],
                         ),
+              const SizedBox(height: 20),
+
+              // Chart View Toggle (Moved directly under the chart)[cite: 15, 16]
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('CHART VIEW', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 4),
+                  Container(
+                    height: 38,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => chartType = 'Bar'),
+                            child: Container(
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: chartType == 'Bar' ? const Color(0xFF582F95) : Colors.transparent,
+                                borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
+                              ),
+                              child: Text(
+                                'Bar',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: chartType == 'Bar' ? Colors.white : const Color(0xFF64748B),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => chartType = 'Donut'),
+                            child: Container(
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: chartType == 'Donut' ? const Color(0xFF582F95) : Colors.transparent,
+                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
+                              ),
+                              child: Text(
+                                'Donut',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: chartType == 'Donut' ? Colors.white : const Color(0xFF64748B),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         );

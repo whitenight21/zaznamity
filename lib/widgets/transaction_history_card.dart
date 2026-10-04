@@ -140,7 +140,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('FILTER OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<String>(
                       initialValue: widget.selectedOwner,
@@ -168,7 +167,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('FILTER LABEL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<int>(
                       initialValue: widget.selectedLabelId,
@@ -198,7 +196,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('START DATE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                    const Text('START', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                     const SizedBox(height: 4),
                     InkWell(
                       onTap: widget.onSelectStartDate,
@@ -228,7 +226,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('END DATE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                    const Text('END', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                     const SizedBox(height: 4),
                     InkWell(
                       onTap: widget.onSelectEndDate,

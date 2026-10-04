@@ -452,7 +452,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               _buildCollapsibleSection(
                 title: 'Liquid Net Counting Pools',
                 subtitle: 'Choose which pools are counted toward liquid net',
-                children: {'checking', 'cash', 'savings', 'loan', 'loans'}.map((poolKey) {
+                children: {'checking', 'cash', 'savings', 'loan'}.map((poolKey) {
                   return CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(poolKey.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
@@ -469,8 +469,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
               _buildCollapsibleSection(
                 title: 'Prognosis Counting Pools',
-                subtitle: 'Configure which pools update prognosis metrics',
-                children: ['cash', 'savings', 'loans'].map((poolKey) {
+                subtitle: 'Configure which pools update prognosis metrics. Included by default is Checking pool.',
+                children: ['cash', 'savings', 'loan'].map((poolKey) {
                   return CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(poolKey.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),

@@ -70,6 +70,10 @@ class BottomCardNavBar extends StatelessWidget {
         iconData = Icons.dashboard_outlined;
         tooltip = 'Metrics Overview';
         break;
+      case 'future_metrics':
+        iconData = Icons.trending_up_outlined;
+        tooltip = 'Future Metrics';
+        break;
       case 'budget':
         iconData = Icons.pie_chart_outline;
         tooltip = 'Budget Progress';

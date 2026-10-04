@@ -105,7 +105,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF64748B),
+                backgroundColor: const Color.fromARGB(255, 206, 207, 207),
                 foregroundColor: const Color.fromARGB(255, 88, 47, 149),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
@@ -253,7 +253,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 width: 42,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF64748B),
+                    backgroundColor: const Color.fromARGB(255, 232, 232, 232),
                     foregroundColor: const Color.fromARGB(255, 88, 47, 149),
                     padding: EdgeInsets.zero,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

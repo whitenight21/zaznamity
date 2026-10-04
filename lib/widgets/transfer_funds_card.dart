@@ -355,7 +355,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF64748B),
+                    backgroundColor: const Color.fromARGB(255, 232, 232, 232),
                     foregroundColor: const Color.fromARGB(255, 88, 47, 149),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

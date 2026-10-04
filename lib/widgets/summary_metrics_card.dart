@@ -6,8 +6,6 @@ class SummaryMetricsCard extends StatelessWidget {
   final double juliaCash;
   final double liquidNetTotal;
   final Map<String, double> poolTotals;
-  final double futureFlowTotal;
-  final double prognosisTotal;
   final bool isWide;
   final VoidCallback? onToggleWidth;
   final VoidCallback? onHide;
@@ -18,8 +16,6 @@ class SummaryMetricsCard extends StatelessWidget {
     required this.juliaCash,
     required this.liquidNetTotal,
     required this.poolTotals,
-    required this.futureFlowTotal,
-    required this.prognosisTotal,
     this.isWide = false,
     this.onToggleWidth,
     this.onHide,
@@ -37,9 +33,8 @@ class SummaryMetricsCard extends StatelessWidget {
       case 'cash':
         return const Color(0xFF56C435);
       case 'savings':
-        return const Color(0xFF02E6FF);
+        return const Color.fromARGB(255, 0, 229, 255);
       case 'loan':
-      case 'loans':
         return const Color(0xFFFF7F27);
       default:
         return const Color(0xFF0369A1);
@@ -185,30 +180,6 @@ class SummaryMetricsCard extends StatelessWidget {
                   ),
                 );
               }),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: _buildMetricBox(
-                      title: 'FUTURE FLOW',
-                      amount: futureFlowTotal,
-                      amountColor: const Color(0xFFDC2626),
-                      width: boxWidth,
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: _buildMetricBox(
-                      title: 'PROGNOSIS',
-                      amount: prognosisTotal,
-                      amountColor: const Color(0xFF000000),
-                      width: boxWidth,
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         );

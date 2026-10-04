@@ -15,6 +15,8 @@ class NewZaznamCard extends StatefulWidget {
     bool isRecurring,
     String frequency,
     int dayOfMonth,
+    List<int> excludedWeekdays, // 1 = Monday ... 7 = Sunday
+    List<int> excludedMonths,   // 1 = January ... 12 = December
     DateTime? repeatUntilDate,
     DateTime date,
   ) onSubmit;
@@ -49,6 +51,10 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   int _dayOfMonth = 1;
   DateTime? _repeatUntilDate;
 
+  // Exclusions state
+  final List<int> _excludedWeekdays = []; // e.g., [6, 7] for Sat, Sun
+  final List<int> _excludedMonths = [];   // e.g., [7, 8] for Jul, Aug
+
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
 
@@ -56,6 +62,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   void initState() {
     super.initState();
     _selectedPool = widget.pools.isNotEmpty ? widget.pools.first : 'checking';
+    _dayOfMonth = _selectedDate.day;
   }
 
   @override
@@ -87,6 +94,8 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
       _dayOfMonth = _selectedDate.day;
       _selectedTime = TimeOfDay.now();
       _repeatUntilDate = null;
+      _excludedWeekdays.clear();
+      _excludedMonths.clear();
     });
   }
 
@@ -272,24 +281,24 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 14),
 
-              // Amount Input
-              TextField(
-                controller: _amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: '0.00',
-                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              // Type & Label Dropdowns
+              // Amount Input (Yellow smaller) & Type Picker (Green) Side-by-Side
               Row(
                 children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _amountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: '0.00',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       initialValue: _type,
@@ -307,7 +316,13 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       onChanged: (val) => setState(() => _type = val ?? 'expense'),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Label & Pool Dropdowns (Label moved to Expense place, Pool moved to Label place)
+              Row(
+                children: [
                   Expanded(
                     child: DropdownButtonFormField<int>(
                       initialValue: _selectedLabelId,
@@ -323,43 +338,11 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       onChanged: (val) => setState(() => _selectedLabelId = val),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Wallet Owner & Pool Dropdowns
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('WALLET OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        const SizedBox(height: 4),
-                        DropdownButtonFormField<String>(
-                          initialValue: _owner,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          ),
-                          items: const [
-                            DropdownMenuItem(value: 'Mathias', child: Text('Mathias', style: TextStyle(fontSize: 13))),
-                            DropdownMenuItem(value: 'Julia', child: Text('Julia', style: TextStyle(fontSize: 13))),
-                            ],
-                          onChanged: (val) => setState(() => _owner = val ?? 'Mathias'),
-                        ),
-                      ],
-                    ),
-                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('ADD TO POOL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
                           initialValue: _selectedPool,
@@ -380,10 +363,48 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 14),
 
+              // Wallet Owner & Recurring Entry (Owner moved to Pool place, Recurring entry moved to Owner place)
               Row(
                 children: [
-                  Checkbox(value: _isRecurring, onChanged: (v) => setState(() => _isRecurring = v ?? false)),
-                  const Text('RECURRING ENTRY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('WALLET OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                        const SizedBox(height: 4),
+                        DropdownButtonFormField<String>(
+                          initialValue: _owner,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'Mathias', child: Text('Mathias', style: TextStyle(fontSize: 13))),
+                            DropdownMenuItem(value: 'Julia', child: Text('Julia', style: TextStyle(fontSize: 13))),
+                          ],
+                          onChanged: (val) => setState(() => _owner = val ?? 'Mathias'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Checkbox(value: _isRecurring, onChanged: (v) => setState(() => _isRecurring = v ?? false)),
+                        const Expanded(
+                          child: Text(
+                            'RECURRING',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
 
@@ -467,12 +488,14 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                           ),
                         ],
                       ),
-                      if (_frequency == 'Nth of the month') ...[
+                      
+                      // Day of month selector if Monthly
+                      if (_frequency == 'Monthly') ...[
                         const SizedBox(height: 10),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('WHICH DAY', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                            const Text('WHICH DAY OF MONTH', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                             const SizedBox(height: 4),
                             DropdownButtonFormField<int>(
                               initialValue: _dayOfMonth,
@@ -491,6 +514,92 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                           ],
                         ),
                       ],
+
+                      // Exclude Weekdays (Useful for Daily & Weekly)
+                      if (_frequency == 'Daily' || _frequency == 'Weekly') ...[
+                        const SizedBox(height: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('EXCLUDE DAYS OF THE WEEK', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: 6,
+                              children: [
+                                {'label': 'Mon', 'val': 1},
+                                {'label': 'Tue', 'val': 2},
+                                {'label': 'Wed', 'val': 3},
+                                {'label': 'Thu', 'val': 4},
+                                {'label': 'Fri', 'val': 5},
+                                {'label': 'Sat', 'val': 6},
+                                {'label': 'Sun', 'val': 7},
+                              ].map((dayMap) {
+                                final val = dayMap['val'] as int;
+                                final isSelected = _excludedWeekdays.contains(val);
+                                return FilterChip(
+                                  label: Text(dayMap['label'] as String, style: const TextStyle(fontSize: 11)),
+                                  selected: isSelected,
+                                  onSelected: (selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        _excludedWeekdays.add(val);
+                                      } else {
+                                        _excludedWeekdays.remove(val);
+                                      }
+                                    });
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // Exclude Months (Useful for Monthly & Yearly)
+                      if (_frequency == 'Monthly' || _frequency == 'Yearly') ...[
+                        const SizedBox(height: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('EXCLUDE MONTHS', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 2,
+                              children: [
+                                {'label': 'Jan', 'val': 1},
+                                {'label': 'Feb', 'val': 2},
+                                {'label': 'Mar', 'val': 3},
+                                {'label': 'Apr', 'val': 4},
+                                {'label': 'May', 'val': 5},
+                                {'label': 'Jun', 'val': 6},
+                                {'label': 'Jul', 'val': 7},
+                                {'label': 'Aug', 'val': 8},
+                                {'label': 'Sep', 'val': 9},
+                                {'label': 'Oct', 'val': 10},
+                                {'label': 'Nov', 'val': 11},
+                                {'label': 'Dec', 'val': 12},
+                              ].map((monthMap) {
+                                final val = monthMap['val'] as int;
+                                final isSelected = _excludedMonths.contains(val);
+                                return FilterChip(
+                                  label: Text(monthMap['label'] as String, style: const TextStyle(fontSize: 11)),
+                                  selected: isSelected,
+                                  onSelected: (selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        _excludedMonths.add(val);
+                                      } else {
+                                        _excludedMonths.remove(val);
+                                      }
+                                    });
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -502,7 +611,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF64748B),
+                    backgroundColor: const Color.fromARGB(255, 232, 232, 232),
                     foregroundColor: const Color.fromARGB(255, 88, 47, 149),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -512,7 +621,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                     final amount = double.tryParse(_amountController.text) ?? 0.0;
                     if (amount <= 0) return;
 
-                    final targetDay = _frequency == 'Nth of the month' ? _dayOfMonth : _selectedDate.day;
+                    final targetDay = _frequency == 'Monthly' ? _dayOfMonth : _selectedDate.day;
                     
                     DateTime baseDate = _selectedDate;
                     try {
@@ -531,6 +640,8 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       _isRecurring,
                       _frequency,
                       targetDay,
+                      _excludedWeekdays,
+                      _excludedMonths,
                       _repeatUntilDate,
                       baseDate,
                     );

@@ -7,6 +7,7 @@ import 'package:zaznamity/services/database_helper.dart';
 import 'package:intl/intl.dart';
 
 import '../widgets/summary_metrics_card.dart';
+import '../widgets/future_metrics_card.dart';
 import '../widgets/new_zaznam_card.dart';
 import '../widgets/transfer_funds_card.dart';
 import '../widgets/liquid_trend_chart_card.dart';
@@ -95,13 +96,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final List<CardConfig> _cards = [
     CardConfig(id: 'settings', title: 'Settings', key: GlobalKey(), isVisible: false),
     CardConfig(id: 'metrics', title: 'Metrics', key: GlobalKey()),
-    CardConfig(id: 'budget', title: 'Budget Progress', key: GlobalKey()),
+    CardConfig(id: 'future_metrics', title: 'Future Metrics', key: GlobalKey()),
     CardConfig(id: 'new_entry', title: 'New Zaznam', key: GlobalKey()),
     CardConfig(id: 'transfer', title: 'Transfer Funds', key: GlobalKey()),
-    CardConfig(id: 'trend_chart', title: 'Liquid Trend', key: GlobalKey()),
+    CardConfig(id: 'budget', title: 'Budget Progress', key: GlobalKey()),
     CardConfig(id: 'income_expenses_labels', title: 'Label Analytics', key: GlobalKey()),
+    CardConfig(id: 'trend_chart', title: 'Liquid Trend', key: GlobalKey()),
     CardConfig(id: 'calendar', title: 'Calendar', key: GlobalKey()),
     CardConfig(id: 'history', title: 'Zaznam History', key: GlobalKey()),
+    
   ];
 
   @override
@@ -346,30 +349,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required bool isRecurring,
     required String frequency,
     required int dayOfMonth,
+    required List<int> excludedWeekdays,
+    required List<int> excludedMonths,
     required DateTime? repeatUntilDate,
     required DateTime date,
   }) async {
     if (amount <= 0) return;
 
-    List<DateTime> datesToGenerate = [date];
+    List<DateTime> datesToGenerate = [];
+
+  // Include base date if not excluded
+    if (!_isExcluded(date, excludedWeekdays, excludedMonths)) {
+      datesToGenerate.add(date);
+    }
 
     if (isRecurring) {
       final endDate = repeatUntilDate ?? date.add(const Duration(days: 365));
       DateTime current = date;
 
       while (true) {
-        if (frequency == 'Weekly') {
+        if (frequency == 'Daily') {
+          current = current.add(const Duration(days: 1));
+        } else if (frequency == 'Weekly') {
           current = current.add(const Duration(days: 7));
         } else if (frequency == 'Yearly') {
-          current = DateTime(current.year + 1, current.month, current.day, current.hour, current.minute);
+          // Safe check for leap years/end of month days
+          int targetYear = current.year + 1;
+          int targetMonth = current.month;
+          int targetDay = current.day;
+          int maxDaysInMonth = DateTime(targetYear, targetMonth + 1, 0).day;
+          if (targetDay > maxDaysInMonth) targetDay = maxDaysInMonth;
+        
+        current = DateTime(targetYear, targetMonth, targetDay, current.hour, current.minute);
         } else {
-          current = DateTime(current.year, current.month + 1, dayOfMonth, current.hour, current.minute);
+          // Monthly
+          int targetYear = current.month == 12 ? current.year + 1 : current.year;
+          int targetMonth = current.month == 12 ? 1 : current.month + 1;
+          int maxDaysInMonth = DateTime(targetYear, targetMonth + 1, 0).day;
+          int actualDay = dayOfMonth > maxDaysInMonth ? maxDaysInMonth : dayOfMonth;
+
+          current = DateTime(targetYear, targetMonth, actualDay, current.hour, current.minute);
         }
 
         if (current.isAfter(endDate)) {
           break;
         }
-        datesToGenerate.add(current);
+
+        if (!_isExcluded(current, excludedWeekdays, excludedMonths)) {
+          datesToGenerate.add(current);
+        }
       }
     }
 
@@ -393,6 +421,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(datesToGenerate.length > 1 ? '${datesToGenerate.length} recurring entries added!' : 'Zaznam saved successfully!')),
     );
+  }
+
+  // Helper validation function for exclusions
+  bool _isExcluded(DateTime date, List<int> excludedWeekdays, List<int> excludedMonths) {
+    // date.weekday: 1 = Monday, 7 = Sunday
+    if (excludedWeekdays.contains(date.weekday)) {
+      return true;
+    }
+    // date.month: 1 = January, 12 = December
+    if (excludedMonths.contains(date.month)) {
+      return true;
+    }
+    return false;
   }
 
   Future<void> _handleTransferFunds({
@@ -703,6 +744,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       juliaCash: _juliaCash,
                                       liquidNetTotal: _liquidNetTotal,
                                       poolTotals: _poolTotals,
+                                      isWide: card.isWide,
+                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+                                      onHide: () => setState(() => card.isVisible = false),
+                                    );
+                                    break;
+                                  case 'future_metrics': // Added case block
+                                    cardWidget = FutureMetricsCard(
                                       futureFlowTotal: _futureFlowTotal,
                                       prognosisTotal: _prognosisTotal,
                                       isWide: card.isWide,
@@ -729,7 +777,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
                                       onHide: () => setState(() => card.isVisible = false),
-                                      onSubmit: (description, amount, type, labelId, owner, pool, isRecurring, frequency, dayOfMonth, repeatUntilDate, date) {
+                                      onSubmit: (description, amount, type, labelId, owner, pool, isRecurring, frequency, dayOfMonth, excludedWeekdays, excludedMonths, repeatUntilDate, date) {
                                         _handleNewZaznamSubmit(
                                           description: description,
                                           amount: amount,
@@ -740,6 +788,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           isRecurring: isRecurring,
                                           frequency: frequency,
                                           dayOfMonth: dayOfMonth,
+                                          excludedWeekdays: excludedWeekdays,
+                                          excludedMonths: excludedMonths,
                                           repeatUntilDate: repeatUntilDate,
                                           date: date,
                                         );
