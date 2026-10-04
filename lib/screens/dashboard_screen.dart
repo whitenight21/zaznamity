@@ -61,6 +61,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _labelsCardEndDate;
   String? _labelsCardSelectedOwner;
 
+  DateTime? _trendStartDate;
+  DateTime? _trendEndDate;
+
   List<String> _leftNavItems = ['metrics', 'budget'];
   List<String> _rightNavItems = ['history', 'settings'];
 
@@ -817,6 +820,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     cardWidget = LiquidTrendChartCard(
                                       transactions: _transactions,
                                       liquidNetPools: _liquidNetPools,
+                                      startDate: _trendStartDate,
+                                      endDate: _trendEndDate,
+                                      onSelectStartDate: () async {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: _trendStartDate ?? DateTime.now(),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                        );
+                                        if (picked != null) setState(() => _trendStartDate = picked);
+                                      },
+                                      onSelectEndDate: () async {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: _trendEndDate ?? DateTime.now(),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                        );
+                                        if (picked != null) setState(() => _trendEndDate = picked);
+                                      },
+                                      onClearDateFilter: () => setState(() {
+                                        _trendStartDate = null;
+                                        _trendEndDate = null;
+                                      }),
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
                                       onHide: () => setState(() => card.isVisible = false),

@@ -181,6 +181,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 const SizedBox(height: 24),
 
                 // Show loader while setting up, or PIN pad if security is enabled
+// Show loader while setting up, or PIN pad if security is enabled
                 if (!_isInitialized)
                   const CircularProgressIndicator(color: Colors.white)
                 else if (_pinEnabled) ...[
@@ -233,7 +234,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       }).toList(),
                     ),
                 ] else
-                  const CircularProgressIndicator(color: Colors.white),
+                  const SizedBox.shrink(), // Replaced redundant CircularProgressIndicator with nothing
               ],
             ),
           ),

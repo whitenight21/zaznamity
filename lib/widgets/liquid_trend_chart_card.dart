@@ -5,7 +5,12 @@ import 'package:zaznamity/models/transaction_model.dart';
 
 class LiquidTrendChartCard extends StatelessWidget {
   final List<TransactionModel> transactions;
-  final Map<String, bool> liquidNetPools; // Added parameter for pool settings
+  final Map<String, bool> liquidNetPools;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final VoidCallback? onSelectStartDate;
+  final VoidCallback? onSelectEndDate;
+  final VoidCallback? onClearDateFilter;
   final bool isWide;
   final VoidCallback onToggleWidth;
   final VoidCallback onHide;
@@ -14,6 +19,11 @@ class LiquidTrendChartCard extends StatelessWidget {
     super.key,
     required this.transactions,
     required this.liquidNetPools,
+    this.startDate,
+    this.endDate,
+    this.onSelectStartDate,
+    this.onSelectEndDate,
+    this.onClearDateFilter,
     required this.isWide,
     required this.onToggleWidth,
     required this.onHide,
@@ -21,7 +31,21 @@ class LiquidTrendChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sortedTx = List<TransactionModel>.from(transactions)
+    final filteredTx = transactions.where((tx) {
+      final txDate = DateTime.tryParse(tx.createdAt);
+      if (txDate == null) return true;
+      if (startDate != null) {
+        final startClean = DateTime(startDate!.year, startDate!.month, startDate!.day);
+        if (txDate.isBefore(startClean)) return false;
+      }
+      if (endDate != null) {
+        final endClean = DateTime(endDate!.year, endDate!.month, endDate!.day, 23, 59, 59);
+        if (txDate.isAfter(endClean)) return false;
+      }
+      return true;
+    }).toList();
+
+    final sortedTx = List<TransactionModel>.from(filteredTx)
       ..sort((a, b) {
         final dateA = DateTime.tryParse(a.createdAt) ?? DateTime.now();
         final dateB = DateTime.tryParse(b.createdAt) ?? DateTime.now();
@@ -29,25 +53,128 @@ class LiquidTrendChartCard extends StatelessWidget {
       });
 
     double runningBalance = 0;
-    final List<FlSpot> spots = [];
+    final List<FlSpot> pastSpots = [];
+    final List<FlSpot> futureSpots = [];
+    
+    // To handle continuous lines between past and future, keep track of segments
+    List<LineChartBarData> lineBars = [];
+    final now = DateTime.now();
+
+    // Build segments
+    double currentBalance = 0;
+    List<FlSpot> currentSegmentSpots = [];
+    Color? currentSegmentColor;
+    bool currentIsDashed = false;
 
     for (int i = 0; i < sortedTx.length; i++) {
       final t = sortedTx[i];
-      
-      // Only count transactions if they are confirmed and their pool is enabled in settings
       final isPoolIncluded = liquidNetPools[t.pool] == true;
       if (t.isConfirmed == 1 && isPoolIncluded) {
-        runningBalance += (t.type == 'income' ? t.amount : -t.amount);
+        currentBalance += (t.type == 'income' ? t.amount : -t.amount);
       }
-      spots.add(FlSpot(i.toDouble(), runningBalance));
+      
+      final txDate = DateTime.tryParse(t.createdAt) ?? now;
+      final isFuture = txDate.isAfter(now);
+      
+      // Determine color and style for this step
+      Color targetColor;
+      if (isFuture) {
+        targetColor = const Color.fromARGB(255, 147, 51, 234); // Purple
+      } else {
+        targetColor = t.type == 'income' ? Colors.green.shade600 : Colors.red.shade600;
+      }
+      bool targetDashed = isFuture;
+
+      if (i == 0) {
+        currentSegmentSpots.add(FlSpot(i.toDouble(), currentBalance));
+        currentSegmentColor = targetColor;
+        currentIsDashed = targetDashed;
+        // Add starting point
+        if (sortedTx.length == 1) {
+          currentSegmentSpots.insert(0, FlSpot(0, currentBalance - (t.type == 'income' ? t.amount : -t.amount)));
+        }
+      } else {
+        // If color or style changes, push current segment and start a new one
+        if (currentSegmentColor != targetColor || currentIsDashed != targetDashed) {
+          // Include previous point to connect lines smoothly
+          final prevSpot = currentSegmentSpots.last;
+          currentSegmentSpots.add(FlSpot(i.toDouble(), currentBalance));
+
+          lineBars.add(
+            LineChartBarData(
+              spots: List.from(currentSegmentSpots),
+              isCurved: false,
+              color: currentSegmentColor ?? Color.fromARGB(255, 88, 47, 149),
+              barWidth: 3,
+              isStrokeCapRound: true,
+              dotData: const FlDotData(show: true),
+              dashArray: currentIsDashed ? [6, 4] : null,
+              belowBarData: BarAreaData(show: false),
+            ),
+          );
+
+          currentSegmentSpots = [prevSpot, FlSpot(i.toDouble(), currentBalance)];
+          currentSegmentColor = targetColor;
+          currentIsDashed = targetDashed;
+        } else {
+          currentSegmentSpots.add(FlSpot(i.toDouble(), currentBalance));
+        }
+      }
     }
 
-    if (spots.isEmpty) {
-      spots.add(const FlSpot(0, 0));
+    if (currentSegmentSpots.isNotEmpty && lineBars.isEmpty) {
+      if (currentSegmentSpots.length == 1) {
+        currentSegmentSpots.insert(0, FlSpot(0, currentSegmentSpots[0].y));
+      }
+      lineBars.add(
+        LineChartBarData(
+          spots: currentSegmentSpots,
+          isCurved: false,
+          color: currentSegmentColor ?? const Color.fromARGB(255, 88, 47, 149),
+          barWidth: 3,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: true),
+          dashArray: currentIsDashed ? [6, 4] : null,
+          belowBarData: BarAreaData(
+            show: true,
+            color: const Color.fromARGB(255, 189, 145, 255).withValues(alpha: 0.08),
+          ),
+        ),
+      );
+    } else if (currentSegmentSpots.isNotEmpty) {
+      lineBars.add(
+        LineChartBarData(
+          spots: currentSegmentSpots,
+          isCurved: false,
+          color: currentSegmentColor ?? const Color.fromARGB(255, 88, 47, 149),
+          barWidth: 3,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: true),
+          dashArray: currentIsDashed ? [6, 4] : null,
+          belowBarData: BarAreaData(show: false),
+        ),
+      );
     }
 
-    double minY = spots.map((e) => e.y).reduce((a, b) => a < b ? a : b);
-    double maxY = spots.map((e) => e.y).reduce((a, b) => a > b ? a : b);
+    if (lineBars.isEmpty) {
+      lineBars.add(
+        LineChartBarData(
+          spots: const [FlSpot(0, 0), FlSpot(1, 0)],
+          color: Color.fromARGB(255, 88, 47, 149),
+          barWidth: 3,
+        ),
+      );
+    }
+
+    // Calculate min/max Y across all spots
+    double minY = 0;
+    double maxY = 0;
+    for (var bar in lineBars) {
+      for (var spot in bar.spots) {
+        if (spot.y < minY) minY = spot.y;
+        if (spot.y > maxY) maxY = spot.y;
+      }
+    }
     if (minY > 0) minY = 0;
     if (maxY < 0) maxY = 0;
 
@@ -139,7 +266,63 @@ class LiquidTrendChartCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      onTap: onSelectStartDate,
+                      borderRadius: BorderRadius.circular(10),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'START',
+                          labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        ),
+                        child: Text(
+                          startDate != null ? DateFormat('MM/dd/yyyy').format(startDate!) : 'All',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: InkWell(
+                      onTap: onSelectEndDate,
+                      borderRadius: BorderRadius.circular(10),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'END',
+                          labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        ),
+                        child: Text(
+                          endDate != null ? DateFormat('MM/dd/yyyy').format(endDate!) : 'All',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (startDate != null || endDate != null) ...[
+                    const SizedBox(width: 6),
+                    IconButton(
+                      icon: const Icon(Icons.clear, size: 18, color: Color(0xFF64748B)),
+                      onPressed: onClearDateFilter,
+                      tooltip: 'Clear Filter',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 20),
               SizedBox(
                 height: 220,
                 child: LineChart(
@@ -193,20 +376,42 @@ class LiquidTrendChartCard extends StatelessWidget {
                       ),
                     ),
                     borderData: FlBorderData(show: false),
-                    lineBarsData: [
-                      LineChartBarData(
-                        spots: spots,
-                        isCurved: true,
-                        color: const Color.fromARGB(255, 88, 47, 149),
-                        barWidth: 3,
-                        isStrokeCapRound: true,
-                        dotData: const FlDotData(show: false),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          color: const Color.fromARGB(255, 189, 145, 255).withValues(alpha: 0.08),
-                        ),
+                    lineTouchData: LineTouchData(
+                      touchTooltipData: LineTouchTooltipData(
+                        getTooltipColor: (_) => const Color(0xFF1E293B),
+                        getTooltipItems: (touchedSpots) {
+                          return touchedSpots.map((spot) {
+                            int idx = spot.x.toInt();
+                            if (idx >= 0 && idx < sortedTx.length) {
+                              final tx = sortedTx[idx];
+                              final dateStr = DateFormat('MMM d').format(DateTime.tryParse(tx.createdAt) ?? DateTime.now());
+                              final amountStr = NumberFormat.currency(symbol: '\$', decimalDigits: 2).format(tx.amount);
+                              final balanceStr = NumberFormat.currency(symbol: '\$', decimalDigits: 2).format(spot.y);
+
+                              return LineTooltipItem(
+                                '$dateStr\n',
+                                const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                children: [
+                                  TextSpan(
+                                    text: '${tx.type == 'income' ? '+' : '-'}$amountStr\n',
+                                    style: TextStyle(
+                                      color: tx.type == 'income' ? Colors.green.shade400 : Colors.red.shade400,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: 'Balance: $balanceStr',
+                                    style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11),
+                                  ),
+                                ],
+                              );
+                            }
+                            return null;
+                          }).toList();
+                        },
                       ),
-                    ],
+                    ),
+                    lineBarsData: lineBars,
                   ),
                 ),
               ),

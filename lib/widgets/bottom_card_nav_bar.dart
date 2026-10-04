@@ -28,38 +28,33 @@ class BottomCardNavBar extends StatelessWidget {
       onToggleVisibility(cardConfig);
     }
     
+    // Double post-frame callback ensures the widget is fully built and rendered before scrolling
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final targetContext = key.currentContext;
-      if (targetContext != null) {
-        Scrollable.ensureVisible(
-          targetContext,
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
-        );
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final targetContext = key.currentContext;
+        if (targetContext != null) {
+          Scrollable.ensureVisible(
+            targetContext,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOut,
+          );
+        }
+      });
     });
   }
 
   Widget _buildNavItem(BuildContext context, String itemKey) {
     if (itemKey == 'manager') {
-      final cardConfig = cards.firstWhere(
-        (c) => c.id == 'manager',
-        orElse: () => cards.first,
-      );
       return IconButton(
         icon: const Icon(Icons.layers_outlined, color: Colors.white70, size: 22),
-        onPressed: () => _scrollToCard(context, cardConfig.key, cardConfig.id),
+        onPressed: onOpenManager,
         tooltip: 'Cards Stack Manager',
       );
     }
     if (itemKey == 'settings') {
-      final cardConfig = cards.firstWhere(
-        (c) => c.id == 'settings',
-        orElse: () => cards.first,
-      );
       return IconButton(
         icon: const Icon(Icons.settings_outlined, color: Colors.white70, size: 22),
-        onPressed: () => _scrollToCard(context, cardConfig.key, cardConfig.id),
+        onPressed: onOpenSettings,
         tooltip: 'Settings',
       );
     }
@@ -94,17 +89,21 @@ class BottomCardNavBar extends StatelessWidget {
         iconData = Icons.calendar_month_outlined;
         tooltip = 'Calendar';
         break;
-      case 'labels_analytics':
+      case 'income_expenses_labels':
         iconData = Icons.bar_chart_outlined;
         tooltip = 'Label Analytics';
         break;
-      case 'liquid_trend':
+      case 'trend_chart':
         iconData = Icons.show_chart_outlined;
         tooltip = 'Liquid Trend';
         break;
       case 'transfer':
         iconData = Icons.swap_horiz_outlined;
         tooltip = 'Transfer Funds';
+        break;
+      case 'new_entry':
+        iconData = Icons.add_circle_outline;
+        tooltip = 'New Zaznam';
         break;
       default:
         iconData = Icons.widgets_outlined;
@@ -120,7 +119,6 @@ class BottomCardNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Enforce locked items: Settings is strictly leftmost (leftItems[0]), Manager is strictly rightmost (rightItems[2])
     final effectiveLeft = [
       'settings',
       if (leftItems.length > 1 && leftItems[1] != 'settings' && leftItems[1] != 'manager') leftItems[1] else 'metrics',
@@ -152,23 +150,16 @@ class BottomCardNavBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Left Slots (3 items)
-          _buildNavItem(context, effectiveLeft[0]), // Locked Settings
+          _buildNavItem(context, effectiveLeft[0]),
           const SizedBox(width: 2),
           _buildNavItem(context, effectiveLeft[1]),
           const SizedBox(width: 2),
           _buildNavItem(context, effectiveLeft[2]),
           const SizedBox(width: 6),
 
-          // Center Icon: New Zaznam logo
+          // Center Icon: Zaznamity Logo Button
           GestureDetector(
-            onTap: () {
-              final cardConfig = cards.firstWhere(
-                (c) => c.id == 'new_zaznam' || c.id == 'quick_add',
-                orElse: () => cards.first,
-              );
-              _scrollToCard(context, cardConfig.key, cardConfig.id);
-            },
+            onTap: onQuickAdd,
             child: Container(
               width: 40,
               height: 40,
@@ -192,12 +183,11 @@ class BottomCardNavBar extends StatelessWidget {
           ),
           const SizedBox(width: 6),
 
-          // Right Slots (3 items)
           _buildNavItem(context, effectiveRight[0]),
           const SizedBox(width: 2),
           _buildNavItem(context, effectiveRight[1]),
           const SizedBox(width: 2),
-          _buildNavItem(context, effectiveRight[2]), // Locked Manager
+          _buildNavItem(context, effectiveRight[2]),
         ],
       ),
     );
