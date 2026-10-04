@@ -281,7 +281,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 14),
 
-              // Amount Input (Yellow smaller) & Type Picker (Green) Side-by-Side
+              // Amount Input & Type Picker Side-by-Side
               Row(
                 children: [
                   Expanded(
@@ -320,7 +320,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 14),
 
-              // Label & Pool Dropdowns (Label moved to Expense place, Pool moved to Label place)
+              // Label & Pool Dropdowns
               Row(
                 children: [
                   Expanded(
@@ -363,14 +363,13 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 14),
 
-              // Wallet Owner & Recurring Entry (Owner moved to Pool place, Recurring entry moved to Owner place)
+              // Wallet Owner & Recurring Button
               Row(
                 children: [
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('WALLET OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
                           initialValue: _owner,
@@ -392,24 +391,46 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Row(
-                      children: [
-                        Checkbox(value: _isRecurring, onChanged: (v) => setState(() => _isRecurring = v ?? false)),
-                        const Expanded(
-                          child: Text(
-                            'RECURRING',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                    child: SizedBox(
+                      height: 41,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isRecurring 
+                              ? const Color.fromARGB(255, 88, 47, 149) 
+                              : const Color(0xFFF1F5F9),
+                          foregroundColor: _isRecurring 
+                              ? Colors.white 
+                              : const Color(0xFF334155),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
                         ),
-                      ],
+                        onPressed: () => setState(() => _isRecurring = !_isRecurring),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _isRecurring ? Icons.check_circle_rounded : Icons.repeat_rounded, 
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            const Flexible(
+                              child: Text(
+                                'Recurring Entry',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
 
               if (_isRecurring) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(

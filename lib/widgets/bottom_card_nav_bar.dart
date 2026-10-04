@@ -42,16 +42,24 @@ class BottomCardNavBar extends StatelessWidget {
 
   Widget _buildNavItem(BuildContext context, String itemKey) {
     if (itemKey == 'manager') {
+      final cardConfig = cards.firstWhere(
+        (c) => c.id == 'manager',
+        orElse: () => cards.first,
+      );
       return IconButton(
         icon: const Icon(Icons.layers_outlined, color: Colors.white70, size: 22),
-        onPressed: onOpenManager,
+        onPressed: () => _scrollToCard(context, cardConfig.key, cardConfig.id),
         tooltip: 'Cards Stack Manager',
       );
     }
     if (itemKey == 'settings') {
+      final cardConfig = cards.firstWhere(
+        (c) => c.id == 'settings',
+        orElse: () => cards.first,
+      );
       return IconButton(
         icon: const Icon(Icons.settings_outlined, color: Colors.white70, size: 22),
-        onPressed: onOpenSettings,
+        onPressed: () => _scrollToCard(context, cardConfig.key, cardConfig.id),
         tooltip: 'Settings',
       );
     }
@@ -154,7 +162,13 @@ class BottomCardNavBar extends StatelessWidget {
 
           // Center Icon: New Zaznam logo
           GestureDetector(
-            onTap: onQuickAdd,
+            onTap: () {
+              final cardConfig = cards.firstWhere(
+                (c) => c.id == 'new_zaznam' || c.id == 'quick_add',
+                orElse: () => cards.first,
+              );
+              _scrollToCard(context, cardConfig.key, cardConfig.id);
+            },
             child: Container(
               width: 40,
               height: 40,

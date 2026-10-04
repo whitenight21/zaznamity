@@ -104,7 +104,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     CardConfig(id: 'trend_chart', title: 'Liquid Trend', key: GlobalKey()),
     CardConfig(id: 'calendar', title: 'Calendar', key: GlobalKey()),
     CardConfig(id: 'history', title: 'Zaznam History', key: GlobalKey()),
-    
   ];
 
   @override
@@ -128,14 +127,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _scrollToCard(GlobalKey key) {
-    final context = key.currentContext;
-    if (context != null) {
-      Scrollable.ensureVisible(
-        context,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-      );
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final context = key.currentContext;
+        if (context != null) {
+          Scrollable.ensureVisible(
+            context,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOut,
+          );
+        }
+      });
+    });
   }
 
   void showCardStackManager(
@@ -194,10 +197,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       onTap: () {
                         Navigator.pop(modalContext);
-                        setState(() {
-                          card.isVisible = true;
-                        });
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                        Future.delayed(const Duration(milliseconds: 200), () {
+                          setState(() {
+                            card.isVisible = true;
+                          });
                           onScrollTo(card.key);
                         });
                       },
@@ -358,7 +361,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     List<DateTime> datesToGenerate = [];
 
-  // Include base date if not excluded
     if (!_isExcluded(date, excludedWeekdays, excludedMonths)) {
       datesToGenerate.add(date);
     }
@@ -373,16 +375,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         } else if (frequency == 'Weekly') {
           current = current.add(const Duration(days: 7));
         } else if (frequency == 'Yearly') {
-          // Safe check for leap years/end of month days
           int targetYear = current.year + 1;
           int targetMonth = current.month;
           int targetDay = current.day;
           int maxDaysInMonth = DateTime(targetYear, targetMonth + 1, 0).day;
           if (targetDay > maxDaysInMonth) targetDay = maxDaysInMonth;
         
-        current = DateTime(targetYear, targetMonth, targetDay, current.hour, current.minute);
+          current = DateTime(targetYear, targetMonth, targetDay, current.hour, current.minute);
         } else {
-          // Monthly
           int targetYear = current.month == 12 ? current.year + 1 : current.year;
           int targetMonth = current.month == 12 ? 1 : current.month + 1;
           int maxDaysInMonth = DateTime(targetYear, targetMonth + 1, 0).day;
@@ -423,13 +423,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Helper validation function for exclusions
   bool _isExcluded(DateTime date, List<int> excludedWeekdays, List<int> excludedMonths) {
-    // date.weekday: 1 = Monday, 7 = Sunday
     if (excludedWeekdays.contains(date.weekday)) {
       return true;
     }
-    // date.month: 1 = January, 12 = December
     if (excludedMonths.contains(date.month)) {
       return true;
     }
@@ -749,7 +746,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       onHide: () => setState(() => card.isVisible = false),
                                     );
                                     break;
-                                  case 'future_metrics': // Added case block
+                                  case 'future_metrics':
                                     cardWidget = FutureMetricsCard(
                                       futureFlowTotal: _futureFlowTotal,
                                       prognosisTotal: _prognosisTotal,
@@ -882,7 +879,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         if (txDate == null) return true;
                                         if (_historyStartDate != null) {
                                           final startClean = DateTime(_historyStartDate!.year, _historyStartDate!.month, _historyStartDate!.day);
-                                         if (txDate.isBefore(startClean)) return false;
+                                          if (txDate.isBefore(startClean)) return false;
                                         }
                                         if (_historyEndDate != null) {
                                           final endClean = DateTime(_historyEndDate!.year, _historyEndDate!.month, _historyEndDate!.day, 23, 59, 59);
@@ -985,9 +982,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           setState(() {
                             _cards[index].isVisible = true;
                           });
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            _scrollToCard(_cards[index].key);
-                          });
+                          _scrollToCard(_cards[index].key);
                         }
                       },
                       onOpenSettings: () {
@@ -996,9 +991,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           setState(() {
                             _cards[index].isVisible = true;
                           });
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            _scrollToCard(_cards[index].key);
-                          });
+                          _scrollToCard(_cards[index].key);
                         }
                       },
                       onToggleVisibility: (card) {
