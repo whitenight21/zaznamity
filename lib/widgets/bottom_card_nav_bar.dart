@@ -17,8 +17,8 @@ class BottomCardNavBar extends StatelessWidget {
     required this.onQuickAdd,
     required this.onOpenSettings,
     required this.onToggleVisibility,
-    this.leftItems = const ['metrics', 'budget'],
-    this.rightItems = const ['history', 'settings'],
+    this.leftItems = const ['settings', 'metrics', 'budget'],
+    this.rightItems = const ['history', 'calendar', 'manager'],
   });
 
   void _scrollToCard(BuildContext context, GlobalKey key, String cardId) {
@@ -41,7 +41,6 @@ class BottomCardNavBar extends StatelessWidget {
   }
 
   Widget _buildNavItem(BuildContext context, String itemKey) {
-    // Handle special non-card navigation targets first
     if (itemKey == 'manager') {
       return IconButton(
         icon: const Icon(Icons.layers_outlined, color: Colors.white70, size: 22),
@@ -57,7 +56,6 @@ class BottomCardNavBar extends StatelessWidget {
       );
     }
 
-    // Handle dynamic cards based on their ID
     final cardConfig = cards.firstWhere(
       (c) => c.id == itemKey,
       orElse: () => cards.first,
@@ -74,7 +72,6 @@ class BottomCardNavBar extends StatelessWidget {
         break;
       case 'budget':
         iconData = Icons.pie_chart_outline;
-        iconColor = Colors.white70;
         tooltip = 'Budget Progress';
         break;
       case 'history':
@@ -111,9 +108,22 @@ class BottomCardNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Enforce locked items: Settings is strictly leftmost (leftItems[0]), Manager is strictly rightmost (rightItems[2])
+    final effectiveLeft = [
+      'settings',
+      if (leftItems.length > 1 && leftItems[1] != 'settings' && leftItems[1] != 'manager') leftItems[1] else 'metrics',
+      if (leftItems.length > 2 && leftItems[2] != 'settings' && leftItems[2] != 'manager') leftItems[2] else 'budget',
+    ];
+
+    final effectiveRight = [
+      if (rightItems.isNotEmpty && rightItems[0] != 'manager' && rightItems[0] != 'settings') rightItems[0] else 'history',
+      if (rightItems.length > 1 && rightItems[1] != 'manager' && rightItems[1] != 'settings') rightItems[1] else 'calendar',
+      'manager',
+    ];
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1333).withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(30),
@@ -130,20 +140,20 @@ class BottomCardNavBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Left Slot 1
-          if (leftItems.isNotEmpty) _buildNavItem(context, leftItems[0]),
-          const SizedBox(width: 4),
+          // Left Slots (3 items)
+          _buildNavItem(context, effectiveLeft[0]), // Locked Settings
+          const SizedBox(width: 2),
+          _buildNavItem(context, effectiveLeft[1]),
+          const SizedBox(width: 2),
+          _buildNavItem(context, effectiveLeft[2]),
+          const SizedBox(width: 6),
 
-          // Left Slot 2
-          if (leftItems.length > 1) _buildNavItem(context, leftItems[1]),
-          const SizedBox(width: 4),
-
-          // Center Icon: Always New Zaznam logo
+          // Center Icon: New Zaznam logo
           GestureDetector(
             onTap: onQuickAdd,
             child: Container(
-              width: 42,
-              height: 42,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 boxShadow: [
@@ -162,14 +172,14 @@ class BottomCardNavBar extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
 
-          // Right Slot 1
-          if (rightItems.isNotEmpty) _buildNavItem(context, rightItems[0]),
-          const SizedBox(width: 4),
-
-          // Right Slot 2
-          if (rightItems.length > 1) _buildNavItem(context, rightItems[1]),
+          // Right Slots (3 items)
+          _buildNavItem(context, effectiveRight[0]),
+          const SizedBox(width: 2),
+          _buildNavItem(context, effectiveRight[1]),
+          const SizedBox(width: 2),
+          _buildNavItem(context, effectiveRight[2]), // Locked Manager
         ],
       ),
     );

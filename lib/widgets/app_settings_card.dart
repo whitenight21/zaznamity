@@ -87,8 +87,19 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     _liquidNetPools = Map.from(widget.initialLiquidNetPools);
     _prognosisPools = Map.from(widget.initialPrognosisPools);
     _owners = List.from(widget.initialOwners);
-    _leftNavItems = List.from(widget.initialLeftNavItems);
-    _rightNavItems = List.from(widget.initialRightNavItems);
+    
+    // Normalize to 3 items per side ensuring fixed slots
+    _leftNavItems = [
+      'settings',
+      widget.initialLeftNavItems.length > 1 ? widget.initialLeftNavItems[1] : 'metrics',
+      widget.initialLeftNavItems.length > 2 ? widget.initialLeftNavItems[2] : 'budget',
+    ];
+    _rightNavItems = [
+      widget.initialRightNavItems.isNotEmpty ? widget.initialRightNavItems[0] : 'history',
+      widget.initialRightNavItems.length > 1 ? widget.initialRightNavItems[1] : 'calendar',
+      'manager',
+    ];
+    
     _loadPrefs();
   }
 
@@ -102,14 +113,22 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       _pinController.text = _savedPin;
 
       final leftSaved = prefs.getStringList('leftNavItems');
-      if (leftSaved != null) _leftNavItems = leftSaved;
+      if (leftSaved != null && leftSaved.length >= 3) {
+        _leftNavItems = ['settings', leftSaved[1], leftSaved[2]];
+      }
       final rightSaved = prefs.getStringList('rightNavItems');
-      if (rightSaved != null) _rightNavItems = rightSaved;
+      if (rightSaved != null && rightSaved.length >= 3) {
+        _rightNavItems = [rightSaved[0], rightSaved[1], 'manager'];
+      }
     });
   }
 
   Future<void> _saveNavPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    // Ensure strict preservation of locked slots before saving
+    _leftNavItems[0] = 'settings';
+    _rightNavItems[2] = 'manager';
+
     await prefs.setStringList('leftNavItems', _leftNavItems);
     await prefs.setStringList('rightNavItems', _rightNavItems);
     widget.onSaveNavItems(_leftNavItems, _rightNavItems);
@@ -117,16 +136,9 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
   List<DropdownMenuItem<String>> _buildNavDropdownItems() {
     final Map<String, String> uniqueItems = {};
-    
-    // Add all cards available in the app config
     for (var card in widget.cards) {
       uniqueItems[card.id] = card.title;
     }
-
-    // Add explicit non-card navigation targets (overwriting or ensuring they exist uniquely)
-    uniqueItems['manager'] = 'Cards Stack Manager';
-    uniqueItems['settings'] = 'Settings';
-
     return uniqueItems.entries.map((entry) {
       return DropdownMenuItem(
         value: entry.key,
@@ -254,53 +266,70 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               const Divider(color: Color(0xFFE2E8F0)),
               const SizedBox(height: 8),
 
-              // Navigation Bar Customization Section
+              // Navigation Bar Customization Section (3 Left, 3 Right with locked endpoints)
               _buildCollapsibleSection(
                 title: 'Navigation Bar',
-                subtitle: 'Customize icons for left and right slots of the bottom bar',
+                subtitle: 'Configure 3 items left and 3 items right (Settings & Card Stack are fixed)',
                 children: [
-                  const Text('Left Slot 1', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  // Left Slot 1 (Fixed Settings)
+                  const Text('Left Slot 1 (Most Left)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.settings_outlined, size: 18, color: Color(0xFF475569)),
+                        SizedBox(width: 8),
+                        Text('Settings (Fixed)', style: TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Left Slot 2
+                  const Text('Left Slot 2', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   DropdownButtonFormField<String>(
-                    initialValue: _leftNavItems.isNotEmpty && _buildNavDropdownItems().any((item) => item.value == _leftNavItems[0]) ? _leftNavItems[0] : 'metrics',
+                    initialValue: _leftNavItems.length > 1 && _buildNavDropdownItems().any((item) => item.value == _leftNavItems[1]) ? _leftNavItems[1] : 'metrics',
                     isExpanded: true,
                     decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
                     items: _buildNavDropdownItems(),
                     onChanged: (val) async {
                       if (val != null) {
                         setState(() {
-                          if (_leftNavItems.isEmpty) {
-                            _leftNavItems = [val, 'budget'];
-                          } else {
-                            _leftNavItems[0] = val;
-                          }
+                          _leftNavItems[1] = val;
                         });
                         await _saveNavPrefs();
                       }
                     },
                   ),
                   const SizedBox(height: 12),
-                  const Text('Left Slot 2', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+
+                  // Left Slot 3
+                  const Text('Left Slot 3', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   DropdownButtonFormField<String>(
-                    initialValue: _leftNavItems.length > 1 && _buildNavDropdownItems().any((item) => item.value == _leftNavItems[1]) ? _leftNavItems[1] : 'budget',
+                    initialValue: _leftNavItems.length > 2 && _buildNavDropdownItems().any((item) => item.value == _leftNavItems[2]) ? _leftNavItems[2] : 'budget',
                     isExpanded: true,
                     decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
                     items: _buildNavDropdownItems(),
                     onChanged: (val) async {
                       if (val != null) {
                         setState(() {
-                          if (_leftNavItems.length < 2) {
-                            _leftNavItems = [_leftNavItems.isNotEmpty ? _leftNavItems[0] : 'metrics', val];
-                          } else {
-                            _leftNavItems[1] = val;
-                          }
+                          _leftNavItems[2] = val;
                         });
                         await _saveNavPrefs();
                       }
                     },
                   ),
                   const SizedBox(height: 16),
+
+                  // Right Slot 1
                   const Text('Right Slot 1', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   DropdownButtonFormField<String>(
@@ -311,41 +340,55 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     onChanged: (val) async {
                       if (val != null) {
                         setState(() {
-                          if (_rightNavItems.isEmpty) {
-                            _rightNavItems = [val, 'settings'];
-                          } else {
-                            _rightNavItems[0] = val;
-                          }
+                          _rightNavItems[0] = val;
                         });
                         await _saveNavPrefs();
                       }
                     },
                   ),
                   const SizedBox(height: 12),
+
+                  // Right Slot 2
                   const Text('Right Slot 2', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   DropdownButtonFormField<String>(
-                    initialValue: _rightNavItems.length > 1 && _buildNavDropdownItems().any((item) => item.value == _rightNavItems[1]) ? _rightNavItems[1] : 'settings',
+                    initialValue: _rightNavItems.length > 1 && _buildNavDropdownItems().any((item) => item.value == _rightNavItems[1]) ? _rightNavItems[1] : 'calendar',
                     isExpanded: true,
                     decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
                     items: _buildNavDropdownItems(),
                     onChanged: (val) async {
                       if (val != null) {
                         setState(() {
-                          if (_rightNavItems.length < 2) {
-                            _rightNavItems = [_rightNavItems.isNotEmpty ? _rightNavItems[0] : 'history', val];
-                          } else {
-                            _rightNavItems[1] = val;
-                          }
+                          _rightNavItems[1] = val;
                         });
                         await _saveNavPrefs();
                       }
                     },
                   ),
+                  const SizedBox(height: 12),
+
+                  // Right Slot 3 (Fixed Card Stack Manager)
+                  const Text('Right Slot 3 (Most Right)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.layers_outlined, size: 18, color: Color(0xFF475569)),
+                        SizedBox(width: 8),
+                        Text('Cards Stack Manager (Fixed)', style: TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
                 ],
               ),
 
-              // Other sections...
+              // Other settings sections...
               _buildCollapsibleSection(
                 title: 'Manage Labels',
                 subtitle: 'Add, edit, or remove transaction labels',
