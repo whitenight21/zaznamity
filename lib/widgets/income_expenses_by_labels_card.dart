@@ -209,72 +209,60 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 16),
 
-              // Date Selection Row (Moved right under title)[cite: 15, 16]
+              // Date Selection Row (Restyled to match Liquid Trend card and reference photo)
               Row(
                 children: [
                   Expanded(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          width: 42,
-                          child: Text('START:', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                    child: InkWell(
+                      onTap: widget.onSelectStartDate,
+                      borderRadius: BorderRadius.circular(10),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'START DATE',
+                          labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                         ),
-                        Expanded(
-                          child: InkWell(
-                            onTap: widget.onSelectStartDate,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: const Color(0xFFCBD5E1)),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  widget.startDate != null ? DateFormat('MM/dd/yyyy').format(widget.startDate!) : '09/01/2026',
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                              ),
-                            ),
-                          ),
+                        child: Text(
+                          widget.startDate != null ? DateFormat('MM/dd/yyyy').format(widget.startDate!) : 'All',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          width: 36,
-                          child: Text('END:', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                    child: InkWell(
+                      onTap: widget.onSelectEndDate,
+                      borderRadius: BorderRadius.circular(10),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'END DATE',
+                          labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                         ),
-                        Expanded(
-                          child: InkWell(
-                            onTap: widget.onSelectEndDate,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: const Color(0xFFCBD5E1)),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  widget.endDate != null ? DateFormat('MM/dd/yyyy').format(widget.endDate!) : '09/30/2026',
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                              ),
-                            ),
-                          ),
+                        child: Text(
+                          widget.endDate != null ? DateFormat('MM/dd/yyyy').format(widget.endDate!) : 'All',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
                         ),
-                      ],
+                      ),
                     ),
                   ),
+                  if (widget.startDate != null || widget.endDate != null) ...[
+                    const SizedBox(width: 6),
+                    IconButton(
+                      icon: const Icon(Icons.clear, size: 18, color: Color(0xFF64748B)),
+                      onPressed: widget.onClearDateFilter,
+                      tooltip: 'Clear Filter',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 20),
@@ -678,7 +666,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         ),
               const SizedBox(height: 20),
 
-              // Chart View Toggle (Moved directly under the chart)[cite: 15, 16]
+              // Chart View Toggle
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

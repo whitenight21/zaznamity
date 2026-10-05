@@ -189,81 +189,64 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+          
+          // Updated Date Pickers matching the reference design style
           Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('START', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                    const SizedBox(height: 4),
-                    InkWell(
-                      onTap: widget.onSelectStartDate,
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          suffixIcon: const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
-                        ),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            widget.startDate != null ? DateFormat('MM/dd/yyyy').format(widget.startDate!) : 'mm/dd/yyyy',
-                            style: TextStyle(fontSize: 12, color: widget.startDate != null ? Colors.black : Colors.grey),
-                          ),
-                        ),
-                      ),
+                child: InkWell(
+                  onTap: widget.onSelectStartDate,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'START DATE',
+                      labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                     ),
-                  ],
+                    child: Text(
+                      widget.startDate != null ? DateFormat('MM/dd/yyyy').format(widget.startDate!) : 'All',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('END', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                    const SizedBox(height: 4),
-                    InkWell(
-                      onTap: widget.onSelectEndDate,
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          suffixIcon: const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
-                        ),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            widget.endDate != null ? DateFormat('MM/dd/yyyy').format(widget.endDate!) : 'mm/dd/yyyy',
-                            style: TextStyle(fontSize: 12, color: widget.endDate != null ? Colors.black : Colors.grey),
-                          ),
-                        ),
-                      ),
+                child: InkWell(
+                  onTap: widget.onSelectEndDate,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'END DATE',
+                      labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                     ),
-                  ],
+                    child: Text(
+                      widget.endDate != null ? DateFormat('MM/dd/yyyy').format(widget.endDate!) : 'All',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+                    ),
+                  ),
                 ),
               ),
+              if (widget.startDate != null || widget.endDate != null || widget.selectedLabelId != null || widget.selectedOwner != null) ...[
+                const SizedBox(width: 6),
+                IconButton(
+                  icon: const Icon(Icons.clear, size: 18, color: Color(0xFF64748B)),
+                  onPressed: widget.onClearDateFilter,
+                  tooltip: 'Reset Filters',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
             ],
           ),
-          if (widget.startDate != null || widget.endDate != null || widget.selectedLabelId != null || widget.selectedOwner != null) ...[
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: widget.onClearDateFilter,
-                icon: const Icon(Icons.clear, size: 14),
-                label: const Text('Reset', style: TextStyle(fontSize: 12)),
-              ),
-            ),
-          ],
           const SizedBox(height: 12),
           const Divider(color: Color(0xFFE2E8F0)),
           widget.transactions.isEmpty

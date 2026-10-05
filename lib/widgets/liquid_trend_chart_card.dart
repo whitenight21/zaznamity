@@ -3,7 +3,9 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:zaznamity/models/transaction_model.dart';
 
-class LiquidTrendChartCard extends StatelessWidget {
+enum MovingAverageFilter { days30, days90, all }
+
+class LiquidTrendChartCard extends StatefulWidget {
   final List<TransactionModel> transactions;
   final Map<String, bool> liquidNetPools;
   final DateTime? startDate;
@@ -30,16 +32,23 @@ class LiquidTrendChartCard extends StatelessWidget {
   });
 
   @override
+  State<LiquidTrendChartCard> createState() => _LiquidTrendChartCardState();
+}
+
+class _LiquidTrendChartCardState extends State<LiquidTrendChartCard> {
+  MovingAverageFilter? _maFilter;
+
+  @override
   Widget build(BuildContext context) {
-    final filteredTx = transactions.where((tx) {
+    final filteredTx = widget.transactions.where((tx) {
       final txDate = DateTime.tryParse(tx.createdAt);
       if (txDate == null) return true;
-      if (startDate != null) {
-        final startClean = DateTime(startDate!.year, startDate!.month, startDate!.day);
+      if (widget.startDate != null) {
+        final startClean = DateTime(widget.startDate!.year, widget.startDate!.month, widget.startDate!.day);
         if (txDate.isBefore(startClean)) return false;
       }
-      if (endDate != null) {
-        final endClean = DateTime(endDate!.year, endDate!.month, endDate!.day, 23, 59, 59);
+      if (widget.endDate != null) {
+        final endClean = DateTime(widget.endDate!.year, widget.endDate!.month, widget.endDate!.day, 23, 59, 59);
         if (txDate.isAfter(endClean)) return false;
       }
       return true;
@@ -52,34 +61,36 @@ class LiquidTrendChartCard extends StatelessWidget {
         return dateA.compareTo(dateB);
       });
 
-    double runningBalance = 0;
-    final List<FlSpot> pastSpots = [];
-    final List<FlSpot> futureSpots = [];
-    
-    // To handle continuous lines between past and future, keep track of segments
     List<LineChartBarData> lineBars = [];
     final now = DateTime.now();
 
-    // Build segments
     double currentBalance = 0;
     List<FlSpot> currentSegmentSpots = [];
     Color? currentSegmentColor;
     bool currentIsDashed = false;
 
+    // List to hold balance points for moving average calculation (index, balance, date)
+    List<Map<String, dynamic>> balancePoints = [];
+
     for (int i = 0; i < sortedTx.length; i++) {
       final t = sortedTx[i];
-      final isPoolIncluded = liquidNetPools[t.pool] == true;
+      final isPoolIncluded = widget.liquidNetPools[t.pool] == true;
       if (t.isConfirmed == 1 && isPoolIncluded) {
         currentBalance += (t.type == 'income' ? t.amount : -t.amount);
       }
       
       final txDate = DateTime.tryParse(t.createdAt) ?? now;
+      balancePoints.add({
+        'index': i.toDouble(),
+        'balance': currentBalance,
+        'date': txDate,
+      });
+
       final isFuture = txDate.isAfter(now);
       
-      // Determine color and style for this step
       Color targetColor;
       if (isFuture) {
-        targetColor = const Color.fromARGB(255, 147, 51, 234); // Purple
+        targetColor = const Color.fromARGB(255, 147, 51, 234);
       } else {
         targetColor = t.type == 'income' ? Colors.green.shade600 : Colors.red.shade600;
       }
@@ -89,14 +100,11 @@ class LiquidTrendChartCard extends StatelessWidget {
         currentSegmentSpots.add(FlSpot(i.toDouble(), currentBalance));
         currentSegmentColor = targetColor;
         currentIsDashed = targetDashed;
-        // Add starting point
         if (sortedTx.length == 1) {
           currentSegmentSpots.insert(0, FlSpot(0, currentBalance - (t.type == 'income' ? t.amount : -t.amount)));
         }
       } else {
-        // If color or style changes, push current segment and start a new one
         if (currentSegmentColor != targetColor || currentIsDashed != targetDashed) {
-          // Include previous point to connect lines smoothly
           final prevSpot = currentSegmentSpots.last;
           currentSegmentSpots.add(FlSpot(i.toDouble(), currentBalance));
 
@@ -104,10 +112,10 @@ class LiquidTrendChartCard extends StatelessWidget {
             LineChartBarData(
               spots: List.from(currentSegmentSpots),
               isCurved: false,
-              color: currentSegmentColor ?? Color.fromARGB(255, 88, 47, 149),
+              color: currentSegmentColor ?? const Color.fromARGB(255, 88, 47, 149),
               barWidth: 3,
               isStrokeCapRound: true,
-              dotData: const FlDotData(show: true),
+              dotData: const FlDotData(show: false),
               dashArray: currentIsDashed ? [6, 4] : null,
               belowBarData: BarAreaData(show: false),
             ),
@@ -133,7 +141,7 @@ class LiquidTrendChartCard extends StatelessWidget {
           color: currentSegmentColor ?? const Color.fromARGB(255, 88, 47, 149),
           barWidth: 3,
           isStrokeCapRound: true,
-          dotData: const FlDotData(show: true),
+          dotData: const FlDotData(show: false),
           dashArray: currentIsDashed ? [6, 4] : null,
           belowBarData: BarAreaData(
             show: true,
@@ -149,38 +157,86 @@ class LiquidTrendChartCard extends StatelessWidget {
           color: currentSegmentColor ?? const Color.fromARGB(255, 88, 47, 149),
           barWidth: 3,
           isStrokeCapRound: true,
-          dotData: const FlDotData(show: true),
+          dotData: const FlDotData(show: false),
           dashArray: currentIsDashed ? [6, 4] : null,
           belowBarData: BarAreaData(show: false),
         ),
       );
     }
 
+    // Calculate Moving Average Line if enabled
+    if (_maFilter != null && balancePoints.isNotEmpty) {
+      List<FlSpot> maSpots = [];
+      for (int i = 0; i < balancePoints.length; i++) {
+        final currentDate = balancePoints[i]['date'] as DateTime;
+        double sum = 0;
+        int count = 0;
+
+        for (int j = 0; j <= i; j++) {
+          final pastDate = balancePoints[j]['date'] as DateTime;
+          bool include = false;
+
+          if (_maFilter == MovingAverageFilter.days30) {
+            if (currentDate.difference(pastDate).inDays <= 30) include = true;
+          } else if (_maFilter == MovingAverageFilter.days90) {
+            if (currentDate.difference(pastDate).inDays <= 90) include = true;
+          } else if (_maFilter == MovingAverageFilter.all) {
+            include = true;
+          }
+
+          if (include) {
+            sum += (balancePoints[j]['balance'] as double);
+            count++;
+          }
+        }
+
+        if (count > 0) {
+          maSpots.add(FlSpot(i.toDouble(), sum / count));
+        }
+      }
+
+      if (maSpots.isNotEmpty) {
+        lineBars.add(
+          LineChartBarData(
+            spots: maSpots,
+            isCurved: true,
+            color: Colors.amber.shade700,
+            barWidth: 2.5,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(show: false),
+          ),
+        );
+      }
+    }
+
     if (lineBars.isEmpty) {
       lineBars.add(
         LineChartBarData(
           spots: const [FlSpot(0, 0), FlSpot(1, 0)],
-          color: Color.fromARGB(255, 88, 47, 149),
+          color: const Color.fromARGB(255, 88, 47, 149),
           barWidth: 3,
+          dotData: const FlDotData(show: false),
         ),
       );
     }
 
-    // Calculate min/max Y across all spots
-    double minY = 0;
-    double maxY = 0;
+    double lowestPoint = double.infinity;
+    double highestPoint = -double.infinity;
     for (var bar in lineBars) {
       for (var spot in bar.spots) {
-        if (spot.y < minY) minY = spot.y;
-        if (spot.y > maxY) maxY = spot.y;
+        if (spot.y < lowestPoint) lowestPoint = spot.y;
+        if (spot.y > highestPoint) highestPoint = spot.y;
       }
     }
-    if (minY > 0) minY = 0;
+    if (lowestPoint == double.infinity) lowestPoint = 0;
+    if (highestPoint == -double.infinity) highestPoint = 0;
+
+    double minY = lowestPoint - 250;
+    double maxY = highestPoint;
     if (maxY < 0) maxY = 0;
 
     final double yRange = maxY - minY;
     final double yPadding = yRange == 0 ? 50 : yRange * 0.15;
-    minY -= yPadding;
     maxY += yPadding;
 
     return LayoutBuilder(
@@ -235,12 +291,12 @@ class LiquidTrendChartCard extends StatelessWidget {
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
-                            onPressed: onToggleWidth,
+                            onPressed: widget.onToggleWidth,
                             icon: Icon(
-                              isWide ? Icons.fullscreen_exit : Icons.fullscreen,
+                              widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
                               size: 18,
                             ),
-                            tooltip: isWide ? 'Narrow' : 'Wide',
+                            tooltip: widget.isWide ? 'Narrow' : 'Wide',
                           ),
                         ),
                       ),
@@ -254,7 +310,7 @@ class LiquidTrendChartCard extends StatelessWidget {
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
-                          onPressed: onHide,
+                          onPressed: widget.onHide,
                           icon: const Icon(
                             Icons.visibility_off_outlined,
                             size: 16,
@@ -271,11 +327,11 @@ class LiquidTrendChartCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: InkWell(
-                      onTap: onSelectStartDate,
+                      onTap: widget.onSelectStartDate,
                       borderRadius: BorderRadius.circular(10),
                       child: InputDecorator(
                         decoration: InputDecoration(
-                          labelText: 'START',
+                          labelText: 'START DATE',
                           labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -283,7 +339,7 @@ class LiquidTrendChartCard extends StatelessWidget {
                           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                         ),
                         child: Text(
-                          startDate != null ? DateFormat('MM/dd/yyyy').format(startDate!) : 'All',
+                          widget.startDate != null ? DateFormat('MM/dd/yyyy').format(widget.startDate!) : 'All',
                           style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
                         ),
                       ),
@@ -292,11 +348,11 @@ class LiquidTrendChartCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: InkWell(
-                      onTap: onSelectEndDate,
+                      onTap: widget.onSelectEndDate,
                       borderRadius: BorderRadius.circular(10),
                       child: InputDecorator(
                         decoration: InputDecoration(
-                          labelText: 'END',
+                          labelText: 'END DATE',
                           labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -304,17 +360,17 @@ class LiquidTrendChartCard extends StatelessWidget {
                           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                         ),
                         child: Text(
-                          endDate != null ? DateFormat('MM/dd/yyyy').format(endDate!) : 'All',
+                          widget.endDate != null ? DateFormat('MM/dd/yyyy').format(widget.endDate!) : 'All',
                           style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
                         ),
                       ),
                     ),
                   ),
-                  if (startDate != null || endDate != null) ...[
+                  if (widget.startDate != null || widget.endDate != null) ...[
                     const SizedBox(width: 6),
                     IconButton(
                       icon: const Icon(Icons.clear, size: 18, color: Color(0xFF64748B)),
-                      onPressed: onClearDateFilter,
+                      onPressed: widget.onClearDateFilter,
                       tooltip: 'Clear Filter',
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
@@ -322,7 +378,63 @@ class LiquidTrendChartCard extends StatelessWidget {
                   ],
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+              // Moving Average Selector Chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      width: 95,
+                      child: Text(
+                        'Moving Average',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                        maxLines: 2,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text('30-Day', style: TextStyle(fontSize: 11)),
+                      selected: _maFilter == MovingAverageFilter.days30,
+                      showCheckmark: false,
+                      onSelected: (selected) {
+                        setState(() {
+                          _maFilter = selected ? MovingAverageFilter.days30 : null;
+                        });
+                      },
+                      selectedColor: Colors.amber.shade200,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 6),
+                    ChoiceChip(
+                      label: const Text('90-Day', style: TextStyle(fontSize: 11)),
+                      selected: _maFilter == MovingAverageFilter.days90,
+                      showCheckmark: false,
+                      onSelected: (selected) {
+                        setState(() {
+                          _maFilter = selected ? MovingAverageFilter.days90 : null;
+                        });
+                      },
+                      selectedColor: Colors.amber.shade200,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 6),
+                    ChoiceChip(
+                      label: const Text('All', style: TextStyle(fontSize: 11)),
+                      selected: _maFilter == MovingAverageFilter.all,
+                      showCheckmark: false,
+                      onSelected: (selected) {
+                        setState(() {
+                          _maFilter = selected ? MovingAverageFilter.all : null;
+                        });
+                      },
+                      selectedColor: Colors.amber.shade200,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               SizedBox(
                 height: 220,
                 child: LineChart(
@@ -376,41 +488,7 @@ class LiquidTrendChartCard extends StatelessWidget {
                       ),
                     ),
                     borderData: FlBorderData(show: false),
-                    lineTouchData: LineTouchData(
-                      touchTooltipData: LineTouchTooltipData(
-                        getTooltipColor: (_) => const Color(0xFF1E293B),
-                        getTooltipItems: (touchedSpots) {
-                          return touchedSpots.map((spot) {
-                            int idx = spot.x.toInt();
-                            if (idx >= 0 && idx < sortedTx.length) {
-                              final tx = sortedTx[idx];
-                              final dateStr = DateFormat('MMM d').format(DateTime.tryParse(tx.createdAt) ?? DateTime.now());
-                              final amountStr = NumberFormat.currency(symbol: '\$', decimalDigits: 2).format(tx.amount);
-                              final balanceStr = NumberFormat.currency(symbol: '\$', decimalDigits: 2).format(spot.y);
-
-                              return LineTooltipItem(
-                                '$dateStr\n',
-                                const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                                children: [
-                                  TextSpan(
-                                    text: '${tx.type == 'income' ? '+' : '-'}$amountStr\n',
-                                    style: TextStyle(
-                                      color: tx.type == 'income' ? Colors.green.shade400 : Colors.red.shade400,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                  TextSpan(
-                                    text: 'Balance: $balanceStr',
-                                    style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11),
-                                  ),
-                                ],
-                              );
-                            }
-                            return null;
-                          }).toList();
-                        },
-                      ),
-                    ),
+                    lineTouchData: const LineTouchData(enabled: false),
                     lineBarsData: lineBars,
                   ),
                 ),
