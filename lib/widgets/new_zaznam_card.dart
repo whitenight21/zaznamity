@@ -5,6 +5,7 @@ import '../models/label.dart';
 class NewZaznamCard extends StatefulWidget {
   final List<LabelModel> labels;
   final List<String> pools;
+  final List<String> owners; // 1. Added owners parameter
   final Function(
     String description,
     double amount,
@@ -28,6 +29,7 @@ class NewZaznamCard extends StatefulWidget {
     super.key,
     required this.labels,
     required this.pools,
+    required this.owners, // 2. Required in constructor
     required this.onSubmit,
     this.onHide,
     this.onToggleWidth,
@@ -43,7 +45,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   final _amountController = TextEditingController();
   String _type = 'expense';
   int? _selectedLabelId;
-  String _owner = 'Mathias';
+  late String _owner; // 3. Made late to initialize dynamically
   late String _selectedPool;
   bool _isRecurring = false;
   
@@ -62,6 +64,8 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   void initState() {
     super.initState();
     _selectedPool = widget.pools.isNotEmpty ? widget.pools.first : 'checking';
+    // 4. Initialize default owner safely from the list
+    _owner = widget.owners.isNotEmpty ? widget.owners.first : '';
     _dayOfMonth = _selectedDate.day;
   }
 
@@ -70,6 +74,10 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
     super.didUpdateWidget(oldWidget);
     if (widget.pools.isNotEmpty && !widget.pools.contains(_selectedPool)) {
       _selectedPool = widget.pools.first;
+    }
+    // 5. Ensure selected owner is valid if the owner list changes externally
+    if (widget.owners.isNotEmpty && !widget.owners.contains(_owner)) {
+      _owner = widget.owners.first;
     }
   }
 
@@ -86,7 +94,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
       _amountController.clear();
       _type = 'expense';
       _selectedLabelId = null;
-      _owner = 'Mathias';
+      _owner = widget.owners.isNotEmpty ? widget.owners.first : '';
       _selectedPool = widget.pools.isNotEmpty ? widget.pools.first : 'checking';
       _isRecurring = false;
       _frequency = 'Monthly';
@@ -372,7 +380,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       children: [
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          initialValue: _owner,
+                          initialValue: widget.owners.contains(_owner) ? _owner : (widget.owners.isNotEmpty ? widget.owners.first : null),
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -380,11 +388,16 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                           ),
-                          items: const [
-                            DropdownMenuItem(value: 'Mathias', child: Text('Mathias', style: TextStyle(fontSize: 13))),
-                            DropdownMenuItem(value: 'Julia', child: Text('Julia', style: TextStyle(fontSize: 13))),
-                          ],
-                          onChanged: (val) => setState(() => _owner = val ?? 'Mathias'),
+                          // 6. Dynamically map items from widget.owners instead of hardcoded list
+                          items: widget.owners.map((o) => DropdownMenuItem(
+                            value: o,
+                            child: Text(o, style: const TextStyle(fontSize: 13)),
+                          )).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() => _owner = val);
+                            }
+                          },
                         ),
                       ],
                     ),
@@ -632,8 +645,8 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF1F5F9), // Updated to match unselected Recurring Entry color
-                    foregroundColor: const Color(0xFF334155), // Updated text color to match
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    foregroundColor: const Color(0xFF334155),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,

@@ -6,6 +6,7 @@ import '../models/label.dart';
 class TransactionHistoryCard extends StatefulWidget {
   final List<TransactionModel> transactions;
   final List<LabelModel> labels;
+  final List<String> owners; // Added owners list parameter
   final DateTime? startDate;
   final DateTime? endDate;
   final int? selectedLabelId;
@@ -26,6 +27,7 @@ class TransactionHistoryCard extends StatefulWidget {
     super.key,
     required this.transactions,
     required this.labels,
+    required this.owners, // Required owners parameter
     this.startDate,
     this.endDate,
     this.selectedLabelId,
@@ -151,11 +153,9 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                       ),
                       hint: const Text('All Owners', style: TextStyle(fontSize: 13)),
-                      items: const [
-                        DropdownMenuItem(value: null, child: Text('All Owners', style: TextStyle(fontSize: 13))),
-                        DropdownMenuItem(value: 'Mathias', child: Text('Mathias', style: TextStyle(fontSize: 13))),
-                        DropdownMenuItem(value: 'Julia', child: Text('Julia', style: TextStyle(fontSize: 13))),
-                        DropdownMenuItem(value: 'Shared', child: Text('Shared', style: TextStyle(fontSize: 13))),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text('All Owners', style: TextStyle(fontSize: 13))),
+                        ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 13)))),
                       ],
                       onChanged: widget.onOwnerChanged,
                     ),
@@ -190,8 +190,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
             ],
           ),
           const SizedBox(height: 16),
-          
-          // Updated Date Pickers matching the reference design style
           Row(
             children: [
               Expanded(

@@ -4,6 +4,9 @@ import 'package:zaznamity/models/transaction_model.dart';
 
 class CalendarCard extends StatefulWidget {
   final List<TransactionModel> transactions;
+  final List<String> owners;
+  final String? selectedOwner;
+  final Function(String?) onOwnerChanged;
   final bool isWide;
   final VoidCallback onToggleWidth;
   final VoidCallback onHide;
@@ -13,6 +16,9 @@ class CalendarCard extends StatefulWidget {
   const CalendarCard({
     super.key,
     required this.transactions,
+    required this.owners,
+    required this.selectedOwner,
+    required this.onOwnerChanged,
     required this.isWide,
     required this.onToggleWidth,
     required this.onHide,
@@ -59,8 +65,16 @@ class _CalendarCardState extends State<CalendarCard> {
 
   @override
   Widget build(BuildContext context) {
+    // Filter transactions based on the selected owner
+    final filteredTransactions = widget.transactions.where((tx) {
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty) {
+        return tx.owner == widget.selectedOwner;
+      }
+      return true;
+    }).toList();
+
     final Map<String, List<TransactionModel>> txByDate = {};
-    for (var tx in widget.transactions) {
+    for (var tx in filteredTransactions) {
       final date = DateTime.tryParse(tx.createdAt);
       if (date != null) {
         final key = DateFormat('yyyy-MM-dd').format(date);
@@ -237,6 +251,38 @@ class _CalendarCardState extends State<CalendarCard> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // Compact Owner Selector Dropdown matching the Liquid Trend card style
+                  Container(
+                    height: 32,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String?>(
+                        value: widget.selectedOwner,
+                        isDense: true,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF1E293B),
+                        ),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('All Owners'),
+                          ),
+                          ...widget.owners.map((owner) => DropdownMenuItem<String?>(
+                                value: owner,
+                                child: Text(owner),
+                              )),
+                        ],
+                        onChanged: widget.onOwnerChanged,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -283,7 +329,7 @@ class _CalendarCardState extends State<CalendarCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

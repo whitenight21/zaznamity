@@ -8,6 +8,9 @@ enum MovingAverageFilter { days30, days90, all }
 class LiquidTrendChartCard extends StatefulWidget {
   final List<TransactionModel> transactions;
   final Map<String, bool> liquidNetPools;
+  final List<String> owners;
+  final String? selectedOwner;
+  final ValueChanged<String?>? onOwnerChanged;
   final DateTime? startDate;
   final DateTime? endDate;
   final VoidCallback? onSelectStartDate;
@@ -21,6 +24,9 @@ class LiquidTrendChartCard extends StatefulWidget {
     super.key,
     required this.transactions,
     required this.liquidNetPools,
+    required this.owners,
+    this.selectedOwner,
+    this.onOwnerChanged,
     this.startDate,
     this.endDate,
     this.onSelectStartDate,
@@ -41,6 +47,9 @@ class _LiquidTrendChartCardState extends State<LiquidTrendChartCard> {
   @override
   Widget build(BuildContext context) {
     final filteredTx = widget.transactions.where((tx) {
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty) {
+        if (tx.owner != widget.selectedOwner) return false;
+      }
       final txDate = DateTime.tryParse(tx.createdAt);
       if (txDate == null) return true;
       if (widget.startDate != null) {
@@ -279,6 +288,30 @@ class _LiquidTrendChartCardState extends State<LiquidTrendChartCard> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: widget.selectedOwner ?? 'All Owners',
+                            isDense: true,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF582F95)),
+                            items: [
+                              const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
+                              ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) {
+                                widget.onOwnerChanged?.call(val == 'All Owners' ? null : val);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Padding(
                         padding: const EdgeInsets.only(right: 6.0),
                         child: SizedBox(

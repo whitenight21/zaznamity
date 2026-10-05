@@ -1,25 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-class SummaryMetricsCard extends StatelessWidget {
-  final double mathiasCash;
-  final double juliaCash;
-  final double liquidNetTotal;
-  final Map<String, double> poolTotals;
+class SummaryMetricsCard extends StatefulWidget {
+  final List<String> owners;
+  final Map<String, Map<String, double>> poolTotalsByOwner;
+  final Map<String, double> totalPoolTotals;
+  final Map<String, double> liquidNetByOwner;
+  final double totalLiquidNet;
+  final Map<String, Map<String, double>> ownerBreakdownForLiquidNet;
   final bool isWide;
   final VoidCallback? onToggleWidth;
   final VoidCallback? onHide;
 
   const SummaryMetricsCard({
     super.key,
-    required this.mathiasCash,
-    required this.juliaCash,
-    required this.liquidNetTotal,
-    required this.poolTotals,
+    required this.owners,
+    required this.poolTotalsByOwner,
+    required this.totalPoolTotals,
+    required this.liquidNetByOwner,
+    required this.totalLiquidNet,
+    required this.ownerBreakdownForLiquidNet,
     this.isWide = false,
     this.onToggleWidth,
     this.onHide,
   });
+
+  @override
+  State<SummaryMetricsCard> createState() => _SummaryMetricsCardState();
+}
+
+class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
+  String _selectedOwner = 'All Owners';
 
   String _formatCurrency(double amount) {
     final format = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
@@ -29,13 +40,14 @@ class SummaryMetricsCard extends StatelessWidget {
   Color _getPoolColor(String poolName) {
     switch (poolName.toLowerCase()) {
       case 'checking':
-        return const Color(0xFF3F48CC);
+        return const Color(0xFFFF7F27);
       case 'cash':
         return const Color(0xFF56C435);
       case 'savings':
-        return const Color.fromARGB(255, 0, 229, 255);
+        return const Color(0xFF3F48CC);
       case 'loan':
-        return const Color(0xFFFF7F27);
+      case 'loans':
+        return const Color.fromARGB(255, 105, 105, 105);
       default:
         return const Color(0xFF0369A1);
     }
@@ -49,7 +61,23 @@ class SummaryMetricsCard extends StatelessWidget {
         final double fullWidth = availableWidth - 40;
         final double boxWidth = (fullWidth - 16) / 2;
 
-        final poolEntries = poolTotals.entries.toList();
+        Map<String, double> currentPools;
+        double currentLiquidNet;
+        String? subtitle;
+
+        if (_selectedOwner == 'All Owners') {
+          currentPools = widget.totalPoolTotals;
+          currentLiquidNet = widget.totalLiquidNet;
+          subtitle = widget.ownerBreakdownForLiquidNet.entries
+              .map((e) => '${e.key[0]}: ${_formatCurrency(e.value['liquidNet'] ?? 0)}')
+              .join('  ');
+        } else {
+          currentPools = widget.poolTotalsByOwner[_selectedOwner] ?? {};
+          currentLiquidNet = widget.liquidNetByOwner[_selectedOwner] ?? 0.0;
+          subtitle = null;
+        }
+
+        final poolEntries = currentPools.entries.toList();
         List<List<MapEntry<String, double>>> poolRows = [];
         for (int i = 0; i < poolEntries.length; i += 2) {
           poolRows.add(
@@ -98,7 +126,29 @@ class SummaryMetricsCard extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (onToggleWidth != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _selectedOwner,
+                            isDense: true,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF582F95)),
+                            items: [
+                              const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
+                              ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) setState(() => _selectedOwner = val);
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (widget.onToggleWidth != null)
                         Padding(
                           padding: const EdgeInsets.only(right: 6.0),
                           child: SizedBox(
@@ -111,16 +161,16 @@ class SummaryMetricsCard extends StatelessWidget {
                                 padding: EdgeInsets.zero,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
-                              onPressed: onToggleWidth,
+                              onPressed: widget.onToggleWidth, // Fixed: added widget. prefix
                               icon: Icon(
-                                isWide ? Icons.fullscreen_exit : Icons.fullscreen,
+                                widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
                                 size: 18,
                               ),
-                              tooltip: isWide ? 'Narrow' : 'Wide',
+                              tooltip: widget.isWide ? 'Narrow' : 'Wide',
                             ),
                           ),
                         ),
-                      if (onHide != null)
+                      if (widget.onHide != null)
                         SizedBox(
                           height: 32,
                           width: 32,
@@ -131,7 +181,7 @@ class SummaryMetricsCard extends StatelessWidget {
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
-                            onPressed: onHide,
+                            onPressed: widget.onHide,
                             icon: const Icon(
                               Icons.visibility_off_outlined,
                               size: 16,
@@ -149,10 +199,10 @@ class SummaryMetricsCard extends StatelessWidget {
                 child: SizedBox(
                   width: fullWidth,
                   child: _buildMetricBox(
-                    title: 'LIQUID NET',
-                    amount: liquidNetTotal,
+                    title: 'LIQUID NET (${_selectedOwner.toUpperCase()})',
+                    amount: currentLiquidNet,
                     amountColor: const Color.fromARGB(255, 88, 47, 149),
-                    subtitle: 'M: ${_formatCurrency(mathiasCash)}  J: ${_formatCurrency(juliaCash)}',
+                    subtitle: subtitle,
                     width: fullWidth,
                     isCentered: true,
                   ),

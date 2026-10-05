@@ -40,17 +40,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> _budgets = [];
   bool _isLoading = true;
 
-  double _liquidNetTotal = 0;
-  double _mathiasCash = 0;
-  double _juliaCash = 0;
-  double _checkingTotal = 0;
-  double _cashTotal = 0;
-  double _savingsTotal = 0;
-  double _loansTotal = 0;
-  double _futureFlowTotal = 0;
-  double _prognosisTotal = 0;
-
-  Map<String, double> _poolTotals = {};
+  // Breakdown metrics storage
+  double _totalLiquidNet = 0;
+  Map<String, double> _totalPoolTotals = {};
+  Map<String, Map<String, double>> _poolTotalsByOwner = {};
+  Map<String, double> _liquidNetByOwner = {};
+  Map<String, Map<String, double>> _ownerBreakdownForLiquidNet = {};
+  
+  Map<String, double> _futureFlowByOwner = {};
+  double _totalFutureFlow = 0;
+  Map<String, double> _prognosisByOwner = {};
+  double _totalPrognosis = 0;
 
   DateTime? _historyStartDate;
   DateTime? _historyEndDate;
@@ -63,6 +63,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   DateTime? _trendStartDate;
   DateTime? _trendEndDate;
+  String? _trendSelectedOwner;
+
+  // Calendar Owner Filter State
+  String? _calendarSelectedOwner;
 
   List<String> _leftNavItems = ['metrics', 'budget'];
   List<String> _rightNavItems = ['history', 'settings'];
@@ -237,52 +241,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void calculateMetrics() {
-    double mCash = 0, jCash = 0, chk = 0, csh = 0, sav = 0, loans = 0, fut = 0, prog = 0, liquidNet = 0;
     final now = DateTime.now();
 
-    Map<String, double> pTotals = {};
-    for (var poolKey in _pools.keys) {
-      pTotals[poolKey] = 0;
+    Map<String, Map<String, double>> poolByOwner = {};
+    Map<String, double> totalPools = {};
+    Map<String, double> liquidNetOwner = {};
+    Map<String, Map<String, double>> liquidNetBreakdown = {};
+    Map<String, double> futureByOwner = {};
+    Map<String, double> prognosisByOwnerMap = {};
+
+    for (var owner in _owners) {
+      poolByOwner[owner] = {};
+      for (var poolKey in _pools.keys) {
+        poolByOwner[owner]![poolKey] = 0.0;
+      }
+      liquidNetOwner[owner] = 0.0;
+      liquidNetBreakdown[owner] = {'liquidNet': 0.0};
+      futureByOwner[owner] = 0.0;
+      prognosisByOwnerMap[owner] = 0.0;
     }
+
+    for (var poolKey in _pools.keys) {
+      totalPools[poolKey] = 0.0;
+    }
+
+    double totLiquidNet = 0;
+    double totFuture = 0;
+    double totPrognosis = 0;
 
     for (var t in _transactions) {
       if (t.isConfirmed != 1) continue;
 
       final txDate = DateTime.tryParse(t.createdAt) ?? now;
       final isFuture = txDate.isAfter(now);
-
       double amount = t.type == 'income' ? t.amount : -t.amount;
+      String owner = _owners.contains(t.owner) ? t.owner : (_owners.isNotEmpty ? _owners.first : 'Shared');
 
       if (isFuture) {
-        fut += amount;
+        totFuture += amount;
+        futureByOwner[owner] = (futureByOwner[owner] ?? 0) + amount;
       } else {
-        if (pTotals.containsKey(t.pool)) {
-          pTotals[t.pool] = (pTotals[t.pool] ?? 0) + amount;
-        } else {
-          pTotals[t.pool] = amount;
+        totalPools[t.pool] = (totalPools[t.pool] ?? 0) + amount;
+        if (poolByOwner.containsKey(owner)) {
+          poolByOwner[owner]![t.pool] = (poolByOwner[owner]![t.pool] ?? 0) + amount;
         }
 
-        if (t.pool == 'checking') {
-          chk += amount;
-        } else if (t.pool == 'cash') {
-          csh += amount;
-        } else if (t.pool == 'savings') {
-          sav += amount;
-        } else if (t.pool == 'loans' || t.pool == 'loan') {
-          loans += amount;
-        }
-
-        if (_countedPools[t.pool] == true) {
-          if (t.owner == 'Mathias') {
-            mCash += amount;
-          } else if (t.owner == 'Julia') {
-            jCash += amount;
+        if (_liquidNetPools[t.pool] == true) {
+          totLiquidNet += amount;
+          liquidNetOwner[owner] = (liquidNetOwner[owner] ?? 0) + amount;
+          if (liquidNetBreakdown.containsKey(owner)) {
+            liquidNetBreakdown[owner]!['liquidNet'] = (liquidNetBreakdown[owner]!['liquidNet'] ?? 0) + amount;
           }
         }
-      }
-
-      if (_liquidNetPools[t.pool] == true && !isFuture) {
-        liquidNet += amount;
       }
 
       bool includeInProg = t.pool == 'checking';
@@ -290,21 +300,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (t.pool == 'savings' && (_prognosisPools['savings'] == true)) includeInProg = true;
       if ((t.pool == 'loans' || t.pool == 'loan') && (_prognosisPools['loans'] == true)) includeInProg = true;
 
-      if (includeInProg) {
-        prog += amount;
+      if (includeInProg && !isFuture) {
+        totPrognosis += amount;
+        prognosisByOwnerMap[owner] = (prognosisByOwnerMap[owner] ?? 0) + amount;
       }
     }
 
-    _mathiasCash = mCash;
-    _juliaCash = jCash;
-    _liquidNetTotal = liquidNet;
-    _checkingTotal = chk;
-    _cashTotal = csh;
-    _savingsTotal = sav;
-    _loansTotal = loans;
-    _futureFlowTotal = fut;
-    _prognosisTotal = prog;
-    _poolTotals = pTotals;
+    _totalLiquidNet = totLiquidNet;
+    _totalPoolTotals = totalPools;
+    _poolTotalsByOwner = poolByOwner;
+    _liquidNetByOwner = liquidNetOwner;
+    _ownerBreakdownForLiquidNet = liquidNetBreakdown;
+    _totalFutureFlow = totFuture;
+    _futureFlowByOwner = futureByOwner;
+    _totalPrognosis = totPrognosis;
+    _prognosisByOwner = prognosisByOwnerMap;
   }
 
   Future<void> _addBudget(int labelId, double limitAmount) async {
@@ -716,6 +726,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       onSaveOwners: (updatedOwners) {
                                         setState(() {
                                           _owners = updatedOwners;
+                                          calculateMetrics();
                                         });
                                       },
                                       onSaveNavItems: (left, right) {
@@ -740,10 +751,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     break;
                                   case 'metrics':
                                     cardWidget = SummaryMetricsCard(
-                                      mathiasCash: _mathiasCash,
-                                      juliaCash: _juliaCash,
-                                      liquidNetTotal: _liquidNetTotal,
-                                      poolTotals: _poolTotals,
+                                      owners: _owners,
+                                      poolTotalsByOwner: _poolTotalsByOwner,
+                                      totalPoolTotals: _totalPoolTotals,
+                                      liquidNetByOwner: _liquidNetByOwner,
+                                      totalLiquidNet: _totalLiquidNet,
+                                      ownerBreakdownForLiquidNet: _ownerBreakdownForLiquidNet,
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
                                       onHide: () => setState(() => card.isVisible = false),
@@ -751,8 +764,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     break;
                                   case 'future_metrics':
                                     cardWidget = FutureMetricsCard(
-                                      futureFlowTotal: _futureFlowTotal,
-                                      prognosisTotal: _prognosisTotal,
+                                      owners: _owners,
+                                      futureFlowByOwner: _futureFlowByOwner,
+                                      totalFutureFlow: _totalFutureFlow,
+                                      prognosisByOwner: _prognosisByOwner,
+                                      totalPrognosis: _totalPrognosis,
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
                                       onHide: () => setState(() => card.isVisible = false),
@@ -774,6 +790,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     cardWidget = NewZaznamCard(
                                       labels: _labels,
                                       pools: _pools.keys.toList(),
+                                      owners: _owners,
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
                                       onHide: () => setState(() => card.isVisible = false),
@@ -820,6 +837,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     cardWidget = LiquidTrendChartCard(
                                       transactions: _transactions,
                                       liquidNetPools: _liquidNetPools,
+                                      owners: _owners,
+                                      selectedOwner: _trendSelectedOwner,
+                                      onOwnerChanged: (owner) => setState(() => _trendSelectedOwner = owner),
                                       startDate: _trendStartDate,
                                       endDate: _trendEndDate,
                                       onSelectStartDate: () async {
@@ -852,6 +872,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   case 'calendar':
                                     cardWidget = CalendarCard(
                                       transactions: _transactions,
+                                      owners: _owners,
+                                      selectedOwner: _calendarSelectedOwner,
+                                      onOwnerChanged: (owner) => setState(() => _calendarSelectedOwner = owner),
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
                                       onHide: () => setState(() => card.isVisible = false),
@@ -868,6 +891,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     cardWidget = IncomeExpensesByLabelsCard(
                                       transactions: _transactions,
                                       labels: _labels,
+                                      owners: _owners, // Passed dynamic owners list here
                                       startDate: _labelsCardStartDate,
                                       endDate: _labelsCardEndDate,
                                       selectedOwner: _labelsCardSelectedOwner,
@@ -921,6 +945,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         return true;
                                       }).toList(),
                                       labels: _labels,
+                                      owners: _owners,
                                       startDate: _historyStartDate,
                                       endDate: _historyEndDate,
                                       selectedLabelId: _historySelectedLabelId,

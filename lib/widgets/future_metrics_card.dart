@@ -1,21 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-class FutureMetricsCard extends StatelessWidget {
-  final double futureFlowTotal;
-  final double prognosisTotal;
+class FutureMetricsCard extends StatefulWidget {
+  final List<String> owners;
+  final Map<String, double> futureFlowByOwner;
+  final double totalFutureFlow;
+  final Map<String, double> prognosisByOwner;
+  final double totalPrognosis;
   final bool isWide;
   final VoidCallback? onToggleWidth;
   final VoidCallback? onHide;
 
   const FutureMetricsCard({
     super.key,
-    required this.futureFlowTotal,
-    required this.prognosisTotal,
+    required this.owners,
+    required this.futureFlowByOwner,
+    required this.totalFutureFlow,
+    required this.prognosisByOwner,
+    required this.totalPrognosis,
     this.isWide = false,
     this.onToggleWidth,
     this.onHide,
   });
+
+  @override
+  State<FutureMetricsCard> createState() => _FutureMetricsCardState();
+}
+
+class _FutureMetricsCardState extends State<FutureMetricsCard> {
+  String _selectedOwner = 'All Owners';
 
   String _formatCurrency(double amount) {
     final format = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
@@ -29,6 +42,14 @@ class FutureMetricsCard extends StatelessWidget {
         final double availableWidth = constraints.maxWidth;
         final double fullWidth = availableWidth - 40;
         final double boxWidth = (fullWidth - 16) / 2;
+
+        double currentFutureFlow = _selectedOwner == 'All Owners'
+            ? widget.totalFutureFlow
+            : (widget.futureFlowByOwner[_selectedOwner] ?? 0.0);
+
+        double currentPrognosis = _selectedOwner == 'All Owners'
+            ? widget.totalPrognosis
+            : (widget.prognosisByOwner[_selectedOwner] ?? 0.0);
 
         return Container(
           padding: const EdgeInsets.all(20),
@@ -68,7 +89,29 @@ class FutureMetricsCard extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (onToggleWidth != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _selectedOwner,
+                            isDense: true,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF582F95)),
+                            items: [
+                              const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
+                              ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) setState(() => _selectedOwner = val);
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (widget.onToggleWidth != null)
                         Padding(
                           padding: const EdgeInsets.only(right: 6.0),
                           child: SizedBox(
@@ -81,16 +124,16 @@ class FutureMetricsCard extends StatelessWidget {
                                 padding: EdgeInsets.zero,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
-                              onPressed: onToggleWidth,
+                              onPressed: widget.onToggleWidth,
                               icon: Icon(
-                                isWide ? Icons.fullscreen_exit : Icons.fullscreen,
+                                widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
                                 size: 18,
                               ),
-                              tooltip: isWide ? 'Narrow' : 'Wide',
+                              tooltip: widget.isWide ? 'Narrow' : 'Wide',
                             ),
                           ),
                         ),
-                      if (onHide != null)
+                      if (widget.onHide != null)
                         SizedBox(
                           height: 32,
                           width: 32,
@@ -101,7 +144,7 @@ class FutureMetricsCard extends StatelessWidget {
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
-                            onPressed: onHide,
+                            onPressed: widget.onHide,
                             icon: const Icon(
                               Icons.visibility_off_outlined,
                               size: 16,
@@ -121,7 +164,7 @@ class FutureMetricsCard extends StatelessWidget {
                     width: boxWidth,
                     child: _buildMetricBox(
                       title: 'FUTURE FLOW',
-                      amount: futureFlowTotal,
+                      amount: currentFutureFlow,
                       amountColor: const Color(0xFFDC2626),
                       width: boxWidth,
                     ),
@@ -130,7 +173,7 @@ class FutureMetricsCard extends StatelessWidget {
                     width: boxWidth,
                     child: _buildMetricBox(
                       title: 'PROGNOSIS',
-                      amount: prognosisTotal,
+                      amount: currentPrognosis,
                       amountColor: const Color(0xFF000000),
                       width: boxWidth,
                     ),

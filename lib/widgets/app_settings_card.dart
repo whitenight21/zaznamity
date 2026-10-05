@@ -88,7 +88,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     _prognosisPools = Map.from(widget.initialPrognosisPools);
     _owners = List.from(widget.initialOwners);
     
-    // Normalize to 3 items per side ensuring fixed slots
     _leftNavItems = [
       'settings',
       widget.initialLeftNavItems.length > 1 ? widget.initialLeftNavItems[1] : 'metrics',
@@ -101,6 +100,14 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     ];
     
     _loadPrefs();
+  }
+
+  @override
+  void didUpdateWidget(covariant AppSettingsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialOwners != oldWidget.initialOwners) {
+      _owners = List.from(widget.initialOwners);
+    }
   }
 
   Future<void> _loadPrefs() async {
@@ -125,7 +132,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
   Future<void> _saveNavPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    // Ensure strict preservation of locked slots before saving
     _leftNavItems[0] = 'settings';
     _rightNavItems[2] = 'manager';
 
@@ -194,7 +200,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header & Window Actions
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -266,12 +271,10 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               const Divider(color: Color(0xFFE2E8F0)),
               const SizedBox(height: 8),
 
-              // Navigation Bar Customization Section (3 Left, 3 Right with locked endpoints)
               _buildCollapsibleSection(
                 title: 'Navigation Bar',
                 subtitle: 'Configure 3 items left and 3 items right (Settings & Card Stack are fixed)',
                 children: [
-                  // Left Slot 1 (Fixed Settings)
                   const Text('Left Slot 1 (Most Left)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   Container(
@@ -290,8 +293,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     ),
                   ),
                   const SizedBox(height: 12),
-
-                  // Left Slot 2
                   const Text('Left Slot 2', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   DropdownButtonFormField<String>(
@@ -309,8 +310,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     },
                   ),
                   const SizedBox(height: 12),
-
-                  // Left Slot 3
                   const Text('Left Slot 3', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   DropdownButtonFormField<String>(
@@ -328,8 +327,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     },
                   ),
                   const SizedBox(height: 16),
-
-                  // Right Slot 1
                   const Text('Right Slot 1', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   DropdownButtonFormField<String>(
@@ -347,8 +344,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     },
                   ),
                   const SizedBox(height: 12),
-
-                  // Right Slot 2
                   const Text('Right Slot 2', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   DropdownButtonFormField<String>(
@@ -366,8 +361,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     },
                   ),
                   const SizedBox(height: 12),
-
-                  // Right Slot 3 (Fixed Card Stack Manager)
                   const Text('Right Slot 3 (Most Right)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   Container(
@@ -388,7 +381,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 ],
               ),
 
-              // Other settings sections...
               _buildCollapsibleSection(
                 title: 'Manage Labels',
                 subtitle: 'Add, edit, or remove transaction labels',
@@ -661,7 +653,10 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   Padding(
                     padding: EdgeInsets.symmetric(vertical: 8.0),
                     child: Text(
-                      'Zaznamity v1.0.0\nYour robust personal financial companion.',
+                      'Welcome to Zaznamity v1.0.0!\n\n'
+                      '"Zaznam" in Slovak means record or transaction. Keep track of all your Zaznams and keep them secure on your phone—no cloud, no subscriptions.\n\n'
+                      'Local-first (SQLite): Full privacy and ownership. Your financial data stays entirely on your device.\n\n'
+                      'Features of this app:\n',
                       style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
                     ),
                   ),

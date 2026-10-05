@@ -7,6 +7,7 @@ import '../models/label.dart';
 class IncomeExpensesByLabelsCard extends StatefulWidget {
   final List<TransactionModel> transactions;
   final List<LabelModel> labels;
+  final List<String> owners; // Added dynamic owners list
   final DateTime? startDate;
   final DateTime? endDate;
   final String? selectedOwner;
@@ -22,6 +23,7 @@ class IncomeExpensesByLabelsCard extends StatefulWidget {
     super.key,
     required this.transactions,
     required this.labels,
+    required this.owners, // Added dynamic owners requirement
     this.startDate,
     this.endDate,
     this.selectedOwner,
@@ -209,7 +211,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 16),
 
-              // Date Selection Row (Restyled to match Liquid Trend card and reference photo)
+              // Date Selection Row
               Row(
                 children: [
                   Expanded(
@@ -345,7 +347,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 16),
 
-              // Filter Owner & Chart Display Mode Row
+              // Filter Owner & Chart Display Mode Row (Dynamic Owners Dropdown)
               Row(
                 children: [
                   Expanded(
@@ -364,11 +366,15 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                           ),
                           hint: const Text('All Owners', style: TextStyle(fontSize: 12)),
-                          items: const [
-                            DropdownMenuItem(value: null, child: Text('All Owners', style: TextStyle(fontSize: 12))),
-                            DropdownMenuItem(value: 'Mathias', child: Text('Mathias', style: TextStyle(fontSize: 12))),
-                            DropdownMenuItem(value: 'Julia', child: Text('Julia', style: TextStyle(fontSize: 12))),
-                            DropdownMenuItem(value: 'Shared', child: Text('Shared', style: TextStyle(fontSize: 12))),
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text('All Owners', style: TextStyle(fontSize: 12)),
+                            ),
+                            ...widget.owners.map((owner) => DropdownMenuItem<String>(
+                                  value: owner,
+                                  child: Text(owner, style: TextStyle(fontSize: 12)),
+                                )),
                           ],
                           onChanged: widget.onOwnerChanged,
                         ),
@@ -460,7 +466,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 24),
 
-              // Chart Rendering Section (Bar/Donut visualization)
+              // Chart Rendering Section
               sortedEntries.isEmpty
                   ? const SizedBox(
                       height: 150,
