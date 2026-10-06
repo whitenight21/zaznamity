@@ -81,18 +81,32 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
 
         Map<String, double> currentPools;
         double currentLiquidNet;
-        String? subtitle;
+        String displayTitle;
+        String? singleSubtitle;
+        List<Widget> wrapSubtitles = [];
 
         if (_selectedOwner == 'All Owners') {
           currentPools = widget.totalPoolTotals;
           currentLiquidNet = widget.totalLiquidNet;
-          subtitle = widget.ownerBreakdownForLiquidNet.entries
-              .map((e) => '${e.key[0]}: ${_formatCurrency(e.value['liquidNet'] ?? 0)}')
-              .join('  ');
+          displayTitle = 'LIQUID NET';
+          
+          // Build a list of Text widgets for the Wrap component
+          wrapSubtitles = widget.ownerBreakdownForLiquidNet.entries.map((e) {
+            final val = e.value['liquidNet'] ?? 0;
+            return Text(
+              '${e.key}: ${_formatCurrency(val)}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w700,
+              ),
+            );
+          }).toList();
         } else {
           currentPools = widget.poolTotalsByOwner[_selectedOwner] ?? {};
           currentLiquidNet = widget.liquidNetByOwner[_selectedOwner] ?? 0.0;
-          subtitle = null;
+          displayTitle = 'LIQUID NET';
+          singleSubtitle = _selectedOwner.toUpperCase();
         }
 
         final poolEntries = currentPools.entries.toList();
@@ -217,10 +231,11 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                 child: SizedBox(
                   width: fullWidth,
                   child: _buildMetricBox(
-                    title: 'LIQUID NET (${_selectedOwner.toUpperCase()})',
+                    title: displayTitle,
                     amount: currentLiquidNet,
                     amountColor: const Color.fromARGB(255, 88, 47, 149),
-                    subtitle: subtitle,
+                    subtitle: singleSubtitle,
+                    customSubtitleWrap: _selectedOwner == 'All Owners' ? wrapSubtitles : null,
                     width: fullWidth,
                     isCentered: true,
                   ),
@@ -260,6 +275,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     required double amount,
     required Color amountColor,
     String? subtitle,
+    List<Widget>? customSubtitleWrap,
     required double width,
     bool isCentered = false,
   }) {
@@ -303,6 +319,15 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+            ),
+          ],
+          if (customSubtitleWrap != null && customSubtitleWrap.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Wrap(
+              alignment: isCentered ? WrapAlignment.center : WrapAlignment.start,
+              spacing: 12.0,
+              runSpacing: 4.0,
+              children: customSubtitleWrap,
             ),
           ],
         ],

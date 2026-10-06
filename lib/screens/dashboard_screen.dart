@@ -68,6 +68,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _trendEndDate;
   String? _trendSelectedOwner;
 
+  // Future Metrics Card Filter State
+  DateTime? _futureMetricsStartDate;
+  DateTime? _futureMetricsEndDate;
+  String? _futureMetricsSelectedOwner;
+
   // Calendar Owner Filter State
   String? _calendarSelectedOwner;
 
@@ -99,6 +104,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   };
 
   Map<String, bool> _prognosisPools = {
+    'checking': true,
     'cash': false,
     'savings': false,
     'loans': false,
@@ -136,6 +142,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (leftSaved != null) _leftNavItems = leftSaved;
       final rightSaved = prefs.getStringList('rightNavItems');
       if (rightSaved != null) _rightNavItems = rightSaved;
+      
+      // Load saved owners
+      final ownersSaved = prefs.getStringList('savedOwners');
+      if (ownersSaved != null && ownersSaved.isNotEmpty) {
+        _owners = ownersSaved;
+      }
     });
   }
 
@@ -287,10 +299,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
       double amount = t.type == 'income' ? t.amount : -t.amount;
       String owner = _owners.contains(t.owner) ? t.owner : (_owners.isNotEmpty ? _owners.first : 'Shared');
 
+      // Future Flow scoped filter check
+      bool matchesFutureDateRange = true;
       if (isFuture) {
+        if (_futureMetricsStartDate != null) {
+          final startClean = DateTime(_futureMetricsStartDate!.year, _futureMetricsStartDate!.month, _futureMetricsStartDate!.day);
+          if (txDate.isBefore(startClean)) matchesFutureDateRange = false;
+        }
+        if (_futureMetricsEndDate != null) {
+          final endClean = DateTime(_futureMetricsEndDate!.year, _futureMetricsEndDate!.month, _futureMetricsEndDate!.day, 23, 59, 59);
+          if (txDate.isAfter(endClean)) matchesFutureDateRange = false;
+        }
+      }
+
+      if (isFuture && matchesFutureDateRange) {
         totFuture += amount;
         futureByOwner[owner] = (futureByOwner[owner] ?? 0) + amount;
-      } else {
+      } else if (!isFuture) {
         totalPools[t.pool] = (totalPools[t.pool] ?? 0) + amount;
         if (poolByOwner.containsKey(owner)) {
           poolByOwner[owner]![t.pool] = (poolByOwner[owner]![t.pool] ?? 0) + amount;
@@ -310,9 +335,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (t.pool == 'savings' && (_prognosisPools['savings'] == true)) includeInProg = true;
       if ((t.pool == 'loans' || t.pool == 'loan') && (_prognosisPools['loans'] == true)) includeInProg = true;
 
-      if (includeInProg && !isFuture) {
-        totPrognosis += amount;
-        prognosisByOwnerMap[owner] = (prognosisByOwnerMap[owner] ?? 0) + amount;
+      // Prognosis can also take into account base liquid net + future flow within the selected future range if desired, 
+      // or standard calculation summing up checking balance + future flow within target date bounds.
+      bool matchesPrognosisDateRange = true;
+      if (isFuture) {
+        if (_futureMetricsStartDate != null) {
+          final startClean = DateTime(_futureMetricsStartDate!.year, _futureMetricsStartDate!.month, _futureMetricsStartDate!.day);
+          if (txDate.isBefore(startClean)) matchesPrognosisDateRange = false;
+        }
+        if (_futureMetricsEndDate != null) {
+          final endClean = DateTime(_futureMetricsEndDate!.year, _futureMetricsEndDate!.month, _futureMetricsEndDate!.day, 23, 59, 59);
+          if (txDate.isAfter(endClean)) matchesPrognosisDateRange = false;
+        }
+      }
+
+      if (includeInProg && (!isFuture || matchesPrognosisDateRange)) {
+        // If it's a future transaction inside range, add it; if historical, include base pool checking balance.
+        if (!isFuture || isFuture) {
+          totPrognosis += amount;
+          prognosisByOwnerMap[owner] = (prognosisByOwnerMap[owner] ?? 0) + amount;
+        }
       }
     }
 
@@ -328,9 +370,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _addBudget(int labelId, double limitAmount, String owner) async {
-    // If your DatabaseHelper supports storing the owner for budgets, pass it here:
-    // e.g., await DatabaseHelper.instance.insertBudget(labelId, limitAmount, owner);
-    // Falling back to standard signature if owner column isn't part of table schema yet:
     await DatabaseHelper.instance.insertBudget(labelId, limitAmount);
     await loadData();
     if (!mounted) return;
@@ -678,35 +717,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           const SizedBox(height: 4),
                           Text(
                             formattedDate,
                             style: const TextStyle(
-                              fontSize: 12,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: Color(0xFF64748B),
                               letterSpacing: 1.0,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 20), // Add some spacing between the date and the dropdown
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               const Text(
-                                'View Zaznamity of : ',
+                                'VIEW ZAZNAMITY OF :  ',
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   color: Color(0xFF582F95),
+                                  letterSpacing: 0.5,
                                 ),
                               ),
                               DropdownButton<String?>(
                                 value: _globalSelectedOwner,
                                 isDense: true,
                                 style: const TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   color: Color(0xFF582F95),
                                 ),
@@ -821,11 +862,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   case 'future_metrics':
                                     cardWidget = FutureMetricsCard(
                                       owners: _owners,
-                                      selectedOwner: _globalSelectedOwner ?? 'All Owners',
+                                      selectedOwner: _futureMetricsSelectedOwner ?? _globalSelectedOwner,
                                       futureFlowByOwner: _futureFlowByOwner,
                                       totalFutureFlow: _totalFutureFlow,
                                       prognosisByOwner: _prognosisByOwner,
                                       totalPrognosis: _totalPrognosis,
+                                      startDate: _futureMetricsStartDate,
+                                      endDate: _futureMetricsEndDate,
+                                      onSelectStartDate: () async {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: _futureMetricsStartDate ?? DateTime.now(),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                        );
+                                        if (picked != null) {
+                                          setState(() {
+                                            _futureMetricsStartDate = picked;
+                                            calculateMetrics();
+                                          });
+                                        }
+                                      },
+                                      onSelectEndDate: () async {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: _futureMetricsEndDate ?? DateTime.now(),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                        );
+                                        if (picked != null) {
+                                          setState(() {
+                                            _futureMetricsEndDate = picked;
+                                            calculateMetrics();
+                                          });
+                                        }
+                                      },
+                                      onClearDateFilter: () {
+                                        setState(() {
+                                          _futureMetricsStartDate = null;
+                                          _futureMetricsEndDate = null;
+                                          calculateMetrics();
+                                        });
+                                      },
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
                                       onHide: () => setState(() => card.isVisible = false),

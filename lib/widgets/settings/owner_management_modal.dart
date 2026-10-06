@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class OwnerManagementModal extends StatefulWidget {
   final List<String> initialOwners;
@@ -24,14 +25,21 @@ class _OwnerManagementModalState extends State<OwnerManagementModal> {
     _owners = List.from(widget.initialOwners);
   }
 
-  void _addOwner() {
+  // Helper method to save to SharedPreferences and update parent
+  Future<void> _persistAndSave(List<String> updatedOwners) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('savedOwners', updatedOwners);
+    widget.onSaveOwners(updatedOwners);
+  }
+
+  void _addOwner() async {
     final name = _newOwnerController.text.trim();
     if (name.isNotEmpty && !_owners.contains(name)) {
       setState(() {
         _owners.add(name);
         _newOwnerController.clear();
       });
-      widget.onSaveOwners(_owners);
+      await _persistAndSave(_owners);
     }
   }
 
@@ -49,11 +57,11 @@ class _OwnerManagementModalState extends State<OwnerManagementModal> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               final val = controller.text.trim();
               if (val.isNotEmpty) {
                 setState(() => _owners[index] = val);
-                widget.onSaveOwners(_owners);
+                await _persistAndSave(_owners);
               }
               Navigator.pop(ctx);
             },
@@ -64,11 +72,11 @@ class _OwnerManagementModalState extends State<OwnerManagementModal> {
     );
   }
 
-  void _deleteOwner(int index) {
+  void _deleteOwner(int index) async {
     setState(() {
       _owners.removeAt(index);
     });
-    widget.onSaveOwners(_owners);
+    await _persistAndSave(_owners);
   }
 
   @override

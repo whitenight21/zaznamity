@@ -3,11 +3,19 @@ import 'package:intl/intl.dart';
 
 class FutureMetricsCard extends StatefulWidget {
   final List<String> owners;
-  final String? selectedOwner; // Added to sync with global master selector
+  final String? selectedOwner;
   final Map<String, double> futureFlowByOwner;
   final double totalFutureFlow;
   final Map<String, double> prognosisByOwner;
   final double totalPrognosis;
+  
+  // Date filter parameters
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final VoidCallback? onSelectStartDate;
+  final VoidCallback? onSelectEndDate;
+  final VoidCallback onClearDateFilter;
+
   final bool isWide;
   final VoidCallback? onToggleWidth;
   final VoidCallback? onHide;
@@ -20,6 +28,11 @@ class FutureMetricsCard extends StatefulWidget {
     required this.totalFutureFlow,
     required this.prognosisByOwner,
     required this.totalPrognosis,
+    this.startDate,
+    this.endDate,
+    this.onSelectStartDate,
+    this.onSelectEndDate,
+    required this.onClearDateFilter,
     this.isWide = false,
     this.onToggleWidth,
     this.onHide,
@@ -58,7 +71,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 40;
+        final double fullWidth = availableWidth - 48; // accounting for 24 padding on each side
         final double boxWidth = (fullWidth - 16) / 2;
 
         double currentFutureFlow = _selectedOwner == 'All Owners'
@@ -70,7 +83,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
             : (widget.prognosisByOwner[_selectedOwner] ?? 0.0);
 
         return Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
@@ -174,7 +187,67 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
+
+              // Date Selection Row (Matched with Label Analytics styling)
+              Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      onTap: widget.onSelectStartDate,
+                      borderRadius: BorderRadius.circular(10),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'START DATE',
+                          labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        ),
+                        child: Text(
+                          widget.startDate != null ? DateFormat('MM/dd/yyyy').format(widget.startDate!) : 'All',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: InkWell(
+                      onTap: widget.onSelectEndDate,
+                      borderRadius: BorderRadius.circular(10),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'END DATE',
+                          labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        ),
+                        child: Text(
+                          widget.endDate != null ? DateFormat('MM/dd/yyyy').format(widget.endDate!) : 'All',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (widget.startDate != null || widget.endDate != null) ...[
+                    const SizedBox(width: 6),
+                    IconButton(
+                      icon: const Icon(Icons.clear, size: 18, color: Color(0xFF64748B)),
+                      onPressed: widget.onClearDateFilter,
+                      tooltip: 'Clear Filter',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ],
+              ),
               const SizedBox(height: 20),
+
+              // Metric Boxes Row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

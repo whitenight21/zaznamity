@@ -270,10 +270,41 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               const SizedBox(height: 16),
               const Divider(color: Color(0xFFE2E8F0)),
               const SizedBox(height: 8),
+              
+              // Helper text indicating automatic saving
+              const Text(
+                'Changed settings are saved automatically.',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF64748B),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              const SizedBox(height: 12),
 
               _buildCollapsibleSection(
+                title: 'Dark Mode',
+                subtitle: 'Toggle light or dark theme appearance',
+                children: [
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Enable Dark Mode', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                    value: _isDarkMode,
+                    onChanged: (val) async {
+                      setState(() => _isDarkMode = val);
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setBool('isDarkMode', val);
+                      if (widget.onThemeChanged != null) {
+                        widget.onThemeChanged!(val);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              
+              _buildCollapsibleSection(
                 title: 'Navigation Bar',
-                subtitle: 'Configure 3 items left and 3 items right (Settings & Card Stack are fixed)',
+                subtitle: 'Configure 2 items left and 2 items right (Settings, New Zaznam & Card Stack are fixed)',
                 children: [
                   const Text('Left Slot 1 (Most Left)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
@@ -325,6 +356,31 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         await _saveNavPrefs();
                       }
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Center Slot (Fixed Logo)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipOval(
+                          child: Image.asset(
+                            'assets/ZaznamityLogoFULL.jpg',
+                            width: 24,
+                            height: 24,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('New Zaznam (Fixed)', style: TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
                   const Text('Right Slot 1', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
@@ -382,7 +438,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               ),
 
               _buildCollapsibleSection(
-                title: 'Manage Labels',
+                title: 'Labels Management',
                 subtitle: 'Add, edit, or remove transaction labels',
                 children: [
                   Row(
@@ -443,7 +499,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
               _buildCollapsibleSection(
                 title: 'Liquid Net Counting Pools',
-                subtitle: 'Choose which pools are counted toward liquid net',
+                subtitle: 'Configure which pools update liquid net',
                 children: {'checking', 'cash', 'savings', 'loan'}.map((poolKey) {
                   return CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
@@ -460,9 +516,9 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               ),
 
               _buildCollapsibleSection(
-                title: 'Prognosis Counting Pools',
-                subtitle: 'Configure which pools update prognosis metrics. Included by default is Checking pool.',
-                children: ['cash', 'savings', 'loan'].map((poolKey) {
+                title: 'Future Metrics Counting Pools',
+                subtitle: 'Configure which pools update future metrics',
+                children: ['checking', 'cash', 'savings', 'loan'].map((poolKey) {
                   return CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(poolKey.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
@@ -475,26 +531,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     },
                   );
                 }).toList(),
-              ),
-
-              _buildCollapsibleSection(
-                title: 'Dark Mode',
-                subtitle: 'Toggle light or dark theme appearance',
-                children: [
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Enable Dark Mode', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
-                    value: _isDarkMode,
-                    onChanged: (val) async {
-                      setState(() => _isDarkMode = val);
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setBool('isDarkMode', val);
-                      if (widget.onThemeChanged != null) {
-                        widget.onThemeChanged!(val);
-                      }
-                    },
-                  ),
-                ],
               ),
 
               _buildCollapsibleSection(
@@ -543,8 +579,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               ),
 
               _buildCollapsibleSection(
-                title: 'Add / Edit / Delete Owner',
-                subtitle: 'Manage wallet owners via modular manager',
+                title: 'Owner Management',
+                subtitle: 'Add, edit, or remove Zaznamity owners',
                 children: [
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -568,8 +604,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               ),
 
               _buildCollapsibleSection(
-                title: 'Edit Pools',
-                subtitle: 'Manage custom transaction pools',
+                title: 'Pools Management',
+                subtitle: 'Configure custom transaction pools',
                 children: [
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -593,7 +629,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               ),
 
               _buildCollapsibleSection(
-                title: 'Biometrics',
+                title: 'Security',
                 subtitle: 'Secure app access with PIN or Face biometrics',
                 children: [
                   SwitchListTile(
