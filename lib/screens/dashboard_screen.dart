@@ -40,6 +40,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> _budgets = [];
   bool _isLoading = true;
 
+  // Global Master Owner View State
+  String? _globalSelectedOwner;
+
   // Breakdown metrics storage
   double _totalLiquidNet = 0;
   Map<String, double> _totalPoolTotals = {};
@@ -67,6 +70,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Calendar Owner Filter State
   String? _calendarSelectedOwner;
+
+  // Budget Card Owner Filter State
+  String? _budgetSelectedOwner;
 
   List<String> _leftNavItems = ['metrics', 'budget'];
   List<String> _rightNavItems = ['history', 'settings'];
@@ -242,6 +248,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void calculateMetrics() {
     final now = DateTime.now();
+    final activeOwnersForCards = _globalSelectedOwner != null 
+        ? [_globalSelectedOwner!] 
+        : _owners;
 
     Map<String, Map<String, double>> poolByOwner = {};
     Map<String, double> totalPools = {};
@@ -270,6 +279,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     double totPrognosis = 0;
 
     for (var t in _transactions) {
+      if (_globalSelectedOwner != null && t.owner != _globalSelectedOwner) continue;
       if (t.isConfirmed != 1) continue;
 
       final txDate = DateTime.tryParse(t.createdAt) ?? now;
@@ -308,16 +318,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     _totalLiquidNet = totLiquidNet;
     _totalPoolTotals = totalPools;
-    _poolTotalsByOwner = poolByOwner;
-    _liquidNetByOwner = liquidNetOwner;
-    _ownerBreakdownForLiquidNet = liquidNetBreakdown;
+    _poolTotalsByOwner = {for (var o in activeOwnersForCards) o: poolByOwner[o] ?? {}};
+    _liquidNetByOwner = {for (var o in activeOwnersForCards) o: liquidNetOwner[o] ?? 0.0};
+    _ownerBreakdownForLiquidNet = {for (var o in activeOwnersForCards) o: liquidNetBreakdown[o] ?? {'liquidNet': 0.0}};
     _totalFutureFlow = totFuture;
-    _futureFlowByOwner = futureByOwner;
+    _futureFlowByOwner = {for (var o in activeOwnersForCards) o: futureByOwner[o] ?? 0.0};
     _totalPrognosis = totPrognosis;
-    _prognosisByOwner = prognosisByOwnerMap;
+    _prognosisByOwner = {for (var o in activeOwnersForCards) o: prognosisByOwnerMap[o] ?? 0.0};
   }
 
-  Future<void> _addBudget(int labelId, double limitAmount) async {
+  Future<void> _addBudget(int labelId, double limitAmount, String owner) async {
+    // If your DatabaseHelper supports storing the owner for budgets, pass it here:
+    // e.g., await DatabaseHelper.instance.insertBudget(labelId, limitAmount, owner);
+    // Falling back to standard signature if owner column isn't part of table schema yet:
     await DatabaseHelper.instance.insertBudget(labelId, limitAmount);
     await loadData();
     if (!mounted) return;
@@ -677,6 +690,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               letterSpacing: 1.0,
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'View Zaznamity of : ',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF582F95),
+                                ),
+                              ),
+                              DropdownButton<String?>(
+                                value: _globalSelectedOwner,
+                                isDense: true,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF582F95),
+                                ),
+                                dropdownColor: Colors.white,
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('All Owners'),
+                                  ),
+                                  ..._owners.map(
+                                    (owner) => DropdownMenuItem<String?>(
+                                      value: owner,
+                                      child: Text(owner),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (val) {
+                                  setState(() {
+                                    _globalSelectedOwner = val;
+                                    calculateMetrics();
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -752,6 +807,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   case 'metrics':
                                     cardWidget = SummaryMetricsCard(
                                       owners: _owners,
+                                      selectedOwner: _globalSelectedOwner ?? 'All Owners',
                                       poolTotalsByOwner: _poolTotalsByOwner,
                                       totalPoolTotals: _totalPoolTotals,
                                       liquidNetByOwner: _liquidNetByOwner,
@@ -765,6 +821,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   case 'future_metrics':
                                     cardWidget = FutureMetricsCard(
                                       owners: _owners,
+                                      selectedOwner: _globalSelectedOwner ?? 'All Owners',
                                       futureFlowByOwner: _futureFlowByOwner,
                                       totalFutureFlow: _totalFutureFlow,
                                       prognosisByOwner: _prognosisByOwner,
@@ -779,7 +836,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       budgets: _budgets,
                                       transactions: _transactions,
                                       labels: _labels,
-                                      onAddBudget: _addBudget,
+                                      owners: _owners,
+                                      selectedOwner: _budgetSelectedOwner ?? _globalSelectedOwner,
+                                      onOwnerChanged: (owner) => setState(() => _budgetSelectedOwner = owner),
+                                      onAddBudget: (labelId, limitAmount, owner) => _addBudget(labelId, limitAmount, owner),
                                       onDeleteBudget: _deleteBudget,
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
@@ -791,6 +851,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       labels: _labels,
                                       pools: _pools.keys.toList(),
                                       owners: _owners,
+                                      selectedGlobalOwner: _globalSelectedOwner,
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
                                       onHide: () => setState(() => card.isVisible = false),
@@ -817,6 +878,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     cardWidget = TransferFundsCard(
                                       pools: _pools.keys.toList(),
                                       owners: _owners,
+                                      selectedGlobalOwner: _globalSelectedOwner,
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
                                       onHide: () => setState(() => card.isVisible = false),
@@ -838,7 +900,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       transactions: _transactions,
                                       liquidNetPools: _liquidNetPools,
                                       owners: _owners,
-                                      selectedOwner: _trendSelectedOwner,
+                                      selectedOwner: _trendSelectedOwner ?? _globalSelectedOwner,
                                       onOwnerChanged: (owner) => setState(() => _trendSelectedOwner = owner),
                                       startDate: _trendStartDate,
                                       endDate: _trendEndDate,
@@ -873,7 +935,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     cardWidget = CalendarCard(
                                       transactions: _transactions,
                                       owners: _owners,
-                                      selectedOwner: _calendarSelectedOwner,
+                                      selectedOwner: _calendarSelectedOwner ?? _globalSelectedOwner,
                                       onOwnerChanged: (owner) => setState(() => _calendarSelectedOwner = owner),
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
@@ -891,10 +953,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     cardWidget = IncomeExpensesByLabelsCard(
                                       transactions: _transactions,
                                       labels: _labels,
-                                      owners: _owners, // Passed dynamic owners list here
+                                      owners: _owners,
                                       startDate: _labelsCardStartDate,
                                       endDate: _labelsCardEndDate,
-                                      selectedOwner: _labelsCardSelectedOwner,
+                                      selectedOwner: _labelsCardSelectedOwner ?? _globalSelectedOwner,
                                       onSelectStartDate: () async {
                                         final picked = await showDatePicker(
                                           context: context,
@@ -924,6 +986,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     );
                                     break;
                                   case 'history':
+                                    final effectiveHistoryOwner = _historySelectedOwner ?? _globalSelectedOwner;
                                     cardWidget = TransactionHistoryCard(
                                       transactions: _transactions.where((tx) {
                                         final txDate = DateTime.tryParse(tx.createdAt);
@@ -939,8 +1002,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         if (_historySelectedLabelId != null) {
                                           if (tx.labelId != _historySelectedLabelId) return false;
                                         }
-                                        if (_historySelectedOwner != null) {
-                                          if (tx.owner != _historySelectedOwner) return false;
+                                        if (effectiveHistoryOwner != null) {
+                                          if (tx.owner != effectiveHistoryOwner) return false;
                                         }
                                         return true;
                                       }).toList(),
@@ -949,7 +1012,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       startDate: _historyStartDate,
                                       endDate: _historyEndDate,
                                       selectedLabelId: _historySelectedLabelId,
-                                      selectedOwner: _historySelectedOwner,
+                                      selectedOwner: effectiveHistoryOwner,
                                       onSelectStartDate: () async {
                                         final picked = await showDatePicker(
                                           context: context,

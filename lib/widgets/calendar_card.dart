@@ -65,7 +65,6 @@ class _CalendarCardState extends State<CalendarCard> {
 
   @override
   Widget build(BuildContext context) {
-    // Filter transactions based on the selected owner
     final filteredTransactions = widget.transactions.where((tx) {
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty) {
         return tx.owner == widget.selectedOwner;
@@ -251,41 +250,45 @@ class _CalendarCardState extends State<CalendarCard> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Compact Owner Selector Dropdown matching the Liquid Trend card style
-                  Container(
-                    height: 32,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String?>(
-                        value: widget.selectedOwner,
-                        isDense: true,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF1E293B),
-                        ),
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('All Owners'),
-                          ),
-                          ...widget.owners.map((owner) => DropdownMenuItem<String?>(
-                                value: owner,
-                                child: Text(owner),
-                              )),
-                        ],
-                        onChanged: widget.onOwnerChanged,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: widget.selectedOwner ?? 'All Owners',
+                            isDense: true,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF582F95),
+                            ),
+                            items: [
+                              const DropdownMenuItem(
+                                value: 'All Owners',
+                                child: Text('All Owners'),
+                              ),
+                              ...widget.owners.map(
+                                (o) => DropdownMenuItem(
+                                  value: o,
+                                  child: Text(o),
+                                ),
+                              ),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) {
+                                widget.onOwnerChanged(val == 'All Owners' ? null : val);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Padding(
                         padding: const EdgeInsets.only(right: 6.0),
                         child: SizedBox(
@@ -296,11 +299,15 @@ class _CalendarCardState extends State<CalendarCard> {
                               backgroundColor: const Color(0xFFF1F5F9),
                               foregroundColor: const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
                             onPressed: widget.onToggleWidth,
                             icon: Icon(
-                              widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
+                              widget.isWide
+                                  ? Icons.fullscreen_exit
+                                  : Icons.fullscreen,
                               size: 18,
                             ),
                             tooltip: widget.isWide ? 'Narrow' : 'Wide',
@@ -315,7 +322,9 @@ class _CalendarCardState extends State<CalendarCard> {
                             backgroundColor: const Color(0xFFF1F5F9),
                             foregroundColor: const Color(0xFF64748B),
                             padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                           onPressed: widget.onHide,
                           icon: const Icon(

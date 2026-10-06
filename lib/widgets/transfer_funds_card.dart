@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 class TransferFundsCard extends StatefulWidget {
   final List<String> pools;
   final List<String> owners;
+  final String? selectedGlobalOwner; // Master filter owner
   final Function(
     String fromPool,
     String toPool,
@@ -21,6 +22,7 @@ class TransferFundsCard extends StatefulWidget {
     super.key,
     required this.pools,
     required this.owners,
+    this.selectedGlobalOwner,
     required this.onTransfer,
     this.onHide,
     this.onToggleWidth,
@@ -46,8 +48,17 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
     super.initState();
     _fromPool = widget.pools.isNotEmpty ? widget.pools.first : 'checking';
     _toPool = widget.pools.length > 1 ? widget.pools[1] : _fromPool;
-    _fromOwner = widget.owners.isNotEmpty ? widget.owners.first : 'Mathias';
-    _toOwner = widget.owners.isNotEmpty ? widget.owners.first : 'Mathias';
+    
+    final initialOwner = _resolveOwner();
+    _fromOwner = initialOwner;
+    _toOwner = initialOwner;
+  }
+
+  String _resolveOwner() {
+    if (widget.selectedGlobalOwner != null && widget.owners.contains(widget.selectedGlobalOwner)) {
+      return widget.selectedGlobalOwner!;
+    }
+    return widget.owners.isNotEmpty ? widget.owners.first : 'Mathias';
   }
 
   @override
@@ -57,6 +68,16 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
       if (!widget.pools.contains(_fromPool)) _fromPool = widget.pools.first;
       if (!widget.pools.contains(_toPool)) _toPool = widget.pools.first;
     }
+
+    // Sync input owners when master/global filter changes externally
+    if (widget.selectedGlobalOwner != oldWidget.selectedGlobalOwner || widget.owners != oldWidget.owners) {
+      setState(() {
+        final syncedOwner = _resolveOwner();
+        _fromOwner = syncedOwner;
+        _toOwner = syncedOwner;
+      });
+    }
+
     if (widget.owners.isNotEmpty) {
       if (!widget.owners.contains(_fromOwner)) _fromOwner = widget.owners.first;
       if (!widget.owners.contains(_toOwner)) _toOwner = widget.owners.first;
@@ -239,7 +260,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         const Text('FROM OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          initialValue: _fromOwner,
+                          value: _fromOwner,
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -261,7 +282,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         const Text('TO OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          initialValue: _toOwner,
+                          value: _toOwner,
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -287,7 +308,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         const Text('FROM POOL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          initialValue: _fromPool,
+                          value: _fromPool,
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -309,7 +330,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         const Text('TO POOL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          initialValue: _toPool,
+                          value: _toPool,
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -355,8 +376,8 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF1F5F9), // Updated to match unselected Recurring Entry background color
-                    foregroundColor: const Color(0xFF334155), // Updated to match unselected Recurring Entry text color
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    foregroundColor: const Color(0xFF334155),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,

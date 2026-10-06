@@ -5,7 +5,8 @@ import '../models/label.dart';
 class NewZaznamCard extends StatefulWidget {
   final List<LabelModel> labels;
   final List<String> pools;
-  final List<String> owners; // 1. Added owners parameter
+  final List<String> owners;
+  final String? selectedGlobalOwner; // Master filter owner
   final Function(
     String description,
     double amount,
@@ -29,7 +30,8 @@ class NewZaznamCard extends StatefulWidget {
     super.key,
     required this.labels,
     required this.pools,
-    required this.owners, // 2. Required in constructor
+    required this.owners,
+    this.selectedGlobalOwner,
     required this.onSubmit,
     this.onHide,
     this.onToggleWidth,
@@ -45,7 +47,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   final _amountController = TextEditingController();
   String _type = 'expense';
   int? _selectedLabelId;
-  late String _owner; // 3. Made late to initialize dynamically
+  late String _owner;
   late String _selectedPool;
   bool _isRecurring = false;
   
@@ -54,8 +56,8 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   DateTime? _repeatUntilDate;
 
   // Exclusions state
-  final List<int> _excludedWeekdays = []; // e.g., [6, 7] for Sat, Sun
-  final List<int> _excludedMonths = [];   // e.g., [7, 8] for Jul, Aug
+  final List<int> _excludedWeekdays = []; 
+  final List<int> _excludedMonths = [];   
 
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
@@ -64,9 +66,15 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   void initState() {
     super.initState();
     _selectedPool = widget.pools.isNotEmpty ? widget.pools.first : 'checking';
-    // 4. Initialize default owner safely from the list
-    _owner = widget.owners.isNotEmpty ? widget.owners.first : '';
+    _owner = _resolveOwner();
     _dayOfMonth = _selectedDate.day;
+  }
+
+  String _resolveOwner() {
+    if (widget.selectedGlobalOwner != null && widget.owners.contains(widget.selectedGlobalOwner)) {
+      return widget.selectedGlobalOwner!;
+    }
+    return widget.owners.isNotEmpty ? widget.owners.first : '';
   }
 
   @override
@@ -75,7 +83,14 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
     if (widget.pools.isNotEmpty && !widget.pools.contains(_selectedPool)) {
       _selectedPool = widget.pools.first;
     }
-    // 5. Ensure selected owner is valid if the owner list changes externally
+
+    // Sync input owner when master/global filter changes externally
+    if (widget.selectedGlobalOwner != oldWidget.selectedGlobalOwner || widget.owners != oldWidget.owners) {
+      setState(() {
+        _owner = _resolveOwner();
+      });
+    }
+
     if (widget.owners.isNotEmpty && !widget.owners.contains(_owner)) {
       _owner = widget.owners.first;
     }
@@ -94,7 +109,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
       _amountController.clear();
       _type = 'expense';
       _selectedLabelId = null;
-      _owner = widget.owners.isNotEmpty ? widget.owners.first : '';
+      _owner = _resolveOwner();
       _selectedPool = widget.pools.isNotEmpty ? widget.pools.first : 'checking';
       _isRecurring = false;
       _frequency = 'Monthly';
@@ -309,7 +324,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      initialValue: _type,
+                      value: _type,
                       isExpanded: true,
                       decoration: InputDecoration(
                         isDense: true,
@@ -333,7 +348,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<int>(
-                      initialValue: _selectedLabelId,
+                      value: _selectedLabelId,
                       isExpanded: true,
                       decoration: InputDecoration(
                         isDense: true,
@@ -353,7 +368,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       children: [
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          initialValue: _selectedPool,
+                          value: _selectedPool,
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -380,7 +395,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       children: [
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          initialValue: widget.owners.contains(_owner) ? _owner : (widget.owners.isNotEmpty ? widget.owners.first : null),
+                          value: widget.owners.contains(_owner) ? _owner : (widget.owners.isNotEmpty ? widget.owners.first : null),
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -388,7 +403,6 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                           ),
-                          // 6. Dynamically map items from widget.owners instead of hardcoded list
                           items: widget.owners.map((o) => DropdownMenuItem(
                             value: o,
                             child: Text(o, style: const TextStyle(fontSize: 13)),
@@ -465,7 +479,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                                 const Text('FREQUENCY', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                                 const SizedBox(height: 4),
                                 DropdownButtonFormField<String>(
-                                  initialValue: _frequency,
+                                  value: _frequency,
                                   isExpanded: true,
                                   decoration: InputDecoration(
                                     isDense: true,
@@ -523,7 +537,6 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                         ],
                       ),
                       
-                      // Day of month selector if Monthly
                       if (_frequency == 'Monthly') ...[
                         const SizedBox(height: 10),
                         Column(
@@ -532,7 +545,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                             const Text('WHICH DAY OF MONTH', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                             const SizedBox(height: 4),
                             DropdownButtonFormField<int>(
-                              initialValue: _dayOfMonth,
+                              value: _dayOfMonth,
                               isExpanded: true,
                               decoration: InputDecoration(
                                 isDense: true,
@@ -549,7 +562,6 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                         ),
                       ],
 
-                      // Exclude Weekdays (Useful for Daily & Weekly)
                       if (_frequency == 'Daily' || _frequency == 'Weekly') ...[
                         const SizedBox(height: 10),
                         Column(
@@ -589,7 +601,6 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                         ),
                       ],
 
-                      // Exclude Months (Useful for Monthly & Yearly)
                       if (_frequency == 'Monthly' || _frequency == 'Yearly') ...[
                         const SizedBox(height: 10),
                         Column(

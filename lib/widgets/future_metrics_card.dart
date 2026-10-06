@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 class FutureMetricsCard extends StatefulWidget {
   final List<String> owners;
+  final String? selectedOwner; // Added to sync with global master selector
   final Map<String, double> futureFlowByOwner;
   final double totalFutureFlow;
   final Map<String, double> prognosisByOwner;
@@ -14,6 +15,7 @@ class FutureMetricsCard extends StatefulWidget {
   const FutureMetricsCard({
     super.key,
     required this.owners,
+    this.selectedOwner,
     required this.futureFlowByOwner,
     required this.totalFutureFlow,
     required this.prognosisByOwner,
@@ -28,7 +30,23 @@ class FutureMetricsCard extends StatefulWidget {
 }
 
 class _FutureMetricsCardState extends State<FutureMetricsCard> {
-  String _selectedOwner = 'All Owners';
+  late String _selectedOwner;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedOwner = widget.selectedOwner ?? 'All Owners';
+  }
+
+  @override
+  void didUpdateWidget(covariant FutureMetricsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedOwner != oldWidget.selectedOwner) {
+      setState(() {
+        _selectedOwner = widget.selectedOwner ?? 'All Owners';
+      });
+    }
+  }
 
   String _formatCurrency(double amount) {
     final format = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
@@ -75,7 +93,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: const Text(
-                        'FUTURE & PROGNOSIS',
+                        'FUTURE METRICS',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

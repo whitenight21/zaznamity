@@ -7,9 +7,11 @@ class BudgetProgressCard extends StatefulWidget {
   final List<Map<String, dynamic>> budgets;
   final List<TransactionModel> transactions;
   final List<LabelModel> labels;
-  final Function(int labelId, double limitAmount) onAddBudget;
+  final List<String> owners;
+  final String? selectedOwner;
+  final ValueChanged<String?>? onOwnerChanged;
+  final Function(int labelId, double limitAmount, String owner) onAddBudget;
   final Function(int budgetId) onDeleteBudget;
-  
   final bool isWide;
   final VoidCallback onToggleWidth;
   final VoidCallback onHide;
@@ -19,6 +21,9 @@ class BudgetProgressCard extends StatefulWidget {
     required this.budgets,
     required this.transactions,
     required this.labels,
+    required this.owners,
+    this.selectedOwner,
+    this.onOwnerChanged,
     required this.onAddBudget,
     required this.onDeleteBudget,
     required this.isWide,
@@ -52,6 +57,12 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
 
   void _showAddBudgetDialog(BuildContext context) {
     int? selectedLabelId = widget.labels.isNotEmpty ? widget.labels.first.id : null;
+    
+    // Default to the currently filtered owner, or the first available owner
+    String selectedDialogOwner = (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty)
+        ? widget.selectedOwner!
+        : (widget.owners.isNotEmpty ? widget.owners.first : '');
+
     final limitController = TextEditingController();
 
     showDialog(
@@ -63,6 +74,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Category / Label Dropdown
               DropdownButtonFormField<int>(
                 initialValue: selectedLabelId,
                 decoration: InputDecoration(
@@ -84,6 +96,33 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 },
               ),
               const SizedBox(height: 14),
+
+              // Owner Dropdown inside the Modal
+              DropdownButtonFormField<String>(
+                value: widget.owners.contains(selectedDialogOwner) ? selectedDialogOwner : (widget.owners.isNotEmpty ? widget.owners.first : null),
+                decoration: InputDecoration(
+                  labelText: 'Select Owner',
+                  labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                ),
+                items: widget.owners.map((owner) {
+                  return DropdownMenuItem<String>(
+                    value: owner,
+                    child: Text(owner, style: const TextStyle(fontSize: 13)),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setDialogState(() => selectedDialogOwner = val);
+                  }
+                },
+              ),
+              const SizedBox(height: 14),
+
+              // Limit TextField
               TextField(
                 controller: limitController,
                 keyboardType: TextInputType.number,
@@ -113,7 +152,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
               onPressed: () {
                 final limit = double.tryParse(limitController.text);
                 if (selectedLabelId != null && limit != null && limit > 0) {
-                  widget.onAddBudget(selectedLabelId!, limit);
+                  widget.onAddBudget(selectedLabelId!, limit, selectedDialogOwner);
                   Navigator.pop(context);
                 }
               },
@@ -139,6 +178,9 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
       double spent = 0;
       for (var tx in widget.transactions) {
         if (tx.labelId == labelId && tx.type == 'expense' && tx.isConfirmed == 1) {
+          if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty) {
+            if (tx.owner != widget.selectedOwner) continue;
+          }
           final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
           if (txDate.year == _selectedMonth.year && txDate.month == _selectedMonth.month) {
             spent += tx.amount;
@@ -176,7 +218,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Row with Title and Fullscreen/Hide Controls
+          // Header Row with Title, Owner Dropdown Pill, and Controls
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -185,7 +227,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: const Text(
-                    'BUDGET PROGRESS',
+                    'BUDGET',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -199,6 +241,30 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: widget.selectedOwner ?? 'All Owners',
+                        isDense: true,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF582F95)),
+                        items: [
+                          const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
+                          ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            widget.onOwnerChanged?.call(val == 'All Owners' ? null : val);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Padding(
                     padding: const EdgeInsets.only(right: 6.0),
                     child: SizedBox(
@@ -242,29 +308,11 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
 
-          // Underneath Title: Plus Button & Month Picker Box
+          // Second Row: Month Selector and Add Budget Button
           Row(
             children: [
-              // Plus Button
-              SizedBox(
-                height: 42,
-                width: 42,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF1F5F9), // Updated to match unselected Recurring Entry background color
-                    foregroundColor: const Color(0xFF334155), // Updated to match unselected Recurring Entry text color
-                    padding: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    elevation: 0,
-                  ),
-                  onPressed: () => _showAddBudgetDialog(context),
-                  child: const Icon(Icons.add, size: 20),
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Month Picker Field matching reference style
               Expanded(
                 child: InkWell(
                   onTap: () => _selectMonth(context),
@@ -272,9 +320,9 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                   child: InputDecorator(
                     decoration: InputDecoration(
                       labelText: 'MONTH',
-                      labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold),
+                      labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                     ),
@@ -282,20 +330,38 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          DateFormat('MMMM yyyy').format(_selectedMonth),
-                          style: const TextStyle(color: Color(0xFF334155), fontSize: 13, fontWeight: FontWeight.w500),
+                          DateFormat('MMM yyyy').format(_selectedMonth),
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
                         ),
-                        const Icon(Icons.calendar_today_outlined, size: 16, color: Color(0xFF64748B)),
+                        const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF64748B)),
                       ],
                     ),
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 38,
+                width: 38,
+                child: IconButton(
+                  style: IconButton.styleFrom(
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    foregroundColor: const Color(0xFF582F95),
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () => _showAddBudgetDialog(context),
+                  icon: const Icon(Icons.add, size: 18),
+                  tooltip: 'Add Budget Limit',
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          const Divider(color: Color(0xFFE2E8F0)),
+          const SizedBox(height: 8),
 
-          // Overall Summary
+          // Overall Summary Progress
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -329,7 +395,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
 
           processedBudgets.isEmpty
               ? const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12.0),
+                  padding: EdgeInsets.symmetric(vertical: 24.0),
                   child: Center(
                     child: Text(
                       'No budget limits set. Tap "+" to add one.',

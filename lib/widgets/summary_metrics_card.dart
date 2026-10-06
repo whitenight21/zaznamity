@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 class SummaryMetricsCard extends StatefulWidget {
   final List<String> owners;
+  final String? selectedOwner; // Added to sync with global master selector
   final Map<String, Map<String, double>> poolTotalsByOwner;
   final Map<String, double> totalPoolTotals;
   final Map<String, double> liquidNetByOwner;
@@ -15,6 +16,7 @@ class SummaryMetricsCard extends StatefulWidget {
   const SummaryMetricsCard({
     super.key,
     required this.owners,
+    this.selectedOwner,
     required this.poolTotalsByOwner,
     required this.totalPoolTotals,
     required this.liquidNetByOwner,
@@ -30,7 +32,23 @@ class SummaryMetricsCard extends StatefulWidget {
 }
 
 class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
-  String _selectedOwner = 'All Owners';
+  late String _selectedOwner;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedOwner = widget.selectedOwner ?? 'All Owners';
+  }
+
+  @override
+  void didUpdateWidget(covariant SummaryMetricsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedOwner != oldWidget.selectedOwner) {
+      setState(() {
+        _selectedOwner = widget.selectedOwner ?? 'All Owners';
+      });
+    }
+  }
 
   String _formatCurrency(double amount) {
     final format = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
@@ -161,7 +179,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                                 padding: EdgeInsets.zero,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
-                              onPressed: widget.onToggleWidth, // Fixed: added widget. prefix
+                              onPressed: widget.onToggleWidth,
                               icon: Icon(
                                 widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
                                 size: 18,
