@@ -76,7 +76,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: const Text(
-                    'ZAZNAM HISTORY',
+                    'ALL ZAZNAMS',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,

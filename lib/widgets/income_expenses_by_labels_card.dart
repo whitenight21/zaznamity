@@ -150,7 +150,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: const Text(
-                        'LABEL ANALYTICS',
+                        'MULTI-LABEL ANALYTICS',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

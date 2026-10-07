@@ -163,4 +163,40 @@ class DatabaseHelper {
     final db = await instance.database;
     return await db.update('transactions', {'is_confirmed': 1}, where: 'id = ?', whereArgs: [id]);
   }
+
+  // Bulk edit transactions by label: change all transactions labeled "x" to "y"
+  Future<int> bulkUpdateTransactionsLabel(String oldLabelName, String newLabelName) async {
+    final db = await instance.database;
+    
+    // Find old label ID
+    final oldLabelResult = await db.query(
+      'labels',
+      where: 'name = ?',
+      whereArgs: [oldLabelName],
+    );
+    if (oldLabelResult.isEmpty) return 0;
+    final int oldLabelId = oldLabelResult.first['id'] as int;
+
+    // Find or create new label ID
+    final newLabelResult = await db.query(
+      'labels',
+      where: 'name = ?',
+      whereArgs: [newLabelName],
+    );
+    
+    int newLabelId;
+    if (newLabelResult.isNotEmpty) {
+      newLabelId = newLabelResult.first['id'] as int;
+    } else {
+      newLabelId = await db.insert('labels', {'name': newLabelName, 'color': '#4338CA'});
+    }
+
+    // Update all matching transactions
+    return await db.update(
+      'transactions',
+      {'label_id': newLabelId},
+      where: 'label_id = ?',
+      whereArgs: [oldLabelId],
+    );
+  }
 }

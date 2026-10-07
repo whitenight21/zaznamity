@@ -26,7 +26,9 @@ class AppSettingsCard extends StatefulWidget {
   final Function(String) onAddLabel;
   final Function(int, String) onUpdateLabel;
   final Function(int) onDeleteLabel;
-  final VoidCallback? onImportCsv; // Added callback for CSV/XLS import
+  final VoidCallback? onImportCsv;
+  final Function(String, {int? year, int? month}) onDeleteBulkTransactions;
+  final Function(String, String) onBulkUpdateTransactionsLabel; // Added bulk update label callback
   final bool isWide;
   final VoidCallback? onToggleWidth;
   final VoidCallback? onHide;
@@ -53,6 +55,8 @@ class AppSettingsCard extends StatefulWidget {
     required this.onUpdateLabel,
     required this.onDeleteLabel,
     this.onImportCsv,
+    required this.onDeleteBulkTransactions,
+    required this.onBulkUpdateTransactionsLabel,
     required this.isWide,
     this.onToggleWidth,
     this.onHide,
@@ -182,6 +186,149 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     );
   }
 
+  void _showBulkDeleteDialog() {
+    int selectedYear = DateTime.now().year;
+    int selectedMonth = DateTime.now().month;
+    String mode = 'month';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateModal) => AlertDialog(
+          title: const Text('Bulk Delete Transactions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Select scope for deletion:', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+              const SizedBox(height: 12),
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('By Specific Month', style: TextStyle(fontSize: 13)),
+                value: 'month',
+                groupValue: mode,
+                onChanged: (val) => setStateModal(() => mode = val!),
+              ),
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('By Specific Year', style: TextStyle(fontSize: 13)),
+                value: 'year',
+                groupValue: mode,
+                onChanged: (val) => setStateModal(() => mode = val!),
+              ),
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('All Transactions (Wipe All)', style: TextStyle(fontSize: 13, color: Color(0xFFDC2626))),
+                value: 'all',
+                groupValue: mode,
+                onChanged: (val) => setStateModal(() => mode = val!),
+              ),
+              if (mode == 'month' || mode == 'year') ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        value: selectedYear,
+                        decoration: const InputDecoration(labelText: 'Year', isDense: true),
+                        items: List.generate(11, (i) => 2020 + i).map((y) => DropdownMenuItem(value: y, child: Text('$y'))).toList(),
+                        onChanged: (val) => setStateModal(() => selectedYear = val ?? selectedYear),
+                      ),
+                    ),
+                    if (mode == 'month') ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          value: selectedMonth,
+                          decoration: const InputDecoration(labelText: 'Month', isDense: true),
+                          items: List.generate(12, (i) => i + 1).map((m) => DropdownMenuItem(value: m, child: Text('$m'))).toList(),
+                          onChanged: (val) => setStateModal(() => selectedMonth = val ?? selectedMonth),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
+              onPressed: () {
+                Navigator.pop(ctx);
+                if (mode == 'month') {
+                  widget.onDeleteBulkTransactions('month', year: selectedYear, month: selectedMonth);
+                } else if (mode == 'year') {
+                  widget.onDeleteBulkTransactions('year', year: selectedYear);
+                } else {
+                  widget.onDeleteBulkTransactions('all');
+                }
+              },
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showBulkEditLabelDialog() {
+    String? oldLabelName = widget.labels.isNotEmpty ? widget.labels.first.name : null;
+    final newLabelController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateModal) => AlertDialog(
+          title: const Text('Bulk Edit Transactions by Label', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Change all Zaznams labeled:', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+              const SizedBox(height: 16),
+              const Text('currently:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<String>(
+                value: oldLabelName,
+                isExpanded: true,
+                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
+                items: widget.labels.map((l) => DropdownMenuItem(value: l.name, child: Text(l.name))).toList(),
+                onChanged: (val) => setStateModal(() => oldLabelName = val),
+              ),
+              const SizedBox(height: 16),
+              const Text('to new label:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+              const SizedBox(height: 4),
+              TextField(
+                controller: newLabelController,
+                decoration: const InputDecoration(
+                  hintText: 'Enter new label name...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                  isDense: true,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 88, 47, 149), foregroundColor: Colors.white),
+              onPressed: () {
+                final newLabel = newLabelController.text.trim();
+                if (oldLabelName != null && newLabel.isNotEmpty) {
+                  Navigator.pop(ctx);
+                  widget.onBulkUpdateTransactionsLabel(oldLabelName!, newLabel);
+                }
+              },
+              child: const Text('Apply Changes'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -210,7 +357,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: const Text(
-                        'APP SETTINGS',
+                        'ZAZNAMITY SETTINGS',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -297,7 +444,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 title: 'Navigation Bar',
                 subtitle: 'Configure 3 items left and 3 items right (Settings, New Zaznam & Card Stack are fixed)',
                 children: [
-                  const Text('Left Slot 1 (Most Left)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const Text('Left Slot 1 (Fixed)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -349,7 +496,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     },
                   ),
                   const SizedBox(height: 12),
-                  const Text('Center Slot (Fixed Logo)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const Text('Center Slot (Fixed)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -408,7 +555,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     },
                   ),
                   const SizedBox(height: 12),
-                  const Text('Right Slot 3 (Most Right)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const Text('Right Slot 3 (Fixed)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -483,6 +630,33 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           ),
                         );
                       },
+                    ),
+                  ),
+                ],
+              ),
+
+              // Bulk Edit Transactions by Label Section
+              _buildCollapsibleSection(
+                title: 'Bulk Edit Transactions by Label',
+                subtitle: 'Change all transactions labeled "x" to "y"',
+                children: [
+                  const Text(
+                    'Reassign all existing transactions from one label to another in batch.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color.fromARGB(255, 88, 47, 149),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: _showBulkEditLabelDialog,
+                      icon: const Icon(Icons.edit_note, size: 18),
+                      label: const Text('Bulk Edit Labels (x -> y)', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
@@ -673,22 +847,21 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 ],
               ),
 
-              // Import CSV / Excel XLS Section
               _buildCollapsibleSection(
                 title: 'Import CSV / Excel XLS',
                 subtitle: 'Import transactions with required matching columns',
                 children: [
                   const Text(
-                    'Your CSV or XLS file must include these 9 columns:\n'
+                    'Configure your CSV or XLS file to include these 9 columns:\n'
                     '1. ID\n'
                     '2. Date (ISO timestamp)\n'
                     '3. Description\n'
                     '4. Amount\n'
                     '5. Type (income/expense)\n'
-                    '6. Owner\n'
-                    '7. Pool\n'
-                    '8. Label\n'
-                    '9. Confirmed (1 or 0)',
+                    '6. Owner (must exist in the app)\n'
+                    '7. Pool (checking/cash/savings/loan)\n'
+                    '8. Label (must exist in the app)\n'
+                    '9. Confirmed (1 (yes) or 0 (no))',
                     style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
                   ),
                   const SizedBox(height: 12),
@@ -704,6 +877,32 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       onPressed: widget.onImportCsv,
                       icon: const Icon(Icons.upload_file, size: 18),
                       label: const Text('Select & Import CSV / XLS File', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+
+              _buildCollapsibleSection(
+                title: 'Delete Zaznams - DANGER ZONE',
+                subtitle: 'Delete Zaznams in bulk by month, year, or all',
+                children: [
+                  const Text(
+                    'Permanently delete multiple records based on time range.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFDC2626),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: _showBulkDeleteDialog,
+                      icon: const Icon(Icons.delete_sweep, size: 18),
+                      label: const Text('Bulk Delete Zaznams', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
