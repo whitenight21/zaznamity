@@ -26,6 +26,7 @@ class AppSettingsCard extends StatefulWidget {
   final Function(String) onAddLabel;
   final Function(int, String) onUpdateLabel;
   final Function(int) onDeleteLabel;
+  final VoidCallback? onImportCsv; // Added callback for CSV/XLS import
   final bool isWide;
   final VoidCallback? onToggleWidth;
   final VoidCallback? onHide;
@@ -51,6 +52,7 @@ class AppSettingsCard extends StatefulWidget {
     required this.onAddLabel,
     required this.onUpdateLabel,
     required this.onDeleteLabel,
+    this.onImportCsv,
     required this.isWide,
     this.onToggleWidth,
     this.onHide,
@@ -270,17 +272,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               const SizedBox(height: 16),
               const Divider(color: Color(0xFFE2E8F0)),
               const SizedBox(height: 8),
-              
-              // Helper text indicating automatic saving
-              const Text(
-                'Changed settings are saved automatically.',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Color(0xFF64748B),
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              const SizedBox(height: 12),
 
               _buildCollapsibleSection(
                 title: 'Dark Mode',
@@ -304,7 +295,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               
               _buildCollapsibleSection(
                 title: 'Navigation Bar',
-                subtitle: 'Configure 2 items left and 2 items right (Settings, New Zaznam & Card Stack are fixed)',
+                subtitle: 'Configure 3 items left and 3 items right (Settings, New Zaznam & Card Stack are fixed)',
                 children: [
                   const Text('Left Slot 1 (Most Left)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
@@ -499,7 +490,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
               _buildCollapsibleSection(
                 title: 'Liquid Net Counting Pools',
-                subtitle: 'Configure which pools update liquid net',
+                subtitle: 'Choose which pools are counted toward liquid net',
                 children: {'checking', 'cash', 'savings', 'loan'}.map((poolKey) {
                   return CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
@@ -580,7 +571,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
               _buildCollapsibleSection(
                 title: 'Owner Management',
-                subtitle: 'Add, edit, or remove Zaznamity owners',
+                subtitle: 'Add / edit / delete Zaznamity owners',
                 children: [
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -605,7 +596,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
               _buildCollapsibleSection(
                 title: 'Pools Management',
-                subtitle: 'Configure custom transaction pools',
+                subtitle: 'Manage custom transaction pools',
                 children: [
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -679,6 +670,42 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       decoration: const InputDecoration(labelText: 'Authentication Method', isDense: true),
                     ),
                   ],
+                ],
+              ),
+
+              // Import CSV / Excel XLS Section
+              _buildCollapsibleSection(
+                title: 'Import CSV / Excel XLS',
+                subtitle: 'Import transactions with required matching columns',
+                children: [
+                  const Text(
+                    'Your CSV or XLS file must include these 9 columns:\n'
+                    '1. ID\n'
+                    '2. Date (ISO timestamp)\n'
+                    '3. Description\n'
+                    '4. Amount\n'
+                    '5. Type (income/expense)\n'
+                    '6. Owner\n'
+                    '7. Pool\n'
+                    '8. Label\n'
+                    '9. Confirmed (1 or 0)',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color.fromARGB(255, 88, 47, 149),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: widget.onImportCsv,
+                      icon: const Icon(Icons.upload_file, size: 18),
+                      label: const Text('Select & Import CSV / XLS File', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
                 ],
               ),
 

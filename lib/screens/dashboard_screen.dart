@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zaznamity/models/card_config.dart';
@@ -143,7 +146,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final rightSaved = prefs.getStringList('rightNavItems');
       if (rightSaved != null) _rightNavItems = rightSaved;
       
-      // Load saved owners
       final ownersSaved = prefs.getStringList('savedOwners');
       if (ownersSaved != null && ownersSaved.isNotEmpty) {
         _owners = ownersSaved;
@@ -299,7 +301,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       double amount = t.type == 'income' ? t.amount : -t.amount;
       String owner = _owners.contains(t.owner) ? t.owner : (_owners.isNotEmpty ? _owners.first : 'Shared');
 
-      // Future Flow scoped filter check
       bool matchesFutureDateRange = true;
       if (isFuture) {
         if (_futureMetricsStartDate != null) {
@@ -335,8 +336,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (t.pool == 'savings' && (_prognosisPools['savings'] == true)) includeInProg = true;
       if ((t.pool == 'loans' || t.pool == 'loan') && (_prognosisPools['loans'] == true)) includeInProg = true;
 
-      // Prognosis can also take into account base liquid net + future flow within the selected future range if desired, 
-      // or standard calculation summing up checking balance + future flow within target date bounds.
       bool matchesPrognosisDateRange = true;
       if (isFuture) {
         if (_futureMetricsStartDate != null) {
@@ -350,11 +349,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
 
       if (includeInProg && (!isFuture || matchesPrognosisDateRange)) {
-        // If it's a future transaction inside range, add it; if historical, include base pool checking balance.
-        if (!isFuture || isFuture) {
-          totPrognosis += amount;
-          prognosisByOwnerMap[owner] = (prognosisByOwnerMap[owner] ?? 0) + amount;
-        }
+        totPrognosis += amount;
+        prognosisByOwnerMap[owner] = (prognosisByOwnerMap[owner] ?? 0) + amount;
       }
     }
 
@@ -368,6 +364,145 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _totalPrognosis = totPrognosis;
     _prognosisByOwner = {for (var o in activeOwnersForCards) o: prognosisByOwnerMap[o] ?? 0.0};
   }
+
+// Import CSV / Excel XLS Handler using file_selector
+Future<void> _importCsvFile(BuildContext context) async {
+  try {
+    // Define the accepted file extensions for your spreadsheets
+    const XTypeGroup typeGroup = XTypeGroup(
+      label: 'Spreadsheets',
+      extensions: <String>['csv', 'txt', 'xls', 'xlsx'],
+    );
+
+    // Open the native file selector dialog
+    final XFile? file = await openFile(acceptedTypeGroups: <XTypeGroup>[typeGroup]);
+
+    if (file == null) return;
+
+    // Read the file contents as a string
+    String content = await file.readAsString();
+
+    if (content.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('The selected file is empty.')),
+      );
+      return;
+    }
+
+    List<String> lines = content.split('\n');
+    if (lines.isEmpty) return;
+
+    int importedCount = 0;
+    int startIndex = 0;
+    String firstLine = lines[0].toLowerCase();
+    if (firstLine.contains('date') || firstLine.contains('amount') || firstLine.contains('description') || firstLine.contains('id')) {
+      startIndex = 1;
+    }
+
+    for (int i = startIndex; i < lines.length; i++) {
+      String line = lines[i].trim();
+      if (line.isEmpty) continue;
+
+      List<String> cols = _parseCsvRow(line);
+      if (cols.length < 5) continue;
+
+      // Columns Breakdown:
+      // 0: ID
+      // 1: Date
+      // 2: Description
+      // 3: Amount
+      // 4: Type (income / expense)
+      // 5: Owner
+      // 6: Pool
+      // 7: Label
+      // 8: Confirmed (1 / 0)
+
+      try {
+        String dateStr = cols.length > 1 ? cols[1].replaceAll('"', '').trim() : DateTime.now().toIso8601String();
+        DateTime? parsedDate = DateTime.tryParse(dateStr) ?? DateTime.now();
+        
+        String description = cols.length > 2 ? cols[2].replaceAll('"', '').trim() : '';
+        double amount = cols.length > 3 ? double.tryParse(cols[3].replaceAll('"', '').replaceAll('\$', '').trim()) ?? 0.0 : 0.0;
+        String type = cols.length > 4 ? cols[4].replaceAll('"', '').trim().toLowerCase() : 'expense';
+        if (type != 'income' && type != 'expense') type = 'expense';
+        
+        String owner = cols.length > 5 ? cols[5].replaceAll('"', '').trim() : (_owners.isNotEmpty ? _owners.first : 'Shared');
+        if (!_owners.contains(owner) && _owners.isNotEmpty) owner = _owners.first;
+
+        String pool = cols.length > 6 ? cols[6].replaceAll('"', '').trim().toLowerCase() : 'checking';
+        if (!_pools.containsKey(pool)) pool = 'checking';
+
+        String labelName = cols.length > 7 ? cols[7].replaceAll('"', '').trim() : 'General';
+        int labelId = _labels.isNotEmpty ? _labels.first.id : 1;
+        for (var l in _labels) {
+          if (l.name.toLowerCase() == labelName.toLowerCase()) {
+            labelId = l.id;
+            break;
+          }
+        }
+
+        if (labelId == 1 && labelName.isNotEmpty && !_labels.any((l) => l.name.toLowerCase() == labelName.toLowerCase())) {
+          await DatabaseHelper.instance.insertLabel(labelName, '#4338CA');
+          final updatedLabels = await DatabaseHelper.instance.getLabels();
+          setState(() => _labels = updatedLabels);
+          labelId = updatedLabels.last.id;
+        }
+
+        int confirmed = 1;
+        if (cols.length > 8) {
+          confirmed = int.tryParse(cols[8].replaceAll('"', '').trim()) ?? 1;
+        }
+
+        final newTx = TransactionModel(
+          createdAt: parsedDate.toIso8601String(),
+          description: description,
+          amount: amount,
+          type: type,
+          labelId: labelId,
+          owner: owner,
+          pool: pool,
+          isConfirmed: confirmed,
+          isSavings: pool == 'savings' ? 1 : 0,
+        );
+
+        await DatabaseHelper.instance.insertTransaction(newTx);
+        importedCount++;
+      } catch (_) {}
+    }
+
+    await loadData(showLoading: false);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Successfully imported $importedCount transactions!')),
+    );
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error importing file: $e')),
+    );
+  }
+}
+
+List<String> _parseCsvRow(String line) {
+  List<String> result = [];
+  bool inQuotes = false;
+  StringBuffer currentVal = StringBuffer();
+  
+  for (int i = 0; i < line.length; i++) {
+    String char = line[i];
+    if (char == '"') {
+      inQuotes = !inQuotes;
+    } else if ((char == ',' || char == ';') && !inQuotes) {
+      result.add(currentVal.toString());
+      currentVal.clear();
+    } else {
+      currentVal.write(char);
+    }
+  }
+  result.add(currentVal.toString());
+  return result;
+}
 
   Future<void> _addBudget(int labelId, double limitAmount, String owner) async {
     await DatabaseHelper.instance.insertBudget(labelId, limitAmount);
@@ -729,7 +864,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               letterSpacing: 1.0,
                             ),
                           ),
-                          const SizedBox(height: 20), // Add some spacing between the date and the dropdown
+                          const SizedBox(height: 20),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             mainAxisSize: MainAxisSize.min,
@@ -840,6 +975,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       onAddLabel: (name) => _addLabel(name),
                                       onUpdateLabel: (id, name) => _updateLabel(id, name),
                                       onDeleteLabel: (id) => _deleteLabel(id),
+                                      onImportCsv: () => _importCsvFile(context),
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
                                       onHide: () => setState(() => card.isVisible = false),
