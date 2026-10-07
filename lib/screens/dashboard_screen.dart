@@ -14,6 +14,7 @@ import '../widgets/future_metrics_card.dart';
 import '../widgets/new_zaznam_card.dart';
 import '../widgets/transfer_funds_card.dart';
 import '../widgets/liquid_trend_chart_card.dart';
+import '../widgets/savings_chart_card.dart';
 import '../widgets/income_expenses_by_labels_card.dart';
 import '../widgets/transaction_history_card.dart';
 import '../widgets/app_settings_card.dart';
@@ -71,6 +72,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _trendEndDate;
   String? _trendSelectedOwner;
 
+  DateTime? _savingsChartStartDate;
+  DateTime? _savingsChartEndDate;
+  String? _savingsChartSelectedOwner;
+
   DateTime? _futureMetricsStartDate;
   DateTime? _futureMetricsEndDate;
   String? _futureMetricsSelectedOwner;
@@ -127,6 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     CardConfig(id: 'transfer', title: 'Transfer Funds', key: GlobalKey()),
     CardConfig(id: 'budget', title: 'Budget', key: GlobalKey()),
     CardConfig(id: 'trend_chart', title: 'Liquid Trend', key: GlobalKey()),
+    CardConfig(id: 'savings_chart', title: 'Savings Trend', key: GlobalKey()),
     CardConfig(id: 'calendar', title: 'Calendar', key: GlobalKey()),
     CardConfig(id: 'history', title: 'All Zaznams', key: GlobalKey()),
   ];
@@ -1219,6 +1225,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       onClearDateFilter: () => setState(() {
                                         _trendStartDate = null;
                                         _trendEndDate = null;
+                                      }),
+                                      isWide: card.isWide,
+                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+                                      onHide: () => setState(() => card.isVisible = false),
+                                    );
+                                    break;
+                                  case 'savings_chart':
+                                    cardWidget = SavingsChartCard(
+                                      transactions: _transactions,
+                                      labels: _labels,
+                                      owners: _owners,
+                                      selectedOwner: _savingsChartSelectedOwner ?? _globalSelectedOwner,
+                                      onOwnerChanged: (owner) => setState(() => _savingsChartSelectedOwner = owner),
+                                      startDate: _savingsChartStartDate,
+                                      endDate: _savingsChartEndDate,
+                                      onSelectStartDate: () async {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: _savingsChartStartDate ?? DateTime.now(),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                        );
+                                        if (picked != null) setState(() => _savingsChartStartDate = picked);
+                                      },
+                                      onSelectEndDate: () async {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: _savingsChartEndDate ?? DateTime.now(),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                        );
+                                        if (picked != null) setState(() => _savingsChartEndDate = picked);
+                                      },
+                                      onClearDateFilter: () => setState(() {
+                                        _savingsChartStartDate = null;
+                                        _savingsChartEndDate = null;
                                       }),
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),

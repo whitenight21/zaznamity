@@ -58,11 +58,11 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   Color _getPoolColor(String poolName) {
     switch (poolName.toLowerCase()) {
       case 'checking':
-        return const Color(0xFFFF7F27);
+        return const Color.fromARGB(255, 0, 132, 184);
       case 'cash':
         return const Color(0xFF56C435);
       case 'savings':
-        return const Color(0xFF3F48CC);
+        return const Color(0xFFFF7F27);
       case 'loan':
       case 'loans':
         return const Color.fromARGB(255, 105, 105, 105);
