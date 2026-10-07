@@ -229,7 +229,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<int>(
-                        value: selectedYear,
+                        initialValue: selectedYear,
                         decoration: const InputDecoration(labelText: 'Year', isDense: true),
                         items: List.generate(11, (i) => 2020 + i).map((y) => DropdownMenuItem(value: y, child: Text('$y'))).toList(),
                         onChanged: (val) => setStateModal(() => selectedYear = val ?? selectedYear),
@@ -239,7 +239,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: DropdownButtonFormField<int>(
-                          value: selectedMonth,
+                          initialValue: selectedMonth,
                           decoration: const InputDecoration(labelText: 'Month', isDense: true),
                           items: List.generate(12, (i) => i + 1).map((m) => DropdownMenuItem(value: m, child: Text('$m'))).toList(),
                           onChanged: (val) => setStateModal(() => selectedMonth = val ?? selectedMonth),
@@ -291,7 +291,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               const Text('currently:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
               const SizedBox(height: 4),
               DropdownButtonFormField<String>(
-                value: oldLabelName,
+                initialValue: oldLabelName,
                 isExpanded: true,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
                 items: widget.labels.map((l) => DropdownMenuItem(value: l.name, child: Text(l.name))).toList(),
@@ -665,11 +665,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               _buildCollapsibleSection(
                 title: 'Liquid Net Counting Pools',
                 subtitle: 'Choose which pools are counted toward liquid net',
-                children: {'checking', 'cash', 'savings', 'loan'}.map((poolKey) {
+                children: _pools.keys.map((poolKey) {
                   return CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(poolKey.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
-                    value: _liquidNetPools[poolKey] ?? (poolKey == 'checking' || poolKey == 'cash'),
+                    value: _liquidNetPools[poolKey] ?? true,
                     onChanged: (val) {
                       setState(() {
                         _liquidNetPools[poolKey] = val ?? false;
@@ -683,7 +683,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               _buildCollapsibleSection(
                 title: 'Future Metrics Counting Pools',
                 subtitle: 'Configure which pools update future metrics',
-                children: ['checking', 'cash', 'savings', 'loan'].map((poolKey) {
+                children: _pools.keys.map((poolKey) {
                   return CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(poolKey.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),

@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -91,7 +89,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<String> _leftNavItems = ['metrics', 'budget'];
   List<String> _rightNavItems = ['history', 'settings'];
 
-  final Map<String, bool> _pools = {
+  Map<String, bool> _pools = {
     'checking': true,
     'cash': true,
     'savings': false,
@@ -159,7 +157,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (ownersSaved != null && ownersSaved.isNotEmpty) {
         _owners = ownersSaved;
       }
+
+      final poolsSaved = prefs.getStringList('savedPoolKeys');
+      if (poolsSaved != null && poolsSaved.isNotEmpty) {
+        Map<String, bool> loadedPools = {};
+        for (var p in poolsSaved) {
+          loadedPools[p] = prefs.getBool('pool_active_$p') ?? true;
+        }
+        _pools = loadedPools;
+      }
     });
+  }
+
+  Future<void> _savePoolsPreferences(Map<String, bool> updatedPools) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _pools = updatedPools;
+      for (var entry in updatedPools.entries) {
+        if (!_liquidNetPools.containsKey(entry.key)) {
+          _liquidNetPools[entry.key] = true;
+        }
+        if (!_prognosisPools.containsKey(entry.key)) {
+          _prognosisPools[entry.key] = false;
+        }
+      }
+    });
+    await prefs.setStringList('savedPoolKeys', updatedPools.keys.toList());
+    for (var entry in updatedPools.entries) {
+      await prefs.setBool('pool_active_${entry.key}', entry.value);
+    }
+    calculateMetrics();
   }
 
   void _scrollToCard(GlobalKey key) {
@@ -958,7 +985,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 switch (card.id) {
                                   case 'settings':
                                     cardWidget = AppSettingsCard(
-                                      initialPools: _countedPools,
+                                      initialPools: _pools,
                                       initialLiquidNetPools: _liquidNetPools,
                                       initialPrognosisPools: _prognosisPools,
                                       initialOwners: _owners,
@@ -968,12 +995,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       cards: _cards,
                                       onThemeChanged: widget.onThemeChanged,
                                       onPinSettingsChanged: widget.onPinSettingsChanged,
-                                      onSavePools: (updatedPools) {
-                                        setState(() {
-                                          _countedPools = updatedPools;
-                                          calculateMetrics();
-                                        });
-                                      },
+                                      onSavePools: (updatedPools) => _savePoolsPreferences(updatedPools),
                                       onSaveLiquidNetPools: (updatedLiquidNet) {
                                         setState(() {
                                           _liquidNetPools = updatedLiquidNet;

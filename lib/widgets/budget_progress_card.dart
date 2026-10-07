@@ -99,7 +99,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
 
               // Owner Dropdown inside the Modal
               DropdownButtonFormField<String>(
-                value: widget.owners.contains(selectedDialogOwner) ? selectedDialogOwner : (widget.owners.isNotEmpty ? widget.owners.first : null),
+                initialValue: widget.owners.contains(selectedDialogOwner) ? selectedDialogOwner : (widget.owners.isNotEmpty ? widget.owners.first : null),
                 decoration: InputDecoration(
                   labelText: 'Select Owner',
                   labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),

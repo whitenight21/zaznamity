@@ -85,7 +85,6 @@ class SelectedLabelFocusCard extends StatelessWidget {
             offset: const Offset(0, 4),
           ),
         ],
-        // Border removed completely
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -226,7 +225,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
                     const Text('LABEL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<int?>(
-                      value: selectedLabelId,
+                      initialValue: selectedLabelId,
                       isExpanded: true,
                       decoration: InputDecoration(
                         isDense: true,
@@ -251,7 +250,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
                     const Text('OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<String?>(
-                      value: selectedOwner,
+                      initialValue: selectedOwner,
                       isExpanded: true,
                       decoration: InputDecoration(
                         isDense: true,
@@ -272,46 +271,61 @@ class SelectedLabelFocusCard extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // Net Value Highlight Display Container
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF582F95), Color(0xFF7C3AED)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // Yellow Box area: Purple background removed, clean transparent wrapper with right indent for pink box
+          Padding(
+            padding: const EdgeInsets.only(left: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('NET BALANCE', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text('${filteredTxs.length} items', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                // Pink Box area: Net Balance Display Container
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF582F95), Color(0xFF7C3AED)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                  ],
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('NET BALANCE', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                      const SizedBox(height: 6),
+                      Text(
+                        '\$${net.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  '\$${net.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                // Blue Box area: Item count badge with font size equal to the net balance amount (22px)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF582F95).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${filteredTxs.length} items',
+                      style: const TextStyle(
+                        color: Color(0xFF582F95),
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
-          // Inflow vs Outflow breakdown rows/columns
+          // Red Box area: Inflow vs Outflow breakdown rows with font size 2 points larger (16px)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -319,7 +333,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
                 children: [
                   const Text('INFLOWS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
                   const SizedBox(height: 4),
-                  Text('+\$${inflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
+                  Text('+\$${inflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
                 ],
               ),
               Container(height: 25, width: 1, color: const Color(0xFFE2E8F0)),
@@ -327,7 +341,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
                 children: [
                   const Text('OUTFLOWS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
                   const SizedBox(height: 4),
-                  Text('-\$${outflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFDC2626))),
+                  Text('-\$${outflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFFDC2626))),
                 ],
               ),
             ],

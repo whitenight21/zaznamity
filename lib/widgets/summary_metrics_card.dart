@@ -67,7 +67,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       case 'loans':
         return const Color.fromARGB(255, 105, 105, 105);
       default:
-        return const Color(0xFF0369A1);
+        return Colors.primaries[poolName.hashCode % Colors.primaries.length];
     }
   }
 

@@ -223,7 +223,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                     const Text('LABEL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<int?>(
-                      value: _selectedLabelId,
+                      initialValue: _selectedLabelId,
                       isExpanded: true,
                       decoration: InputDecoration(
                         isDense: true,
@@ -248,7 +248,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                     const Text('OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<String?>(
-                      value: _selectedOwner,
+                      initialValue: _selectedOwner,
                       isExpanded: true,
                       decoration: InputDecoration(
                         isDense: true,
@@ -279,7 +279,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                     const Text('TYPE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<String?>(
-                      value: _selectedType,
+                      initialValue: _selectedType,
                       isExpanded: true,
                       decoration: InputDecoration(
                         isDense: true,
@@ -305,7 +305,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                     const Text('POOL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<String?>(
-                      value: _selectedPool,
+                      initialValue: _selectedPool,
                       isExpanded: true,
                       decoration: InputDecoration(
                         isDense: true,

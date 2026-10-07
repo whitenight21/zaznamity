@@ -260,7 +260,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         const Text('FROM OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          value: _fromOwner,
+                          initialValue: _fromOwner,
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -282,7 +282,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         const Text('TO OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          value: _toOwner,
+                          initialValue: _toOwner,
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -308,7 +308,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         const Text('FROM POOL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          value: _fromPool,
+                          initialValue: _fromPool,
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -330,7 +330,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         const Text('TO POOL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          value: _toPool,
+                          initialValue: _toPool,
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,

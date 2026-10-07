@@ -16,7 +16,7 @@ class PoolManagementModal extends StatefulWidget {
 
 class _PoolManagementModalState extends State<PoolManagementModal> {
   late Map<String, bool> _pools;
-  final TextEditingController _newPoolController = TextEditingController();
+  final TextEditingController _poolController = TextEditingController();
 
   @override
   void initState() {
@@ -24,15 +24,34 @@ class _PoolManagementModalState extends State<PoolManagementModal> {
     _pools = Map.from(widget.initialPools);
   }
 
+  @override
+  void dispose() {
+    _poolController.dispose();
+    super.dispose();
+  }
+
   void _addPool() {
-    final poolKey = _newPoolController.text.trim().toLowerCase();
-    if (poolKey.isNotEmpty && !_pools.containsKey(poolKey)) {
+    final poolName = _poolController.text.trim().toLowerCase();
+    if (poolName.isNotEmpty && !_pools.containsKey(poolName)) {
       setState(() {
-        _pools[poolKey] = true;
-        _newPoolController.clear();
+        _pools[poolName] = true;
+        _poolController.clear();
       });
       widget.onSavePools(_pools);
     }
+  }
+
+  void _deletePool(String key) {
+    if (_pools.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You must keep at least one pool.')),
+      );
+      return;
+    }
+    setState(() {
+      _pools.remove(key);
+    });
+    widget.onSavePools(_pools);
   }
 
   @override
@@ -48,17 +67,22 @@ class _PoolManagementModalState extends State<PoolManagementModal> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Edit Pools',
+            'Pools Management',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Add or remove custom transaction pools (e.g., crypto, wallet).',
+            style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
           ),
           const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
                 child: TextField(
-                  controller: _newPoolController,
+                  controller: _poolController,
                   decoration: const InputDecoration(
-                    hintText: 'Add new custom pool...',
+                    hintText: 'New pool name...',
                     border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
                     isDense: true,
                   ),
@@ -66,28 +90,35 @@ class _PoolManagementModalState extends State<PoolManagementModal> {
               ),
               const SizedBox(width: 12),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 88, 47, 149)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 88, 47, 149),
+                  foregroundColor: Colors.white,
+                ),
                 onPressed: _addPool,
-                child: const Text('Add', style: TextStyle(color: Colors.white)),
+                child: const Text('Add'),
               ),
             ],
           ),
           const SizedBox(height: 16),
           ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 200),
-            child: ListView(
+            constraints: const BoxConstraints(maxHeight: 250),
+            child: ListView.builder(
               shrinkWrap: true,
-              children: _pools.keys.map((key) {
-                return SwitchListTile(
+              itemCount: _pools.keys.length,
+              itemBuilder: (context, index) {
+                String poolKey = _pools.keys.elementAt(index);
+                return ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(key.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w600)),
-                  value: _pools[key] ?? true,
-                  onChanged: (val) {
-                    setState(() => _pools[key] = val);
-                    widget.onSavePools(_pools);
-                  },
+                  title: Text(
+                    poolKey.toUpperCase(),
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1E293B)),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete, size: 18, color: Color(0xFFDC2626)),
+                    onPressed: () => _deletePool(poolKey),
+                  ),
                 );
-              }).toList(),
+              },
             ),
           ),
         ],

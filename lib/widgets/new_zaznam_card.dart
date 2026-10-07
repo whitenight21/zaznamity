@@ -48,7 +48,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   String _type = 'expense';
   int? _selectedLabelId;
   late String _owner;
-  late String _selectedPool;
+  String? _selectedPool;
   bool _isRecurring = false;
   
   String _frequency = 'Monthly';
@@ -65,7 +65,9 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   @override
   void initState() {
     super.initState();
-    _selectedPool = widget.pools.isNotEmpty ? widget.pools.first : 'checking';
+    if (widget.pools.isNotEmpty) {
+      _selectedPool = widget.pools.first;
+    }
     _owner = _resolveOwner();
     _dayOfMonth = _selectedDate.day;
   }
@@ -80,7 +82,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   @override
   void didUpdateWidget(covariant NewZaznamCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.pools.isNotEmpty && !widget.pools.contains(_selectedPool)) {
+    if (!widget.pools.contains(_selectedPool) && widget.pools.isNotEmpty) {
       _selectedPool = widget.pools.first;
     }
 
@@ -324,7 +326,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _type,
+                      initialValue: _type,
                       isExpanded: true,
                       decoration: InputDecoration(
                         isDense: true,
@@ -348,7 +350,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<int>(
-                      value: _selectedLabelId,
+                      initialValue: _selectedLabelId,
                       isExpanded: true,
                       decoration: InputDecoration(
                         isDense: true,
@@ -368,7 +370,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       children: [
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          value: _selectedPool,
+                          initialValue: _selectedPool,
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -395,7 +397,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       children: [
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
-                          value: widget.owners.contains(_owner) ? _owner : (widget.owners.isNotEmpty ? widget.owners.first : null),
+                          initialValue: widget.owners.contains(_owner) ? _owner : (widget.owners.isNotEmpty ? widget.owners.first : null),
                           isExpanded: true,
                           decoration: InputDecoration(
                             isDense: true,
@@ -479,7 +481,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                                 const Text('FREQUENCY', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                                 const SizedBox(height: 4),
                                 DropdownButtonFormField<String>(
-                                  value: _frequency,
+                                  initialValue: _frequency,
                                   isExpanded: true,
                                   decoration: InputDecoration(
                                     isDense: true,
@@ -545,7 +547,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                             const Text('WHICH DAY OF MONTH', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                             const SizedBox(height: 4),
                             DropdownButtonFormField<int>(
-                              value: _dayOfMonth,
+                              initialValue: _dayOfMonth,
                               isExpanded: true,
                               decoration: InputDecoration(
                                 isDense: true,
@@ -681,7 +683,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       _type,
                       _selectedLabelId,
                       _owner,
-                      _selectedPool,
+                      _selectedPool ?? (widget.pools.isNotEmpty ? widget.pools.first : 'checking'),
                       _isRecurring,
                       _frequency,
                       targetDay,
