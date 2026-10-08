@@ -189,7 +189,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
               ),
               const SizedBox(height: 16),
 
-              // Date Selection Row (Matched with Label Analytics styling)
+              // Date Selection Row
               Row(
                 children: [
                   Expanded(
@@ -256,7 +256,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                     child: _buildMetricBox(
                       title: 'FUTURE FLOW',
                       amount: currentFutureFlow,
-                      amountColor: const Color(0xFFDC2626),
+                      amountColor: currentFutureFlow >= 0 ? const Color(0xFF10B981) : const Color(0xFFDC2626),
                       width: boxWidth,
                     ),
                   ),

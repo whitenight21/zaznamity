@@ -96,7 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'loan': false,
   };
 
-  Map<String, bool> _countedPools = {
+  final Map<String, bool> _countedPools = {
     'checking': true,
     'cash': true,
     'savings': false,
@@ -928,8 +928,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              ClipOval(
+                                child: Image.asset(
+                                  'assets/ZaznamityLogoFULL.jpg',
+                                  width: 30,
+                                  height: 30,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
                               const Text(
-                                'VIEW ZAZNAMITY OF :  ',
+                                '  VIEW ZAZNAMITY OF :  ',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -1084,6 +1092,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         _labelFocusStartDate = null;
                                         _labelFocusEndDate = null;
                                       }),
+                                      onJumpToHistory: (labelId, owner, start, end) {
+                                        setState(() {
+                                          _historySelectedLabelId = labelId;
+                                          _historySelectedOwner = owner;
+                                          _historyStartDate = start;
+                                          _historyEndDate = end;
+                                        });
+                                        final historyCard = _cards.firstWhere((c) => c.id == 'history');
+                                        if (!historyCard.isVisible) {
+                                          setState(() => historyCard.isVisible = true);
+                                        }
+                                        _scrollToCard(historyCard.key);
+                                      },
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
                                       onHide: () => setState(() => card.isVisible = false),

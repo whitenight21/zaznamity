@@ -108,7 +108,7 @@ class _OwnerManagementModalState extends State<OwnerManagementModal> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 88, 47, 149)),
                 onPressed: _addOwner,

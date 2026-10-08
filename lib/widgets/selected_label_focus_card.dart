@@ -21,6 +21,9 @@ class SelectedLabelFocusCard extends StatelessWidget {
   final bool isWide;
   final VoidCallback onToggleWidth;
   final VoidCallback onHide;
+  
+  // Callback for jumping to transaction history with filter applied
+  final Function(int? labelId, String? owner, DateTime? start, DateTime? end)? onJumpToHistory;
 
   const SelectedLabelFocusCard({
     super.key,
@@ -39,11 +42,11 @@ class SelectedLabelFocusCard extends StatelessWidget {
     required this.isWide,
     required this.onToggleWidth,
     required this.onHide,
+    this.onJumpToHistory,
   });
 
   @override
   Widget build(BuildContext context) {
-    // 1. Filter transactions based on current criteria within this card
     final filteredTxs = transactions.where((tx) {
       final txDate = DateTime.tryParse(tx.createdAt);
       if (txDate == null) return true;
@@ -73,6 +76,44 @@ class SelectedLabelFocusCard extends StatelessWidget {
     }
     double net = inflow - outflow;
 
+    final allCardFilteredTxs = transactions.where((tx) {
+      final txDate = DateTime.tryParse(tx.createdAt);
+      if (txDate == null) return true;
+      if (startDate != null) {
+        final startClean = DateTime(startDate!.year, startDate!.month, startDate!.day);
+        if (txDate.isBefore(startClean)) return false;
+      }
+      if (endDate != null) {
+        final endClean = DateTime(endDate!.year, endDate!.month, endDate!.day, 23, 59, 59);
+        if (txDate.isAfter(endClean)) return false;
+      }
+      if (selectedOwner != null && tx.owner != selectedOwner) return false;
+      return true;
+    }).toList();
+
+    double totalGlobalInflow = 0;
+    double totalGlobalOutflow = 0;
+    for (var tx in allCardFilteredTxs) {
+      if (tx.isConfirmed == 1) {
+        if (tx.type == 'income') {
+          totalGlobalInflow += tx.amount;
+        } else {
+          totalGlobalOutflow += tx.amount;
+        }
+      }
+    }
+
+    double outflowPercentage = totalGlobalOutflow > 0 ? (outflow / totalGlobalOutflow) * 100 : 0.0;
+    double inflowPercentage = totalGlobalInflow > 0 ? (inflow / totalGlobalInflow) * 100 : 0.0;
+
+    final sortedFilteredTxs = List<TransactionModel>.from(filteredTxs)
+      ..sort((a, b) {
+        final dateA = DateTime.tryParse(a.createdAt) ?? DateTime(0);
+        final dateB = DateTime.tryParse(b.createdAt) ?? DateTime(0);
+        return dateB.compareTo(dateA);
+      });
+    final recentTransactions = sortedFilteredTxs.take(5).toList();
+
     return Container(
       padding: const EdgeInsets.all(24.0),
       decoration: BoxDecoration(
@@ -89,7 +130,6 @@ class SelectedLabelFocusCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row styled like Label Analytics card
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -215,7 +255,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // Dropdowns for Label and Owner selection matching design patterns
+          // Dropdowns for Label and Owner selection
           Row(
             children: [
               Expanded(
@@ -271,51 +311,80 @@ class SelectedLabelFocusCard extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // Yellow Box area: Purple background removed, clean transparent wrapper with right indent for pink box
+          // Net balance & Yellow Box modifications ("View All Zaznams" centered above amount row)
           Padding(
-            padding: const EdgeInsets.only(left: 16.0),
+            padding: const EdgeInsets.only(left: 3.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Pink Box area: Net Balance Display Container
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF582F95), Color(0xFF7C3AED)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('NET BALANCE', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                      const SizedBox(height: 6),
-                      Text(
-                        '\$${net.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'NET BALANCE',
+                      style: TextStyle(
+                        color: Color(0xFF582F95),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '\$${net.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF582F95),
+                      ),
+                    ),
+                  ],
                 ),
-                // Blue Box area: Item count badge with font size equal to the net balance amount (22px)
                 Padding(
                   padding: const EdgeInsets.only(right: 8.0),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF582F95).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${filteredTxs.length} items',
-                      style: const TextStyle(
-                        color: Color(0xFF582F95),
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
+                  child: InkWell(
+                    onTap: () {
+                      if (onJumpToHistory != null) {
+                        onJumpToHistory!(selectedLabelId, selectedOwner, startDate, endDate);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Tooltip(
+                      message: 'View in All Zaznams',
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        color: Colors.transparent,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center, // Centered above the amount row
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Display below all',
+                              style: TextStyle(
+                                color: Color(0xFF582F95),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${filteredTxs.length} Zaznams',
+                                  style: const TextStyle(
+                                    color: Color(0xFF582F95),
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.arrow_forward_ios, size: 12, color: Color(0xFF582F95)),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -325,27 +394,96 @@ class SelectedLabelFocusCard extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // Red Box area: Inflow vs Outflow breakdown rows with font size 2 points larger (16px)
+          // Inflow vs Outflow breakdown rows (Fonts increased by 1: label 11, amount 17, subtext 11)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               Column(
                 children: [
-                  const Text('INFLOWS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                  const Text('INFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
                   const SizedBox(height: 4),
-                  Text('+\$${inflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
+                  Text('+\$${inflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
+                  const SizedBox(height: 2),
+                  Text('${inflowPercentage.toStringAsFixed(1)}% of total', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
                 ],
               ),
-              Container(height: 25, width: 1, color: const Color(0xFFE2E8F0)),
+              Container(height: 35, width: 1, color: const Color(0xFFE2E8F0)),
               Column(
                 children: [
-                  const Text('OUTFLOWS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                  const Text('OUTFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
                   const SizedBox(height: 4),
-                  Text('-\$${outflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFFDC2626))),
+                  Text('-\$${outflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFFDC2626))),
+                  const SizedBox(height: 2),
+                  Text('${outflowPercentage.toStringAsFixed(1)}% of total', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
                 ],
               ),
             ],
           ),
+          
+          if (recentTransactions.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            // Brown box: list items start right below the title
+            const Text(
+              'RECENT ACTIVITY',
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: recentTransactions.length,
+                separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                itemBuilder: (context, index) {
+                  final tx = recentTransactions[index];
+                  final txDate = DateTime.tryParse(tx.createdAt);
+                  final formattedTxDate = txDate != null ? DateFormat('MM/dd').format(txDate) : '';
+                  final isIncome = tx.type == 'income';
+                  
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Text(
+                                formattedTxDate,
+                                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  tx.description.isNotEmpty ? tx.description : 'No description',
+                                  style: const TextStyle(fontSize: 12, color: Color(0xFF334155), fontWeight: FontWeight.w500),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${isIncome ? '+' : '-'}\$${tx.amount.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: isIncome ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -50,6 +50,31 @@ class TransactionHistoryCard extends StatefulWidget {
 }
 
 class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
+  void _showDeleteConfirmation(BuildContext context, int transactionId) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Delete Transaction'),
+          content: const Text('Are you sure you want to delete this transaction?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                widget.onDeleteTransaction(transactionId);
+              },
+              child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -353,39 +378,44 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                             ],
                           ),
                           const SizedBox(width: 8),
-                          Wrap(
-                            spacing: 2,
-                            runSpacing: 4,
-                            alignment: WrapAlignment.end,
-                            crossAxisAlignment: WrapCrossAlignment.center,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              if (!isConfirmed)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.all(4),
+                                    icon: const Icon(Icons.edit, size: 16, color: Color(0xFF64748B)),
+                                    tooltip: 'Edit',
+                                    onPressed: () => widget.onEditTransaction(tx),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  IconButton(
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.all(4),
+                                    icon: const Icon(Icons.delete, size: 16, color: Color(0xFFDC2626)),
+                                    tooltip: 'Delete',
+                                    onPressed: () => _showDeleteConfirmation(context, tx.id!),
+                                  ),
+                                ],
+                              ),
+                              if (!isConfirmed) ...[
+                                const SizedBox(height: 4),
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFFD1FAE5),
                                     foregroundColor: const Color(0xFF047857),
                                     elevation: 0,
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     minimumSize: Size.zero,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                                   ),
                                   onPressed: () => widget.onConfirmTransaction(tx),
                                   child: const Text('Confirm', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                                 ),
-                              IconButton(
-                                constraints: const BoxConstraints(),
-                                padding: const EdgeInsets.all(4),
-                                icon: const Icon(Icons.edit, size: 16, color: Color(0xFF64748B)),
-                                tooltip: 'Edit',
-                                onPressed: () => widget.onEditTransaction(tx),
-                              ),
-                              IconButton(
-                                constraints: const BoxConstraints(),
-                                padding: const EdgeInsets.all(4),
-                                icon: const Icon(Icons.delete, size: 16, color: Color(0xFFDC2626)),
-                                tooltip: 'Delete',
-                                onPressed: () => widget.onDeleteTransaction(tx.id!),
-                              ),
+                              ],
                             ],
                           ),
                         ],
