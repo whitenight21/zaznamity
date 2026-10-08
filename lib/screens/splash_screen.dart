@@ -21,7 +21,7 @@ class _SplashScreenState extends State<SplashScreen> {
     await DatabaseHelper.instance.database;
 
     // Optional short delay for a smooth logo viewing experience
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 0));
 
     if (!mounted) return;
 

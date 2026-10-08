@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
@@ -203,7 +204,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setStateModal) => AlertDialog(
-          title: const Text('Generate PDF Report', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          title: const Text('Configure Zaznamity Report', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -266,25 +267,25 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 const SizedBox(height: 4),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Executive Summary Cards', style: TextStyle(fontSize: 13)),
+                  title: const Text('Summary Metrics and Assets', style: TextStyle(fontSize: 13)),
                   value: includeSummaryCards,
                   onChanged: (val) => setStateModal(() => includeSummaryCards = val ?? true),
                 ),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Category / Label Breakdown Chart', style: TextStyle(fontSize: 13)),
+                  title: const Text('Label Analytics and Charts', style: TextStyle(fontSize: 13)),
                   value: includeCategoryChart,
                   onChanged: (val) => setStateModal(() => includeCategoryChart = val ?? true),
                 ),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Owner Breakdown Stats', style: TextStyle(fontSize: 13)),
+                  title: const Text('Owner Breakdown', style: TextStyle(fontSize: 13)),
                   value: includeOwnerBreakdown,
                   onChanged: (val) => setStateModal(() => includeOwnerBreakdown = val ?? false),
                 ),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Detailed Transaction Ledger Table', style: TextStyle(fontSize: 13)),
+                  title: const Text('Detailed Zaznams Table', style: TextStyle(fontSize: 13)),
                   value: includeTransactionTable,
                   onChanged: (val) => setStateModal(() => includeTransactionTable = val ?? true),
                 ),
@@ -301,6 +302,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 try {
                   // Build Professional PDF Layout
                   final pdfDoc = pw.Document();
+                  final logoImage = pw.MemoryImage(
+                    (await rootBundle.load('assets/ZaznamityLogo_onlyZwhite.png'))
+                        .buffer
+                        .asUint8List(),
+                  );
                   
                   pdfDoc.addPage(
                     pw.MultiPage(
@@ -310,9 +316,19 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         return pw.Container(
                           alignment: pw.Alignment.centerRight,
                           margin: const pw.EdgeInsets.only(bottom: 16),
-                          child: pw.Text(
-                            'Zaznamity Financial Report',
-                            style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600, fontWeight: pw.FontWeight.bold),
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.end,
+                            children: [
+                              pw.SizedBox(height: 4),
+                              pw.Text(
+                                'Net Worth Statement',
+                                style: pw.TextStyle(
+                                  fontSize: 12,
+                                  color: PdfColors.grey600,
+                                  fontWeight: pw.FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       },
@@ -321,7 +337,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           alignment: pw.Alignment.center,
                           margin: const pw.EdgeInsets.only(top: 16),
                           child: pw.Text(
-                            'Page ${context.pageNumber} of ${context.pagesCount} — Secure Local-First Client Storage',
+                            'Page ${context.pageNumber} of ${context.pagesCount} — Secure Financial Ledger',
                             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey500),
                           ),
                         );
@@ -336,23 +352,38 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             ),
                             child: pw.Row(
                               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: pw.CrossAxisAlignment.center, // Align items vertically in the center
                               children: [
-                                pw.Column(
-                                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                // Left side: Row containing Logo and the Text Column side-by-side
+                                pw.Row(
+                                  crossAxisAlignment: pw.CrossAxisAlignment.center,
                                   children: [
-                                    pw.Text(
-                                      'ZAZNAMITY REPORT',
-                                      style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                                    pw.Image(
+                                      logoImage,
+                                      width: 60,
+                                      height: 60,
+                                      fit: pw.BoxFit.cover,
                                     ),
-                                    pw.SizedBox(height: 4),
-                                    pw.Text(
-                                      'Timeframe: ${selectedTimeframe.toUpperCase().replaceAll('_', ' ')}',
-                                      style: const pw.TextStyle(fontSize: 11, color: PdfColors.white),
+                                    pw.SizedBox(width: 12), // Adds spacing between the logo and text
+                                    pw.Column(
+                                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                      children: [
+                                        pw.Text(
+                                          ' ZAZNAMITY FINANCIAL REPORT',
+                                          style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                                        ),
+                                        pw.SizedBox(height: 4),
+                                        pw.Text(
+                                          'As of Date: ${selectedTimeframe.toUpperCase().replaceAll('_', ' ')}',
+                                          style: pw.TextStyle(fontSize: 12, color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
+                                // Right side: Date text
                                 pw.Text(
-                                  'Date: ${DateTime.now().toLocal().toString().split(' ')[0]}',
+                                  'Created: ${DateTime.now().toLocal().toString().split(' ')[0]}',
                                   style: const pw.TextStyle(fontSize: 10, color: PdfColors.white),
                                 ),
                               ],
@@ -361,7 +392,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           pw.SizedBox(height: 20),
 
                           if (includeSummaryCards) ...[
-                            pw.Text('1. Executive Summary', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
+                            pw.Text('1. Summary Metrics and Assets', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
                             pw.SizedBox(height: 8),
                             pw.Container(
                               padding: const pw.EdgeInsets.all(12),
@@ -378,7 +409,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           ],
 
                           if (includeCategoryChart) ...[
-                            pw.Text('2. Category / Label Breakdown', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
+                            pw.Text('2. Label Analytics and Charts', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
                             pw.SizedBox(height: 8),
                             pw.Container(
                               height: 60,
@@ -387,13 +418,13 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                 color: PdfColors.grey100,
                                 borderRadius: pw.BorderRadius.circular(6),
                               ),
-                              child: pw.Text('[Category Breakdown Chart Visualization Module]', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
+                              child: pw.Text('[Label Analytics and Charts Module]', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
                             ),
                             pw.SizedBox(height: 16),
                           ],
 
                           if (includeOwnerBreakdown) ...[
-                            pw.Text('3. Owner Breakdown Statistics', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
+                            pw.Text('3. Owner Breakdown', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
                             pw.SizedBox(height: 8),
                             pw.Container(
                               height: 60,
@@ -402,13 +433,13 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                 color: PdfColors.grey100,
                                 borderRadius: pw.BorderRadius.circular(6),
                               ),
-                              child: pw.Text('[Owner Statistics Module]', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
+                              child: pw.Text('[Owner Breakdown Module]', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
                             ),
                             pw.SizedBox(height: 16),
                           ],
 
                           if (includeTransactionTable) ...[
-                            pw.Text('4. Detailed Transaction Ledger', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
+                            pw.Text('4. Detailed Zaznams Table', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
                             pw.SizedBox(height: 8),
                             pw.Table(
                               border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
@@ -1194,7 +1225,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           ),
                           onPressed: _showReportConfigModal,
                           icon: const Icon(Icons.picture_as_pdf, size: 18),
-                          label: const Text('Configure & Generate Report', style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: const Text('Configure Report', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ],

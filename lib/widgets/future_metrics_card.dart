@@ -12,8 +12,7 @@ class FutureMetricsCard extends StatefulWidget {
   // Date filter parameters
   final DateTime? startDate;
   final DateTime? endDate;
-  final VoidCallback? onSelectStartDate;
-  final VoidCallback? onSelectEndDate;
+  final Function(DateTime?, DateTime?)? onDateRangeChanged;
   final VoidCallback onClearDateFilter;
 
   final bool isWide;
@@ -30,8 +29,7 @@ class FutureMetricsCard extends StatefulWidget {
     required this.totalPrognosis,
     this.startDate,
     this.endDate,
-    this.onSelectStartDate,
-    this.onSelectEndDate,
+    this.onDateRangeChanged,
     required this.onClearDateFilter,
     this.isWide = false,
     this.onToggleWidth,
@@ -66,13 +64,46 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     return format.format(amount);
   }
 
+  Future<void> _pickDateRange(BuildContext context) async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      initialDateRange: (widget.startDate != null && widget.endDate != null)
+          ? DateTimeRange(start: widget.startDate!, end: widget.endDate!)
+          : null,
+      builder: (context, child) {
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 70.0),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 1.0,
+                maxHeight: MediaQuery.of(context).size.height * 0.8,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: child!,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (picked != null && widget.onDateRangeChanged != null) {
+      widget.onDateRangeChanged!(picked.start, picked.end);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48; // accounting for 24 padding on each side
-        final double boxWidth = (fullWidth - 16) / 2;
+        final double fullWidth = availableWidth - 32;
+        final double boxWidth = (fullWidth - 12) / 2;
 
         double currentFutureFlow = _selectedOwner == 'All Owners'
             ? widget.totalFutureFlow
@@ -83,82 +114,55 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
             : (widget.prognosisByOwner[_selectedOwner] ?? 0.0);
 
         return Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // Top Row: Title & Action Buttons
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: const Text(
-                        'FUTURE METRICS',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 88, 47, 149),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
+                  const Text(
+                    'FUTURE METRICS',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color.fromARGB(255, 88, 47, 149),
+                      letterSpacing: 0.8,
                     ),
                   ),
-                  const SizedBox(width: 8),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _selectedOwner,
-                            isDense: true,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF582F95)),
-                            items: [
-                              const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
-                              ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
-                            ],
-                            onChanged: (val) {
-                              if (val != null) setState(() => _selectedOwner = val);
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
                       if (widget.onToggleWidth != null)
                         Padding(
-                          padding: const EdgeInsets.only(right: 6.0),
+                          padding: const EdgeInsets.only(right: 4.0),
                           child: SizedBox(
-                            height: 32,
-                            width: 32,
+                            height: 28,
+                            width: 28,
                             child: IconButton(
                               style: IconButton.styleFrom(
                                 backgroundColor: const Color(0xFFF1F5F9),
                                 foregroundColor: const Color(0xFF64748B),
                                 padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                               ),
                               onPressed: widget.onToggleWidth,
                               icon: Icon(
                                 widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                                size: 18,
+                                size: 16,
                               ),
                               tooltip: widget.isWide ? 'Narrow' : 'Wide',
                             ),
@@ -166,19 +170,19 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                         ),
                       if (widget.onHide != null)
                         SizedBox(
-                          height: 32,
-                          width: 32,
+                          height: 28,
+                          width: 28,
                           child: IconButton(
                             style: IconButton.styleFrom(
                               backgroundColor: const Color(0xFFF1F5F9),
                               foregroundColor: const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                             ),
                             onPressed: widget.onHide,
                             icon: const Icon(
                               Icons.visibility_off_outlined,
-                              size: 16,
+                              size: 14,
                             ),
                             tooltip: 'Hide',
                           ),
@@ -187,65 +191,103 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
-              // Date Selection Row
+              // Second Row: Owner Dropdown (Left / Blue Arrow) & Date Range Picker (Right / Pink Arrow)
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: widget.onSelectStartDate,
-                      borderRadius: BorderRadius.circular(10),
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: 'START DATE',
-                          labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        ),
-                        child: Text(
-                          widget.startDate != null ? DateFormat('MM/dd/yyyy').format(widget.startDate!) : 'All',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+                  // Owner Dropdown Box
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedOwner,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: [
+                                  const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
+                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _selectedOwner = val);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Date Range Picker Box
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => _pickDateRange(context),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    widget.startDate != null && widget.endDate != null
+                                        ? '${DateFormat('MM/dd').format(widget.startDate!)} - ${DateFormat('MM/dd').format(widget.endDate!)}'
+                                        : 'Select Date Range',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: (widget.startDate != null && widget.endDate != null)
+                                          ? const Color(0xFF1E293B)
+                                          : const Color(0xFF64748B),
+                                      fontWeight: (widget.startDate != null && widget.endDate != null)
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (widget.startDate != null || widget.endDate != null)
+                                  InkWell(
+                                    onTap: widget.onClearDateFilter,
+                                    child: const Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                  )
+                                else
+                                  const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: InkWell(
-                      onTap: widget.onSelectEndDate,
-                      borderRadius: BorderRadius.circular(10),
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: 'END DATE',
-                          labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        ),
-                        child: Text(
-                          widget.endDate != null ? DateFormat('MM/dd/yyyy').format(widget.endDate!) : 'All',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (widget.startDate != null || widget.endDate != null) ...[
-                    const SizedBox(width: 6),
-                    IconButton(
-                      icon: const Icon(Icons.clear, size: 18, color: Color(0xFF64748B)),
-                      onPressed: widget.onClearDateFilter,
-                      tooltip: 'Clear Filter',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
               // Metric Boxes Row
               Row(
@@ -292,20 +334,20 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
           Text(
             title,
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 9,
               fontWeight: FontWeight.w900,
               color: Colors.grey.shade600,
-              letterSpacing: 0.8,
+              letterSpacing: 0.6,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
               _formatCurrency(amount),
               style: TextStyle(
-                fontSize: 22,
+                fontSize: 18,
                 fontWeight: FontWeight.w900,
                 color: amountColor,
               ),

@@ -28,7 +28,6 @@ class BottomCardNavBar extends StatelessWidget {
       onToggleVisibility(cardConfig);
     }
     
-    // Double post-frame callback ensures the widget is fully built and rendered before scrolling
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final targetContext = key.currentContext;
@@ -46,14 +45,18 @@ class BottomCardNavBar extends StatelessWidget {
   Widget _buildNavItem(BuildContext context, String itemKey) {
     if (itemKey == 'manager') {
       return IconButton(
-        icon: const Icon(Icons.layers_outlined, color: Colors.white70, size: 22),
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        padding: EdgeInsets.zero,
+        icon: const Icon(Icons.layers_outlined, color: Colors.white70, size: 20),
         onPressed: onOpenManager,
         tooltip: 'Cards Stack Manager',
       );
     }
     if (itemKey == 'settings') {
       return IconButton(
-        icon: const Icon(Icons.settings_outlined, color: Colors.white70, size: 22),
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        padding: EdgeInsets.zero,
+        icon: const Icon(Icons.settings_outlined, color: Colors.white70, size: 20),
         onPressed: onOpenSettings,
         tooltip: 'Settings',
       );
@@ -111,7 +114,9 @@ class BottomCardNavBar extends StatelessWidget {
     }
 
     return IconButton(
-      icon: Icon(iconData, color: iconColor, size: 22),
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      padding: EdgeInsets.zero,
+      icon: Icon(iconData, color: iconColor, size: 20),
       onPressed: () => _scrollToCard(context, cardConfig.key, cardConfig.id),
       tooltip: tooltip,
     );
@@ -132,8 +137,8 @@ class BottomCardNavBar extends StatelessWidget {
     ];
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1333).withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(30),
@@ -146,49 +151,52 @@ class BottomCardNavBar extends StatelessWidget {
         ],
         border: Border.all(color: Colors.white10),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildNavItem(context, effectiveLeft[0]),
-          const SizedBox(width: 2),
-          _buildNavItem(context, effectiveLeft[1]),
-          const SizedBox(width: 2),
-          _buildNavItem(context, effectiveLeft[2]),
-          const SizedBox(width: 6),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildNavItem(context, effectiveLeft[0]),
+            const SizedBox(width: 4),
+            _buildNavItem(context, effectiveLeft[1]),
+            const SizedBox(width: 4),
+            _buildNavItem(context, effectiveLeft[2]),
+            const SizedBox(width: 6),
 
-          // Center Icon: Zaznamity Logo Button
-          GestureDetector(
-            onTap: onQuickAdd,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.4),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
+            // Center Icon: Zaznamity Logo Button
+            GestureDetector(
+              onTap: onQuickAdd,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/ZaznamityLogoFULL.jpg',
+                    fit: BoxFit.cover,
                   ),
-                ],
-              ),
-              child: ClipOval(
-                child: Image.asset(
-                  'assets/ZaznamityLogoFULL.jpg',
-                  fit: BoxFit.cover,
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 6),
+            const SizedBox(width: 6),
 
-          _buildNavItem(context, effectiveRight[0]),
-          const SizedBox(width: 2),
-          _buildNavItem(context, effectiveRight[1]),
-          const SizedBox(width: 2),
-          _buildNavItem(context, effectiveRight[2]),
-        ],
+            _buildNavItem(context, effectiveRight[0]),
+            const SizedBox(width: 4),
+            _buildNavItem(context, effectiveRight[1]),
+            const SizedBox(width: 4),
+            _buildNavItem(context, effectiveRight[2]),
+          ],
+        ),
       ),
     );
   }

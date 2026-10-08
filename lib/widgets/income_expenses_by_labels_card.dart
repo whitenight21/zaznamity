@@ -89,13 +89,13 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       if (tx.type == 'income') {
         if (!selectedIncomeLabels.contains(labelObj.id)) continue;
         totalIncome += tx.amount;
-        if (chartDisplayMode == 'Show Income') {
+        if (chartDisplayMode == 'Income') {
           labelTotals[labelObj.name] = (labelTotals[labelObj.name] ?? 0) + tx.amount;
         }
       } else {
         if (!selectedExpenseLabels.contains(labelObj.id)) continue;
         totalExpenses += tx.amount;
-        if (chartDisplayMode == 'Show Expenses') {
+        if (chartDisplayMode == 'Expenses') {
           labelTotals[labelObj.name] = (labelTotals[labelObj.name] ?? 0) + tx.amount;
         }
       }
@@ -354,7 +354,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('FILTER OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
                           initialValue: widget.selectedOwner,
@@ -386,7 +385,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('CHART DISPLAY MODE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         const SizedBox(height: 4),
                         DropdownButtonFormField<String>(
                           initialValue: chartDisplayMode,
@@ -676,7 +674,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('CHART VIEW', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   const SizedBox(height: 4),
                   Container(
                     height: 38,

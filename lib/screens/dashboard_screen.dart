@@ -21,6 +21,7 @@ import '../widgets/calendar_card.dart';
 import '../widgets/budget_progress_card.dart';
 import '../widgets/selected_label_focus_card.dart';
 import '../widgets/transaction_search_card.dart';
+import '../widgets/sankey_flow_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -86,6 +87,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _labelFocusStartDate;
   DateTime? _labelFocusEndDate;
 
+  // Sankey flow card specific state variables
+  DateTime? _sankeyStartDate;
+  DateTime? _sankeyEndDate;
+  String? _sankeySelectedOwner;
+
   List<String> _leftNavItems = ['metrics', 'budget'];
   List<String> _rightNavItems = ['history', 'settings'];
 
@@ -132,6 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     CardConfig(id: 'trend_chart', title: 'Liquid Trend', key: GlobalKey()),
     CardConfig(id: 'savings_chart', title: 'Savings Trend', key: GlobalKey()),
     CardConfig(id: 'calendar', title: 'Calendar', key: GlobalKey()),
+    CardConfig(id: 'sankey_flow', title: 'Sankey Flow', key: GlobalKey()),
     CardConfig(id: 'history', title: 'All Zaznams', key: GlobalKey()),
   ];
 
@@ -1134,33 +1141,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       totalPrognosis: _totalPrognosis,
                                       startDate: _futureMetricsStartDate,
                                       endDate: _futureMetricsEndDate,
-                                      onSelectStartDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _futureMetricsStartDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) {
-                                          setState(() {
-                                            _futureMetricsStartDate = picked;
-                                            calculateMetrics();
-                                          });
-                                        }
-                                      },
-                                      onSelectEndDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _futureMetricsEndDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) {
-                                          setState(() {
-                                            _futureMetricsEndDate = picked;
-                                            calculateMetrics();
-                                          });
-                                        }
+                                      onDateRangeChanged: (start, end) {
+                                        setState(() {
+                                          _futureMetricsStartDate = start;
+                                          _futureMetricsEndDate = end;
+                                          calculateMetrics();
+                                        });
                                       },
                                       onClearDateFilter: () {
                                         setState(() {
@@ -1326,6 +1312,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           _historyEndDate = selectedDate;
                                         });
                                       },
+                                    );
+                                    break;
+                                  case 'sankey_flow':
+                                    cardWidget = SankeyFlowCard(
+                                      transactions: _transactions,
+                                      labels: _labels,
+                                      owners: _owners,
+                                      selectedOwner: _sankeySelectedOwner ?? _globalSelectedOwner,
+                                      startDate: _sankeyStartDate,
+                                      endDate: _sankeyEndDate,
+                                      onSelectStartDate: () async {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: _sankeyStartDate ?? DateTime.now(),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                        );
+                                        if (picked != null) setState(() => _sankeyStartDate = picked);
+                                      },
+                                      onSelectEndDate: () async {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: _sankeyEndDate ?? DateTime.now(),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                        );
+                                        if (picked != null) setState(() => _sankeyEndDate = picked);
+                                      },
+                                      onOwnerChanged: (owner) => setState(() => _sankeySelectedOwner = owner),
+                                      onClearDateFilter: () => setState(() {
+                                        _sankeyStartDate = null;
+                                        _sankeyEndDate = null;
+                                      }),
+                                      isWide: card.isWide,
+                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+                                      onHide: () => setState(() => card.isVisible = false),
                                     );
                                     break;
                                   case 'income_expenses_labels':
