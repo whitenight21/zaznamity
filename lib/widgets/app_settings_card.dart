@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +12,7 @@ import 'package:zaznamity/models/label.dart';
 import 'package:zaznamity/services/notification_service.dart';
 import 'package:zaznamity/widgets/settings/owner_management_modal.dart';
 import 'package:zaznamity/widgets/settings/pool_management_modal.dart';
+import 'package:zaznamity/widgets/csv_import_mapper_dialog.dart';
 
 class AppSettingsCard extends StatefulWidget {
   final Map<String, bool> initialPools;
@@ -352,9 +355,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             ),
                             child: pw.Row(
                               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: pw.CrossAxisAlignment.center, // Align items vertically in the center
+                              crossAxisAlignment: pw.CrossAxisAlignment.center,
                               children: [
-                                // Left side: Row containing Logo and the Text Column side-by-side
                                 pw.Row(
                                   crossAxisAlignment: pw.CrossAxisAlignment.center,
                                   children: [
@@ -364,7 +366,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                       height: 60,
                                       fit: pw.BoxFit.cover,
                                     ),
-                                    pw.SizedBox(width: 12), // Adds spacing between the logo and text
+                                    pw.SizedBox(width: 12),
                                     pw.Column(
                                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                                       children: [
@@ -381,7 +383,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                     ),
                                   ],
                                 ),
-                                // Right side: Date text
                                 pw.Text(
                                   'Created: ${DateTime.now().toLocal().toString().split(' ')[0]}',
                                   style: const pw.TextStyle(fontSize: 10, color: PdfColors.white),
@@ -469,7 +470,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     ),
                   );
 
-                  // Format timeframe label (e.g. "10.2026" for this month)
                   final now = DateTime.now();
                   String timeCode = selectedTimeframe;
                   if (selectedTimeframe == 'this_month') {
@@ -483,7 +483,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
                   final fileName = 'ZaznamityReport_$timeCode.pdf';
 
-                  // Save directly to device's downloads folder or app documents folder
                   Directory? directory;
                   if (Platform.isAndroid) {
                     directory = Directory('/storage/emulated/0/Download');
@@ -1231,20 +1230,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     ],
                   ),
                   _buildSubSectionCard(
-                    title: 'Import CSV / Excel XLS',
-                    subtitle: 'Import your data with required matching columns',
+                    title: 'CSV Import Mapper',
+                    subtitle: 'Select, map, and import your custom CSV data',
                     children: [
                       const Text(
-                        'Configure your CSV or XLS file to include these 9 columns:\n'
-                        '1. ID\n'
-                        '2. Date (ISO timestamp)\n'
-                        '3. Description\n'
-                        '4. Amount\n'
-                        '5. Type (income/expense)\n'
-                        '6. Owner (must exist in the app)\n'
-                        '7. Pool (checking/cash/savings/loan)\n'
-                        '8. Label (must exist in the app)\n'
-                        '9. Confirmed (1 (yes) or 0 (no))',
+                        'Upload any bank or custom CSV file, match your columns dynamically to Zaznamity fields, and auto-detect future transactions.',
                         style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
                       ),
                       const SizedBox(height: 12),
@@ -1257,9 +1247,21 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
-                          onPressed: widget.onImportCsv,
-                          icon: const Icon(Icons.upload_file, size: 18),
-                          label: const Text('Select & Import CSV / XLS File', style: TextStyle(fontWeight: FontWeight.bold)),
+                          onPressed: () {
+                            CsvImportMapperWorkflow.runCsvImportWorkflow(
+                              context: context,
+                              labels: widget.labels,
+                              owners: _owners,
+                              pools: _pools.keys.toList(),
+                              onImportCompleted: () {
+                                if (widget.onImportCsv != null) {
+                                  widget.onImportCsv!();
+                                }
+                              },
+                            );
+                          },
+                          icon: const Icon(Icons.alt_route, size: 18),
+                          label: const Text('CSV Import Mapper', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ],

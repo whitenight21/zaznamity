@@ -102,13 +102,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'loan': false,
   };
 
-  final Map<String, bool> _countedPools = {
-    'checking': true,
-    'cash': true,
-    'savings': false,
-    'loan': false,
-  };
-
   Map<String, bool> _liquidNetPools = {
     'checking': true,
     'cash': true,
@@ -943,8 +936,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final formattedDate = DateFormat('EEEE, MMMM d, yyyy').format(DateTime.now()).toUpperCase();
-
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: _isLoading
@@ -954,74 +945,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text(
-                            formattedDate,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF64748B),
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              ClipOval(
-                                child: Image.asset(
-                                  'assets/ZaznamityLogoFULL.jpg',
-                                  width: 30,
-                                  height: 30,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              const Text(
-                                '  VIEW ZAZNAMITY OF :  ',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF582F95),
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              DropdownButton<String?>(
-                                value: _globalSelectedOwner,
-                                isDense: true,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF582F95),
-                                ),
-                                dropdownColor: Colors.white,
-                                items: [
-                                  const DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('All Owners'),
+                    SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ClipOval(
+                                  child: Image.asset(
+                                    'assets/ZaznamityLogoFULL.jpg',
+                                    width: 30,
+                                    height: 30,
+                                    fit: BoxFit.cover,
                                   ),
-                                  ..._owners.map(
-                                    (owner) => DropdownMenuItem<String?>(
-                                      value: owner,
-                                      child: Text(owner),
+                                ),
+                                const Text(
+                                  '  VIEW ZAZNAMITY OF :  ',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF582F95),
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                DropdownButton<String?>(
+                                  value: _globalSelectedOwner,
+                                  isDense: true,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF582F95),
+                                  ),
+                                  dropdownColor: Colors.white,
+                                  items: [
+                                    const DropdownMenuItem<String?>(
+                                      value: null,
+                                      child: Text('All Owners'),
                                     ),
-                                  ),
-                                ],
-                                onChanged: (val) {
-                                  setState(() {
-                                    _globalSelectedOwner = val;
-                                    calculateMetrics();
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
+                                    ..._owners.map(
+                                      (owner) => DropdownMenuItem<String?>(
+                                        value: owner,
+                                        child: Text(owner),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _globalSelectedOwner = val;
+                                      calculateMetrics();
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     Expanded(
@@ -1083,7 +1066,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       onAddLabel: (name) => _addLabel(name),
                                       onUpdateLabel: (id, name) => _updateLabel(id, name),
                                       onDeleteLabel: (id) => _deleteLabel(id),
-                                      onImportCsv: () => _importCsvFile(context),
+                                      onImportCsv: () => loadData(showLoading: false),
                                       onDeleteBulkTransactions: _deleteBulkTransactions,
                                       onBulkUpdateTransactionsLabel: _bulkUpdateTransactionsLabel,
                                       isWide: card.isWide,

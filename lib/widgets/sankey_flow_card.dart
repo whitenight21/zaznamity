@@ -138,7 +138,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
     final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
 
     int maxItems = sortedSources.length > sortedTargets.length ? sortedSources.length : sortedTargets.length;
-    double dynamicHeight = maxItems * 55.0 + 60.0;
+    // Generous vertical calculation ensuring plenty of room for all categories
+    double dynamicHeight = maxItems * 50.0 + 80.0;
     if (dynamicHeight < 300.0) dynamicHeight = 300.0;
 
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
@@ -436,7 +437,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
   }
 }
 
-// Custom Painter to draw curved Sankey ribbons and nodes
+// Custom Painter with 10px horizontal padding bounds and fully proportional vertical node layout
 class SankeyDiagramPainter extends CustomPainter {
   final List<MapEntry<String, double>> sources;
   final List<MapEntry<String, double>> targets;
@@ -459,32 +460,49 @@ class SankeyDiagramPainter extends CustomPainter {
     double totalTargetVal = targets.fold(0.0, (sum, e) => sum + e.value);
     if (totalSourceVal <= 0 || totalTargetVal <= 0) return;
 
-    double nodeWidth = 5.0;
+    double nodeWidth = 4.0;
+    // Horizontal padding kept at 10px on both edges
     double leftX = 10.0;
-    double rightX = size.width - 20.0;
+    double rightX = size.width - 10.0;
 
-    // Compute Source Node Layout Positions
-    Map<String, Rect> sourceRects = {};
-    double currentY = 10.0;
     double usableHeight = size.height - 20.0;
 
-    for (var src in sources) {
-      double nodeHeight = (src.value / totalSourceVal) * (usableHeight - (sources.length * 8));
-      if (nodeHeight < 24.0) nodeHeight = 24.0;
-
-      sourceRects[src.key] = Rect.fromLTWH(leftX, currentY, nodeWidth, nodeHeight);
-      currentY += nodeHeight + 8.0;
+    // --- Dynamic Source Node Positioning ---
+    Map<String, Rect> sourceRects = {};
+    int srcCount = sources.length;
+    double sourceGap = srcCount > 1 ? (usableHeight * 0.04 / (srcCount - 1)).clamp(2.0, 6.0) : 0.0;
+    double totalSourceGaps = (srcCount > 1) ? (srcCount - 1) * sourceGap : 0.0;
+    double availableSourceHeightForNodes = usableHeight - totalSourceGaps;
+    if (availableSourceHeightForNodes < srcCount * 12.0) {
+      availableSourceHeightForNodes = srcCount * 12.0;
     }
 
-    // Compute Target Node Layout Positions
-    Map<String, Rect> targetRects = {};
-    currentY = 10.0;
-    for (var tgt in targets) {
-      double nodeHeight = (tgt.value / totalTargetVal) * (usableHeight - (targets.length * 8));
-      if (nodeHeight < 20.0) nodeHeight = 20.0;
+    double currentSourceY = 10.0;
+    for (var src in sources) {
+      double nodeHeight = (src.value / totalSourceVal) * availableSourceHeightForNodes;
+      if (nodeHeight < 12.0) nodeHeight = 12.0;
 
-      targetRects[tgt.key] = Rect.fromLTWH(rightX, currentY, nodeWidth, nodeHeight);
-      currentY += nodeHeight + 8.0;
+      sourceRects[src.key] = Rect.fromLTWH(leftX, currentSourceY, nodeWidth, nodeHeight);
+      currentSourceY += nodeHeight + sourceGap;
+    }
+
+    // --- Dynamic Target Node Positioning ---
+    Map<String, Rect> targetRects = {};
+    int tgtCount = targets.length;
+    double targetGap = tgtCount > 1 ? (usableHeight * 0.04 / (tgtCount - 1)).clamp(2.0, 6.0) : 0.0;
+    double totalTargetGaps = (tgtCount > 1) ? (tgtCount - 1) * targetGap : 0.0;
+    double availableTargetHeightForNodes = usableHeight - totalTargetGaps;
+    if (availableTargetHeightForNodes < tgtCount * 12.0) {
+      availableTargetHeightForNodes = tgtCount * 12.0;
+    }
+
+    double currentTargetY = 10.0;
+    for (var tgt in targets) {
+      double nodeHeight = (tgt.value / totalTargetVal) * availableTargetHeightForNodes;
+      if (nodeHeight < 12.0) nodeHeight = 12.0;
+
+      targetRects[tgt.key] = Rect.fromLTWH(rightX, currentTargetY, nodeWidth, nodeHeight);
+      currentTargetY += nodeHeight + targetGap;
     }
 
     Map<String, double> sourceOffsets = {};
@@ -544,7 +562,7 @@ class SankeyDiagramPainter extends CustomPainter {
       colorIndex++;
     }
 
-    // Draw Source Nodes (Left)
+    // Draw Source Nodes (Left) & Labels inside to the right of the node
     paintNode.color = const Color(0xFF582F95);
     for (var entry in sourceRects.entries) {
       canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
@@ -552,15 +570,16 @@ class SankeyDiagramPainter extends CustomPainter {
       TextPainter tp = TextPainter(
         text: TextSpan(
           text: '${entry.key}\n${currencyFormat.format(sources.firstWhere((s) => s.key == entry.key).value)}',
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
         ),
         textDirection: ui.TextDirection.ltr,
+        textAlign: TextAlign.left,
       );
       tp.layout();
-      tp.paint(canvas, Offset(entry.value.right + 6, entry.value.top + (entry.value.height / 2) - 12));
+      tp.paint(canvas, Offset(entry.value.right + 6, entry.value.top + (entry.value.height / 2) - 10));
     }
 
-    // Draw Target Nodes (Right)
+    // Draw Target Nodes (Right) & Labels inside to the left of the node
     paintNode.color = const Color.fromARGB(255, 62, 0, 103);
     for (var entry in targetRects.entries) {
       canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
@@ -568,12 +587,13 @@ class SankeyDiagramPainter extends CustomPainter {
       TextPainter tp = TextPainter(
         text: TextSpan(
           text: '${entry.key}\n${currencyFormat.format(targets.firstWhere((t) => t.key == entry.key).value)}',
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
         ),
         textDirection: ui.TextDirection.ltr,
+        textAlign: TextAlign.right,
       );
       tp.layout();
-      tp.paint(canvas, Offset(entry.value.left - tp.width - 6, entry.value.top + (entry.value.height / 2) - 12));
+      tp.paint(canvas, Offset(entry.value.left - tp.width - 6, entry.value.top + (entry.value.height / 2) - 10));
     }
   }
 
