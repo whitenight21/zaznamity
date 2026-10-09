@@ -113,6 +113,8 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
             ? widget.totalPrognosis
             : (widget.prognosisByOwner[_selectedOwner] ?? 0.0);
 
+        final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
+
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -193,7 +195,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Second Row: Owner Dropdown (Left / Blue Arrow) & Date Range Picker (Right / Pink Arrow)
+              // Second Row: Owner Dropdown (Left) & Date Range Picker (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -233,56 +235,85 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       ),
                     ),
                   ),
-                  // Date Range Picker Box
+                  // Date Range Picker Box with Separate Clear Button
                   SizedBox(
                     width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () => _pickDateRange(context),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    widget.startDate != null && widget.endDate != null
-                                        ? '${DateFormat('MM/dd').format(widget.startDate!)} - ${DateFormat('MM/dd').format(widget.endDate!)}'
-                                        : 'Select Date Range',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: (widget.startDate != null && widget.endDate != null)
-                                          ? const Color(0xFF1E293B)
-                                          : const Color(0xFF64748B),
-                                      fontWeight: (widget.startDate != null && widget.endDate != null)
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.horizontal(
+                                left: const Radius.circular(10),
+                                right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                              ),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () => _pickDateRange(context),
+                                borderRadius: BorderRadius.horizontal(
+                                  left: const Radius.circular(10),
+                                  right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          hasDateFilter
+                                              ? '${DateFormat('MM/dd').format(widget.startDate!)} - ${DateFormat('MM/dd').format(widget.endDate!)}'
+                                              : 'Select Date Range',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: hasDateFilter
+                                                ? const Color(0xFF1E293B)
+                                                : const Color(0xFF64748B),
+                                            fontWeight: hasDateFilter
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (!hasDateFilter)
+                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                    ],
                                   ),
                                 ),
-                                if (widget.startDate != null || widget.endDate != null)
-                                  InkWell(
-                                    onTap: widget.onClearDateFilter,
-                                    child: const Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
-                                  )
-                                else
-                                  const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
-                              ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                        if (hasDateFilter) ...[
+                          const SizedBox(width: 1),
+                          Container(
+                            height: 44,
+                            width: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE2E8F0),
+                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: widget.onClearDateFilter,
+                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                child: const Center(
+                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ],

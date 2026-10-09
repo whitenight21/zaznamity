@@ -114,212 +114,320 @@ class SelectedLabelFocusCard extends StatelessWidget {
       });
     final recentTransactions = sortedFilteredTxs.take(5).toList();
 
-    return Container(
-      padding: const EdgeInsets.all(24.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: const Text(
-                    'SINGLE-LABEL ANALYSIS',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color.fromARGB(255, 88, 47, 149),
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
+    final bool hasDateFilter = startDate != null || endDate != null;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final double fullWidth = availableWidth - 48; // 24 padding on each side
+        final double boxWidth = (fullWidth - 12) / 2;
+
+        return Container(
+          padding: const EdgeInsets.all(24.0),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20.0),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
-              const SizedBox(width: 8),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6.0),
-                    child: SizedBox(
-                      height: 32,
-                      width: 32,
-                      child: IconButton(
-                        style: IconButton.styleFrom(
-                          backgroundColor: const Color(0xFFF1F5F9),
-                          foregroundColor: const Color(0xFF64748B),
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: const Text(
+                        'SINGLE-LABEL ANALYSIS',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color.fromARGB(255, 88, 47, 149),
+                          letterSpacing: 0.8,
                         ),
-                        onPressed: onToggleWidth,
-                        icon: Icon(
-                          isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                          size: 18,
-                        ),
-                        tooltip: isWide ? 'Narrow' : 'Wide',
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6.0),
+                        child: SizedBox(
+                          height: 32,
+                          width: 32,
+                          child: IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: const Color(0xFFF1F5F9),
+                              foregroundColor: const Color(0xFF64748B),
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: onToggleWidth,
+                            icon: Icon(
+                              isWide ? Icons.fullscreen_exit : Icons.fullscreen,
+                              size: 18,
+                            ),
+                            tooltip: isWide ? 'Narrow' : 'Wide',
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: 32,
+                        width: 32,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFFF1F5F9),
+                            foregroundColor: const Color(0xFF64748B),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: onHide,
+                          icon: const Icon(
+                            Icons.visibility_off_outlined,
+                            size: 16,
+                          ),
+                          tooltip: 'Hide',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // First Row: Owner Dropdown (Left) & Date Range Picker with Separate Clear Button (Right)[cite: 29]
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Owner Dropdown Box
                   SizedBox(
-                    height: 32,
-                    width: 32,
-                    child: IconButton(
-                      style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        foregroundColor: const Color(0xFF64748B),
-                        padding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
                       ),
-                      onPressed: onHide,
-                      icon: const Icon(
-                        Icons.visibility_off_outlined,
-                        size: 16,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String?>(
+                                value: selectedOwner,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                items: [
+                                  const DropdownMenuItem<String?>(value: null, child: Text('All Owners')),
+                                  ...owners.map((o) => DropdownMenuItem<String?>(value: o, child: Text(o))),
+                                ],
+                                onChanged: onOwnerChanged,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      tooltip: 'Hide',
+                    ),
+                  ),
+                  // Date Range Picker Box with Separate Clear Button
+                  SizedBox(
+                    width: boxWidth,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.horizontal(
+                                left: const Radius.circular(10),
+                                right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                              ),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: onSelectStartDate,
+                                borderRadius: BorderRadius.horizontal(
+                                  left: const Radius.circular(10),
+                                  right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          startDate != null && endDate != null
+                                              ? '${DateFormat('MM/dd').format(startDate!)} - ${DateFormat('MM/dd').format(endDate!)}'
+                                              : startDate != null
+                                                  ? DateFormat('MM/dd').format(startDate!)
+                                                  : 'Select Date Range',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: hasDateFilter
+                                                ? const Color(0xFF1E293B)
+                                                : const Color(0xFF64748B),
+                                            fontWeight: hasDateFilter
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (!hasDateFilter)
+                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (hasDateFilter) ...[
+                          const SizedBox(width: 1),
+                          Container(
+                            height: 44,
+                            width: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE2E8F0),
+                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: onClearDateFilter,
+                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                child: const Center(
+                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ],
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-          // Date Selection Row
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: onSelectStartDate,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'START DATE',
-                      labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                    ),
-                    child: Text(
-                      startDate != null ? DateFormat('MM/dd/yyyy').format(startDate!) : 'All',
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+              // Second Row: Label Picker (Left) & Zaznams Jump Widget (Right)[cite: 31]
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<int?>(
+                                value: selectedLabelId,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                hint: const Text('All Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                items: [
+                                  const DropdownMenuItem<int?>(value: null, child: Text('All Labels')),
+                                  ...labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))),
+                                ],
+                                onChanged: onLabelChanged,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: InkWell(
-                  onTap: onSelectEndDate,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'END DATE',
-                      labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                    ),
-                    child: Text(
-                      endDate != null ? DateFormat('MM/dd/yyyy').format(endDate!) : 'All',
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+                  SizedBox(
+                    width: boxWidth,
+                    child: InkWell(
+                      onTap: () {
+                        if (onJumpToHistory != null) {
+                          onJumpToHistory!(selectedLabelId, selectedOwner, startDate, endDate);
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            const Text(
+                              'Display below all',
+                              style: TextStyle(
+                                color: Color(0xFF582F95),
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 1),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${filteredTxs.length} Zaznams',
+                                  style: const TextStyle(
+                                    color: Color(0xFF582F95),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                const Icon(Icons.arrow_forward_ios, size: 10, color: Color(0xFF582F95)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-              if (startDate != null || endDate != null) ...[
-                const SizedBox(width: 6),
-                IconButton(
-                  icon: const Icon(Icons.clear, size: 18, color: Color(0xFF64748B)),
-                  onPressed: onClearDateFilter,
-                  tooltip: 'Clear Filter',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
-          // Dropdowns for Label and Owner selection
-          Row(
-            children: [
-              Expanded(
+              // Third Row: Net Balance (Center Aligned)[cite: 31]
+              Center(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('LABEL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                    const SizedBox(height: 4),
-                    DropdownButtonFormField<int?>(
-                      initialValue: selectedLabelId,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      ),
-                      items: [
-                        const DropdownMenuItem<int?>(value: null, child: Text('All Labels', style: TextStyle(fontSize: 12))),
-                        ...labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name, style: const TextStyle(fontSize: 12)))),
-                      ],
-                      onChanged: onLabelChanged,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                    const SizedBox(height: 4),
-                    DropdownButtonFormField<String?>(
-                      initialValue: selectedOwner,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      ),
-                      items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('All Owners', style: TextStyle(fontSize: 12))),
-                        ...owners.map((o) => DropdownMenuItem<String?>(value: o, child: Text(o, style: const TextStyle(fontSize: 12)))),
-                      ],
-                      onChanged: onOwnerChanged,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Net balance & Yellow Box modifications ("View All Zaznams" centered above amount row)
-          Padding(
-            padding: const EdgeInsets.only(left: 3.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     const Text(
                       'NET BALANCE',
@@ -341,151 +449,102 @@ class SelectedLabelFocusCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: InkWell(
-                    onTap: () {
-                      if (onJumpToHistory != null) {
-                        onJumpToHistory!(selectedLabelId, selectedOwner, startDate, endDate);
-                      }
-                    },
+              ),
+              const SizedBox(height: 20),
+
+              // Inflow vs Outflow breakdown rows
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  Column(
+                    children: [
+                      const Text('INFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                      const SizedBox(height: 4),
+                      Text('+\$${inflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
+                      const SizedBox(height: 2),
+                      Text('${inflowPercentage.toStringAsFixed(1)}% of total', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                    ],
+                  ),
+                  Container(height: 35, width: 1, color: const Color(0xFFE2E8F0)),
+                  Column(
+                    children: [
+                      const Text('OUTFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                      const SizedBox(height: 4),
+                      Text('-\$${outflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFFDC2626))),
+                      const SizedBox(height: 2),
+                      Text('${outflowPercentage.toStringAsFixed(1)}% of total', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                    ],
+                  ),
+                ],
+              ),
+              
+              if (recentTransactions.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                const Text(
+                  'RECENT ACTIVITY',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(12),
-                    child: Tooltip(
-                      message: 'View in All Zaznams',
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                        color: Colors.transparent,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.center, // Centered above the amount row
-                          mainAxisSize: MainAxisSize.min,
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: recentTransactions.length,
+                    separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                    itemBuilder: (context, index) {
+                      final tx = recentTransactions[index];
+                      final txDate = DateTime.tryParse(tx.createdAt);
+                      final formattedTxDate = txDate != null ? DateFormat('MM/dd').format(txDate) : '';
+                      final isIncome = tx.type == 'income';
+                      
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              'Display below all',
-                              style: TextStyle(
-                                color: Color(0xFF582F95),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Text(
+                                    formattedTxDate,
+                                    style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      tx.description.isNotEmpty ? tx.description : 'No description',
+                                      style: const TextStyle(fontSize: 12, color: Color(0xFF334155), fontWeight: FontWeight.w500),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 2),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '${filteredTxs.length} Zaznams',
-                                  style: const TextStyle(
-                                    color: Color(0xFF582F95),
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.arrow_forward_ios, size: 12, color: Color(0xFF582F95)),
-                              ],
+                            const SizedBox(width: 8),
+                            Text(
+                              '${isIncome ? '+' : '-'}\$${tx.amount.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isIncome ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 ),
               ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Inflow vs Outflow breakdown rows (Fonts increased by 1: label 11, amount 17, subtext 11)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              Column(
-                children: [
-                  const Text('INFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
-                  const SizedBox(height: 4),
-                  Text('+\$${inflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
-                  const SizedBox(height: 2),
-                  Text('${inflowPercentage.toStringAsFixed(1)}% of total', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                ],
-              ),
-              Container(height: 35, width: 1, color: const Color(0xFFE2E8F0)),
-              Column(
-                children: [
-                  const Text('OUTFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
-                  const SizedBox(height: 4),
-                  Text('-\$${outflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFFDC2626))),
-                  const SizedBox(height: 2),
-                  Text('${outflowPercentage.toStringAsFixed(1)}% of total', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                ],
-              ),
             ],
           ),
-          
-          if (recentTransactions.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            // Brown box: list items start right below the title
-            const Text(
-              'RECENT ACTIVITY',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
-            ),
-            const SizedBox(height: 4),
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: recentTransactions.length,
-                separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                itemBuilder: (context, index) {
-                  final tx = recentTransactions[index];
-                  final txDate = DateTime.tryParse(tx.createdAt);
-                  final formattedTxDate = txDate != null ? DateFormat('MM/dd').format(txDate) : '';
-                  final isIncome = tx.type == 'income';
-                  
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Text(
-                                formattedTxDate,
-                                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  tx.description.isNotEmpty ? tx.description : 'No description',
-                                  style: const TextStyle(fontSize: 12, color: Color(0xFF334155), fontWeight: FontWeight.w500),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${isIncome ? '+' : '-'}\$${tx.amount.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: isIncome ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
 }

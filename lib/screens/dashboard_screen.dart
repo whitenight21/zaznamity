@@ -902,6 +902,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // Helper method for unified Date Range Picker matching FutureMetricsCard style
+  Future<void> _pickDateRange(
+    BuildContext context,
+    DateTime? currentStart,
+    DateTime? currentEnd,
+    Function(DateTime?, DateTime?) onRangeSelected,
+  ) async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      initialDateRange: (currentStart != null && currentEnd != null)
+          ? DateTimeRange(start: currentStart, end: currentEnd)
+          : null,
+      builder: (context, child) {
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 70.0),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 1.0,
+                maxHeight: MediaQuery.of(context).size.height * 0.8,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: child!,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (picked != null) {
+      onRangeSelected(picked.start, picked.end);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final formattedDate = DateFormat('EEEE, MMMM d, yyyy').format(DateTime.now()).toUpperCase();
@@ -1077,24 +1116,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       selectedLabelId: _labelFocusSelectedLabelId,
                                       onLabelChanged: (val) => setState(() => _labelFocusSelectedLabelId = val),
                                       onOwnerChanged: (val) => setState(() => _labelFocusSelectedOwner = val),
-                                      onSelectStartDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _labelFocusStartDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _labelFocusStartDate = picked);
-                                      },
-                                      onSelectEndDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _labelFocusEndDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _labelFocusEndDate = picked);
-                                      },
+                                      onSelectStartDate: () => _pickDateRange(
+                                        context,
+                                        _labelFocusStartDate,
+                                        _labelFocusEndDate,
+                                        (start, end) => setState(() {
+                                          _labelFocusStartDate = start;
+                                          _labelFocusEndDate = end;
+                                        }),
+                                      ),
+                                      onSelectEndDate: () => _pickDateRange(
+                                        context,
+                                        _labelFocusStartDate,
+                                        _labelFocusEndDate,
+                                        (start, end) => setState(() {
+                                          _labelFocusStartDate = start;
+                                          _labelFocusEndDate = end;
+                                        }),
+                                      ),
                                       onClearDateFilter: () => setState(() {
                                         _labelFocusStartDate = null;
                                         _labelFocusEndDate = null;
@@ -1233,24 +1272,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       onOwnerChanged: (owner) => setState(() => _trendSelectedOwner = owner),
                                       startDate: _trendStartDate,
                                       endDate: _trendEndDate,
-                                      onSelectStartDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _trendStartDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _trendStartDate = picked);
-                                      },
-                                      onSelectEndDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _trendEndDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _trendEndDate = picked);
-                                      },
+                                      onSelectStartDate: () => _pickDateRange(
+                                        context,
+                                        _trendStartDate,
+                                        _trendEndDate,
+                                        (start, end) => setState(() {
+                                          _trendStartDate = start;
+                                          _trendEndDate = end;
+                                        }),
+                                      ),
+                                      onSelectEndDate: () => _pickDateRange(
+                                        context,
+                                        _trendStartDate,
+                                        _trendEndDate,
+                                        (start, end) => setState(() {
+                                          _trendStartDate = start;
+                                          _trendEndDate = end;
+                                        }),
+                                      ),
                                       onClearDateFilter: () => setState(() {
                                         _trendStartDate = null;
                                         _trendEndDate = null;
@@ -1269,24 +1308,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       onOwnerChanged: (owner) => setState(() => _savingsChartSelectedOwner = owner),
                                       startDate: _savingsChartStartDate,
                                       endDate: _savingsChartEndDate,
-                                      onSelectStartDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _savingsChartStartDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _savingsChartStartDate = picked);
-                                      },
-                                      onSelectEndDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _savingsChartEndDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _savingsChartEndDate = picked);
-                                      },
+                                      onSelectStartDate: () => _pickDateRange(
+                                        context,
+                                        _savingsChartStartDate,
+                                        _savingsChartEndDate,
+                                        (start, end) => setState(() {
+                                          _savingsChartStartDate = start;
+                                          _savingsChartEndDate = end;
+                                        }),
+                                      ),
+                                      onSelectEndDate: () => _pickDateRange(
+                                        context,
+                                        _savingsChartStartDate,
+                                        _savingsChartEndDate,
+                                        (start, end) => setState(() {
+                                          _savingsChartStartDate = start;
+                                          _savingsChartEndDate = end;
+                                        }),
+                                      ),
                                       onClearDateFilter: () => setState(() {
                                         _savingsChartStartDate = null;
                                         _savingsChartEndDate = null;
@@ -1322,24 +1361,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       selectedOwner: _sankeySelectedOwner ?? _globalSelectedOwner,
                                       startDate: _sankeyStartDate,
                                       endDate: _sankeyEndDate,
-                                      onSelectStartDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _sankeyStartDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _sankeyStartDate = picked);
-                                      },
-                                      onSelectEndDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _sankeyEndDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _sankeyEndDate = picked);
-                                      },
+                                      onDateRangeChanged: (start, end) => setState(() {
+                                        _sankeyStartDate = start;
+                                        _sankeyEndDate = end;
+                                      }),
                                       onOwnerChanged: (owner) => setState(() => _sankeySelectedOwner = owner),
                                       onClearDateFilter: () => setState(() {
                                         _sankeyStartDate = null;
@@ -1358,24 +1383,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       startDate: _labelsCardStartDate,
                                       endDate: _labelsCardEndDate,
                                       selectedOwner: _labelsCardSelectedOwner ?? _globalSelectedOwner,
-                                      onSelectStartDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _labelsCardStartDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _labelsCardStartDate = picked);
-                                      },
-                                      onSelectEndDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _labelsCardEndDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _labelsCardEndDate = picked);
-                                      },
+                                      onSelectStartDate: () => _pickDateRange(
+                                        context,
+                                        _labelsCardStartDate,
+                                        _labelsCardEndDate,
+                                        (start, end) => setState(() {
+                                          _labelsCardStartDate = start;
+                                          _labelsCardEndDate = end;
+                                        }),
+                                      ),
+                                      onSelectEndDate: () => _pickDateRange(
+                                        context,
+                                        _labelsCardStartDate,
+                                        _labelsCardEndDate,
+                                        (start, end) => setState(() {
+                                          _labelsCardStartDate = start;
+                                          _labelsCardEndDate = end;
+                                        }),
+                                      ),
                                       onOwnerChanged: (owner) => setState(() => _labelsCardSelectedOwner = owner),
                                       onClearDateFilter: () => setState(() {
                                         _labelsCardStartDate = null;
@@ -1414,24 +1439,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       endDate: _historyEndDate,
                                       selectedLabelId: _historySelectedLabelId,
                                       selectedOwner: effectiveHistoryOwner,
-                                      onSelectStartDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _historyStartDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _historyStartDate = picked);
-                                      },
-                                      onSelectEndDate: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _historyEndDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (picked != null) setState(() => _historyEndDate = picked);
-                                      },
+                                      onSelectStartDate: () => _pickDateRange(
+                                        context,
+                                        _historyStartDate,
+                                        _historyEndDate,
+                                        (start, end) => setState(() {
+                                          _historyStartDate = start;
+                                          _historyEndDate = end;
+                                        }),
+                                      ),
+                                      onSelectEndDate: () => _pickDateRange(
+                                        context,
+                                        _historyStartDate,
+                                        _historyEndDate,
+                                        (start, end) => setState(() {
+                                          _historyStartDate = start;
+                                          _historyEndDate = end;
+                                        }),
+                                      ),
                                       onLabelChanged: (labelId) => setState(() => _historySelectedLabelId = labelId),
                                       onOwnerChanged: (owner) => setState(() => _historySelectedOwner = owner),
                                       onClearDateFilter: () => setState(() {

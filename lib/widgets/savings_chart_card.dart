@@ -47,7 +47,6 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
 
   @override
   Widget build(BuildContext context) {
-    // Find the label ID for 'savings' case-insensitively
     int? savingsLabelId;
     for (var label in widget.labels) {
       if (label.name.toLowerCase() == 'savings') {
@@ -56,7 +55,6 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
       }
     }
 
-    // Filter transactions: must belong to savings pool AND have the savings label
     final filteredTx = widget.transactions.where((tx) {
       if (tx.pool.toLowerCase() != 'savings') return false;
       if (savingsLabelId != null && tx.labelId != savingsLabelId) return false;
@@ -113,7 +111,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
       if (isFuture) {
         targetColor = const Color.fromARGB(255, 147, 51, 234);
       } else {
-        targetColor = t.type == 'income' ? Color(0xFFFF7F27) : const Color.fromARGB(255, 152, 3, 1);
+        targetColor = t.type == 'income' ? const Color(0xFFFF7F27) : const Color.fromARGB(255, 152, 3, 1);
       }
       bool targetDashed = isFuture;
 
@@ -133,7 +131,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
             LineChartBarData(
               spots: List.from(currentSegmentSpots),
               isCurved: false,
-              color: currentSegmentColor ?? Color(0xFFFF7F27),
+              color: currentSegmentColor ?? const Color(0xFFFF7F27),
               barWidth: 3,
               isStrokeCapRound: true,
               dotData: const FlDotData(show: false),
@@ -255,8 +253,14 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
     final double yPadding = yRange == 0 ? 50 : yRange * 0.15;
     maxY += yPadding;
 
+    final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
+
     return LayoutBuilder(
       builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final double fullWidth = availableWidth - 48; // accounting for 24 padding on each side
+        final double boxWidth = (fullWidth - 12) / 2;
+
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
@@ -295,30 +299,6 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: widget.selectedOwner ?? 'All Owners',
-                            isDense: true,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF582F95)),
-                            items: [
-                              const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
-                              ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
-                            ],
-                            onChanged: (val) {
-                              if (val != null) {
-                                widget.onOwnerChanged?.call(val == 'All Owners' ? null : val);
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
                       Padding(
                         padding: const EdgeInsets.only(right: 6.0),
                         child: SizedBox(
@@ -363,62 +343,136 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                 ],
               ),
               const SizedBox(height: 16),
+
+              // Second Row: Owner Dropdown (Left) & Date Range Picker (Right)
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: widget.onSelectStartDate,
-                      borderRadius: BorderRadius.circular(10),
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: 'START DATE',
-                          labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        ),
-                        child: Text(
-                          widget.startDate != null ? DateFormat('MM/dd/yyyy').format(widget.startDate!) : 'All',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
-                        ),
+                  // Owner Dropdown Box
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: widget.selectedOwner ?? 'All Owners',
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: [
+                                  const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
+                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    widget.onOwnerChanged?.call(val == 'All Owners' ? null : val);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: InkWell(
-                      onTap: widget.onSelectEndDate,
-                      borderRadius: BorderRadius.circular(10),
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: 'END DATE',
-                          labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  // Date Range Picker Box with Separate Clear Button
+                  SizedBox(
+                    width: boxWidth,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.horizontal(
+                                left: const Radius.circular(10),
+                                right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                              ),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: widget.onSelectStartDate,
+                                borderRadius: BorderRadius.horizontal(
+                                  left: const Radius.circular(10),
+                                  right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          widget.startDate != null && widget.endDate != null
+                                              ? '${DateFormat('MM/dd').format(widget.startDate!)} - ${DateFormat('MM/dd').format(widget.endDate!)}'
+                                              : widget.startDate != null
+                                                  ? DateFormat('MM/dd').format(widget.startDate!)
+                                                  : 'Select Date Range',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: hasDateFilter
+                                                ? const Color(0xFF1E293B)
+                                                : const Color(0xFF64748B),
+                                            fontWeight: hasDateFilter
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (!hasDateFilter)
+                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                        child: Text(
-                          widget.endDate != null ? DateFormat('MM/dd/yyyy').format(widget.endDate!) : 'All',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
-                        ),
-                      ),
+                        if (hasDateFilter) ...[
+                          const SizedBox(width: 1),
+                          Container(
+                            height: 44,
+                            width: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE2E8F0),
+                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: widget.onClearDateFilter,
+                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                child: const Center(
+                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  if (widget.startDate != null || widget.endDate != null) ...[
-                    const SizedBox(width: 6),
-                    IconButton(
-                      icon: const Icon(Icons.clear, size: 18, color: Color(0xFF64748B)),
-                      onPressed: widget.onClearDateFilter,
-                      tooltip: 'Clear Filter',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
                 ],
               ),
               const SizedBox(height: 12),
+
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(

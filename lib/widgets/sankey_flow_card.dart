@@ -11,8 +11,7 @@ class SankeyFlowCard extends StatefulWidget {
   final String? selectedOwner;
   final DateTime? startDate;
   final DateTime? endDate;
-  final VoidCallback onSelectStartDate;
-  final VoidCallback onSelectEndDate;
+  final Function(DateTime?, DateTime?)? onDateRangeChanged;
   final ValueChanged<String?> onOwnerChanged;
   final VoidCallback onClearDateFilter;
   final VoidCallback? onHide;
@@ -27,8 +26,7 @@ class SankeyFlowCard extends StatefulWidget {
     this.selectedOwner,
     this.startDate,
     this.endDate,
-    required this.onSelectStartDate,
-    required this.onSelectEndDate,
+    this.onDateRangeChanged,
     required this.onOwnerChanged,
     required this.onClearDateFilter,
     this.onHide,
@@ -71,9 +69,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
       },
     );
 
-    if (picked != null) {
-      widget.onSelectStartDate();
-      widget.onSelectEndDate();
+    if (picked != null && widget.onDateRangeChanged != null) {
+      widget.onDateRangeChanged!(picked.start, picked.end);
     }
   }
 
@@ -144,287 +141,297 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
     double dynamicHeight = maxItems * 55.0 + 60.0;
     if (dynamicHeight < 300.0) dynamicHeight = 300.0;
 
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final double fullWidth = availableWidth - 48; // accounting for 24 padding on each side
+        final double boxWidth = (fullWidth - 12) / 2;
+
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Card Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: const Text(
-                    'SANKEY FLOW CHART',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF582F95),
-                      letterSpacing: 0.8,
+              // Card Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: const Text(
+                        'SANKEY FLOW CHART',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF582F95),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.onToggleWidth != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6.0),
-                      child: SizedBox(
-                        height: 32,
-                        width: 32,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: const Color(0xFFF1F5F9),
-                            foregroundColor: const Color(0xFF64748B),
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.onToggleWidth != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6.0),
+                          child: SizedBox(
+                            height: 32,
+                            width: 32,
+                            child: IconButton(
+                              style: IconButton.styleFrom(
+                                backgroundColor: const Color(0xFFF1F5F9),
+                                foregroundColor: const Color(0xFF64748B),
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              onPressed: widget.onToggleWidth,
+                              icon: Icon(
+                                widget.isWide
+                                    ? Icons.fullscreen_exit
+                                    : Icons.fullscreen,
+                                size: 18,
+                              ),
                             ),
                           ),
-                          onPressed: widget.onToggleWidth,
-                          icon: Icon(
-                            widget.isWide
-                                ? Icons.fullscreen_exit
-                                : Icons.fullscreen,
-                            size: 18,
+                        ),
+                      if (widget.onHide != null)
+                        SizedBox(
+                          height: 32,
+                          width: 32,
+                          child: IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: const Color(0xFFF1F5F9),
+                              foregroundColor: const Color(0xFF64748B),
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: widget.onHide,
+                            icon: const Icon(
+                              Icons.visibility_off_outlined,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Owner Dropdown (Left) & Date Range Picker with Separate Clear Button (Right)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Owner Dropdown Box
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: widget.selectedOwner,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                items: [
+                                  const DropdownMenuItem<String>(
+                                    value: null,
+                                    child: Text('All Owners'),
+                                  ),
+                                  ...widget.owners.map(
+                                    (owner) => DropdownMenuItem<String>(
+                                      value: owner,
+                                      child: Text(owner),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: widget.onOwnerChanged,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Date Range Picker Box with Separate Clear Button
+                  SizedBox(
+                    width: boxWidth,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.horizontal(
+                                left: const Radius.circular(10),
+                                right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                              ),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () => _pickDateRange(context),
+                                borderRadius: BorderRadius.horizontal(
+                                  left: const Radius.circular(10),
+                                  right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          hasDateFilter
+                                              ? '${DateFormat('MM/dd').format(widget.startDate!)} - ${DateFormat('MM/dd').format(widget.endDate!)}'
+                                              : 'Select Date Range',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: hasDateFilter
+                                                ? const Color(0xFF1E293B)
+                                                : const Color(0xFF64748B),
+                                            fontWeight: hasDateFilter
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (!hasDateFilter)
+                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (hasDateFilter) ...[
+                          const SizedBox(width: 1),
+                          Container(
+                            height: 44,
+                            width: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE2E8F0),
+                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: widget.onClearDateFilter,
+                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                child: const Center(
+                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Mode Selection Controls (Expenses / Income) underneath the date picker row
+              Row(
+                children: [
+                  Expanded(
+                    child: ToggleButtons(
+                      isSelected: [_flowMode == 'Expenses', _flowMode == 'Income'],
+                      onPressed: (index) {
+                        setState(() {
+                          _flowMode = index == 0 ? 'Expenses' : 'Income';
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      constraints: const BoxConstraints(minHeight: 34, minWidth: 65),
+                      selectedColor: Colors.white,
+                      fillColor: const Color(0xFF582F95),
+                      color: const Color(0xFF475569),
+                      children: const [
+                        Text('Expenses', style: TextStyle(fontSize: 11)),
+                        Text('Income', style: TextStyle(fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Graphical Custom Sankey Flow Diagram View with Dynamic Height
+              sortedSources.isEmpty || sortedTargets.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: Text(
+                          'No transaction flows match current filters.',
+                          style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                        ),
+                      ),
+                    )
+                  : Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: SizedBox(
+                        height: dynamicHeight,
+                        child: CustomPaint(
+                          size: Size(double.infinity, dynamicHeight),
+                          painter: SankeyDiagramPainter(
+                            sources: sortedSources,
+                            targets: sortedTargets,
+                            flows: flows,
+                            currencyFormat: currencyFormat,
                           ),
                         ),
                       ),
                     ),
-                  if (widget.onHide != null)
-                    SizedBox(
-                      height: 32,
-                      width: 32,
-                      child: IconButton(
-                        style: IconButton.styleFrom(
-                          backgroundColor: const Color(0xFFF1F5F9),
-                          foregroundColor: const Color(0xFF64748B),
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        onPressed: widget.onHide,
-                        icon: const Icon(
-                          Icons.visibility_off_outlined,
-                          size: 16,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
             ],
           ),
-          const SizedBox(height: 16),
-
-          // Date Selection Row (Connected to _pickDateRange)
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () => _pickDateRange(context),
-                  borderRadius: BorderRadius.circular(10),
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'START DATE',
-                      labelStyle: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF64748B),
-                      ),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                    ),
-                    child: Text(
-                      widget.startDate != null
-                          ? DateFormat('MM/dd/yyyy').format(widget.startDate!)
-                          : 'All',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF334155),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: InkWell(
-                  onTap: () => _pickDateRange(context),
-                  borderRadius: BorderRadius.circular(10),
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'END DATE',
-                      labelStyle: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF64748B),
-                      ),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                    ),
-                    child: Text(
-                      widget.endDate != null
-                          ? DateFormat('MM/dd/yyyy').format(widget.endDate!)
-                          : 'All',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF334155),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              if (widget.startDate != null || widget.endDate != null) ...[
-                const SizedBox(width: 6),
-                IconButton(
-                  icon: const Icon(
-                    Icons.clear,
-                    size: 18,
-                    color: Color(0xFF64748B),
-                  ),
-                  onPressed: widget.onClearDateFilter,
-                  tooltip: 'Clear Filter',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Owner & Mode Selection Controls
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: widget.selectedOwner,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                  ),
-                  hint: const Text('All Owners', style: TextStyle(fontSize: 12)),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: null,
-                      child: Text('All Owners', style: TextStyle(fontSize: 12)),
-                    ),
-                    ...widget.owners.map(
-                      (owner) => DropdownMenuItem<String>(
-                        value: owner,
-                        child: Text(owner, style: const TextStyle(fontSize: 12)),
-                      ),
-                    ),
-                  ],
-                  onChanged: widget.onOwnerChanged,
-                ),
-              ),
-              const SizedBox(width: 8),
-              ToggleButtons(
-                isSelected: [_flowMode == 'Expenses', _flowMode == 'Income'],
-                onPressed: (index) {
-                  setState(() {
-                    _flowMode = index == 0 ? 'Expenses' : 'Income';
-                  });
-                },
-                borderRadius: BorderRadius.circular(8),
-                constraints: const BoxConstraints(minHeight: 34, minWidth: 65),
-                selectedColor: Colors.white,
-                fillColor: const Color(0xFF582F95),
-                color: const Color(0xFF475569),
-                children: const [
-                  Text('Expenses', style: TextStyle(fontSize: 11)),
-                  Text('Income', style: TextStyle(fontSize: 11)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Graphical Custom Sankey Flow Diagram View with Dynamic Height
-          sortedSources.isEmpty || sortedTargets.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32.0),
-                    child: Text(
-                      'No transaction flows match current filters.',
-                      style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
-                    ),
-                  ),
-                )
-              : Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: SizedBox(
-                    height: dynamicHeight,
-                    child: CustomPaint(
-                      size: Size(double.infinity, dynamicHeight),
-                      painter: SankeyDiagramPainter(
-                        sources: sortedSources,
-                        targets: sortedTargets,
-                        flows: flows,
-                        currencyFormat: currencyFormat,
-                      ),
-                    ),
-                  ),
-                ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -452,9 +459,9 @@ class SankeyDiagramPainter extends CustomPainter {
     double totalTargetVal = targets.fold(0.0, (sum, e) => sum + e.value);
     if (totalSourceVal <= 0 || totalTargetVal <= 0) return;
 
-    double nodeWidth = 16.0;
+    double nodeWidth = 5.0;
     double leftX = 10.0;
-    double rightX = size.width - 26.0;
+    double rightX = size.width - 20.0;
 
     // Compute Source Node Layout Positions
     Map<String, Rect> sourceRects = {};
@@ -540,7 +547,7 @@ class SankeyDiagramPainter extends CustomPainter {
     // Draw Source Nodes (Left)
     paintNode.color = const Color(0xFF582F95);
     for (var entry in sourceRects.entries) {
-      canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(4)), paintNode);
+      canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
       
       TextPainter tp = TextPainter(
         text: TextSpan(
@@ -556,7 +563,7 @@ class SankeyDiagramPainter extends CustomPainter {
     // Draw Target Nodes (Right)
     paintNode.color = const Color.fromARGB(255, 62, 0, 103);
     for (var entry in targetRects.entries) {
-      canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(4)), paintNode);
+      canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
 
       TextPainter tp = TextPainter(
         text: TextSpan(
