@@ -50,6 +50,8 @@ class TransactionHistoryCard extends StatefulWidget {
 }
 
 class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
+  String _selectedLimit = '50'; // Default limit options: '50', '100', '150', '200', 'All'
+
   void _showDeleteConfirmation(BuildContext context, int transactionId) {
     showDialog(
       context: context,
@@ -78,11 +80,19 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
   @override
   Widget build(BuildContext context) {
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
+    final int totalCount = widget.transactions.length;
+
+    // Apply pagination limit based on selection
+    int displayLimit = totalCount;
+    if (_selectedLimit != 'All') {
+      displayLimit = int.tryParse(_selectedLimit) ?? 50;
+    }
+    final displayedTransactions = widget.transactions.take(displayLimit).toList();
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48; // accounting for 24 padding on each side
+        final double fullWidth = availableWidth - 48;
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
@@ -101,6 +111,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Card Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -320,9 +331,55 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   ),
                 ],
               ),
+              const SizedBox(height: 14),
+
+              // Yellow Box Area: Showing X of Y Zaznams + Limit Selector
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7), // Light amber/yellow background matching theme
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFCD34D)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Showing ${displayedTransactions.length} of $totalCount Zaznams',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF92400E),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        const Text('Show: ', style: TextStyle(fontSize: 11, color: Color(0xFF92400E))),
+                        DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _selectedLimit,
+                            isDense: true,
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
+                            dropdownColor: const Color(0xFFFEF3C7),
+                            items: ['50', '100', '150', '200', 'All']
+                                .map((lim) => DropdownMenuItem(value: lim, child: Text(lim)))
+                                .toList(),
+                            onChanged: (val) {
+                              if (val != null) setState(() => _selectedLimit = val);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
               const SizedBox(height: 12),
               const Divider(color: Color(0xFFE2E8F0)),
-              widget.transactions.isEmpty
+              
+              // Transactions List View
+              displayedTransactions.isEmpty
                   ? const Padding(
                       padding: EdgeInsets.symmetric(vertical: 32),
                       child: Center(
@@ -332,10 +389,10 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   : ListView.separated(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: widget.transactions.length,
+                      itemCount: displayedTransactions.length,
                       separatorBuilder: (context, index) => const Divider(color: Color(0xFFF1F5F9), height: 1),
                       itemBuilder: (context, index) {
-                        final tx = widget.transactions[index];
+                        final tx = displayedTransactions[index];
                         final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
                         final formattedDate = DateFormat('MMM d, yyyy hh:mm a').format(txDate);
                         

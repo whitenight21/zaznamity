@@ -23,6 +23,7 @@ import '../widgets/selected_label_focus_card.dart';
 import '../widgets/transaction_search_card.dart';
 import '../widgets/sankey_flow_card.dart';
 import '../widgets/pools_analytics_card.dart';
+import '../widgets/monthly_cashflow_trend_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -63,6 +64,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _historyEndDate;
   int? _historySelectedLabelId;
   String? _historySelectedOwner;
+  String? _historySelectedType;
 
   DateTime? _labelsCardStartDate;
   DateTime? _labelsCardEndDate;
@@ -133,8 +135,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     CardConfig(id: 'trend_chart', title: 'Liquid Trend', key: GlobalKey()),
     CardConfig(id: 'savings_chart', title: 'Savings Trend', key: GlobalKey()),
     CardConfig(id: 'pools_analytics', title: 'Pools Analytics', key: GlobalKey()),
+    CardConfig(id: 'sankey_flow', title: 'Sankey Flow Trend', key: GlobalKey()),
+    CardConfig(id: 'monthly_trend', title: 'Cashflow Trend', key: GlobalKey()),
     CardConfig(id: 'calendar', title: 'Calendar', key: GlobalKey()),
-    CardConfig(id: 'sankey_flow', title: 'Sankey Flow', key: GlobalKey()),
     CardConfig(id: 'history', title: 'All Zaznams', key: GlobalKey()),
   ];
 
@@ -1249,6 +1252,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       },
                                     );
                                     break;
+                                  case 'monthly_trend':
+                                    cardWidget = MonthlyCashflowTrendCard(
+                                      transactions: _transactions,
+                                      owners: _owners,
+                                      pools: _pools.keys.toList(),
+                                      selectedOwner: _globalSelectedOwner,
+                                      selectedPool: _sankeySelectedPool,
+                                      onOwnerChanged: (owner) => setState(() => _globalSelectedOwner = owner),
+                                      onPoolChanged: (pool) => setState(() => _sankeySelectedPool = pool),
+                                      onJumpToHistory: (monthKey, type) {
+                                        final parts = monthKey.split('-');
+                                        final year = int.parse(parts[0]);
+                                        final month = int.parse(parts[1]);
+                                        final start = DateTime(year, month, 1);
+                                        final end = DateTime(year, month + 1, 0);
+
+                                        setState(() {
+                                          _historyStartDate = start;
+                                          _historyEndDate = end;
+                                          _historySelectedType = type; // Store the selected type ('income' or 'expense')
+                                        });
+
+                                        final historyCard = _cards.firstWhere((c) => c.id == 'history');
+                                        if (!historyCard.isVisible) {
+                                          setState(() => historyCard.isVisible = true);
+                                        }
+                                        _scrollToCard(historyCard.key);
+                                      },
+                                      isWide: card.isWide,
+                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+                                      onHide: () => setState(() => card.isVisible = false),
+                                    );
+                                    break;
                                   case 'trend_chart':
                                     cardWidget = LiquidTrendChartCard(
                                       transactions: _transactions,
@@ -1430,6 +1466,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         }
                                         if (effectiveHistoryOwner != null) {
                                           if (tx.owner != effectiveHistoryOwner) return false;
+                                        }
+                                        if (_historySelectedType != null) {
+                                          if (tx.type != _historySelectedType) return false; // Filter strictly by type
                                         }
                                         return true;
                                       }).toList(),

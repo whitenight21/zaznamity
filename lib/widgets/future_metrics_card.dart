@@ -139,9 +139,9 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                   const Text(
                     'FUTURE METRICS',
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Color.fromARGB(255, 88, 47, 149),
+                      color: Color(0xFF582F95),
                       letterSpacing: 0.8,
                     ),
                   ),

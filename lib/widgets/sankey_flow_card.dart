@@ -185,7 +185,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: const Text(
-                        'SANKEY FLOW CHART',
+                        'SANKEY FLOW TREND',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
