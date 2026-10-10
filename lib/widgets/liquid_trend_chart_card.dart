@@ -38,14 +38,36 @@ class LiquidTrendChartCard extends StatefulWidget {
   });
 
   @override
-  State<LiquidTrendChartCard> createState() => _LiquidTrendChartCardState();
+  State<LiquidTrendChartCard> createState() => _LiquidTrendChartChartCardState();
 }
 
-class _LiquidTrendChartCardState extends State<LiquidTrendChartCard> {
+class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
   MovingAverageFilter? _maFilter;
 
-  @override
-  Widget build(BuildContext context) {
+  List<TransactionModel> _cachedSortedTx = [];
+  List<LineChartBarData> _cachedLineBars = [];
+  double _cachedMinY = 0;
+  double _cachedMaxY = 100;
+
+  int? _lastTxLength;
+  String? _lastOwner;
+  DateTime? _lastStartDate;
+  DateTime? _lastEndDate;
+  MovingAverageFilter? _lastMaFilter;
+  String _lastPoolsKey = '';
+
+  void _computeChartDataIfNeeded() {
+    final poolsKey = widget.liquidNetPools.entries.map((e) => '${e.key}:${e.value}').join(',');
+
+    if (_lastTxLength == widget.transactions.length &&
+        _lastOwner == widget.selectedOwner &&
+        _lastStartDate == widget.startDate &&
+        _lastEndDate == widget.endDate &&
+        _lastMaFilter == _maFilter &&
+        _lastPoolsKey == poolsKey) {
+      return;
+    }
+
     final filteredTx = widget.transactions.where((tx) {
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty) {
         if (tx.owner != widget.selectedOwner) return false;
@@ -246,12 +268,29 @@ class _LiquidTrendChartCardState extends State<LiquidTrendChartCard> {
     final double yPadding = yRange == 0 ? 50 : yRange * 0.15;
     maxY += yPadding;
 
+    _cachedSortedTx = sortedTx;
+    _cachedLineBars = lineBars;
+    _cachedMinY = minY;
+    _cachedMaxY = maxY;
+
+    _lastTxLength = widget.transactions.length;
+    _lastOwner = widget.selectedOwner;
+    _lastStartDate = widget.startDate;
+    _lastEndDate = widget.endDate;
+    _lastMaFilter = _maFilter;
+    _lastPoolsKey = poolsKey;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _computeChartDataIfNeeded();
+
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48; // accounting for 24 padding on each side
+        final double fullWidth = availableWidth - 48;
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
@@ -336,12 +375,9 @@ class _LiquidTrendChartCardState extends State<LiquidTrendChartCard> {
                 ],
               ),
               const SizedBox(height: 16),
-
-              // Second Row: Owner Dropdown (Left) & Date Range Picker (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Owner Dropdown Box
                   SizedBox(
                     width: boxWidth,
                     child: Container(
@@ -379,7 +415,6 @@ class _LiquidTrendChartCardState extends State<LiquidTrendChartCard> {
                       ),
                     ),
                   ),
-                  // Date Range Picker Box with Separate Clear Button
                   SizedBox(
                     width: boxWidth,
                     child: Row(
@@ -465,8 +500,6 @@ class _LiquidTrendChartCardState extends State<LiquidTrendChartCard> {
                 ],
               ),
               const SizedBox(height: 12),
-
-              // Moving Average Selector Chips
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -526,8 +559,8 @@ class _LiquidTrendChartCardState extends State<LiquidTrendChartCard> {
                 height: 220,
                 child: LineChart(
                   LineChartData(
-                    minY: minY,
-                    maxY: maxY,
+                    minY: _cachedMinY,
+                    maxY: _cachedMaxY,
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,
@@ -545,8 +578,8 @@ class _LiquidTrendChartCardState extends State<LiquidTrendChartCard> {
                           reservedSize: 28,
                           getTitlesWidget: (value, meta) {
                             int index = value.toInt();
-                            if (index >= 0 && index < sortedTx.length) {
-                              final date = DateTime.tryParse(sortedTx[index].createdAt);
+                            if (index >= 0 && index < _cachedSortedTx.length) {
+                              final date = DateTime.tryParse(_cachedSortedTx[index].createdAt);
                               if (date != null) {
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 8.0),
@@ -575,8 +608,21 @@ class _LiquidTrendChartCardState extends State<LiquidTrendChartCard> {
                       ),
                     ),
                     borderData: FlBorderData(show: false),
-                    lineTouchData: const LineTouchData(enabled: false),
-                    lineBarsData: lineBars,
+                    lineTouchData: LineTouchData(
+                      enabled: true,
+                      handleBuiltInTouches: true,
+                      touchTooltipData: LineTouchTooltipData(
+                        getTooltipItems: (touchedSpots) {
+                          return touchedSpots.map((spot) {
+                            return LineTooltipItem(
+                              '\$${spot.y.toStringAsFixed(2)}',
+                              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                            );
+                          }).toList();
+                        },
+                      ),
+                    ),
+                    lineBarsData: _cachedLineBars,
                   ),
                 ),
               ),

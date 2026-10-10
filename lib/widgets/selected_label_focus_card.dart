@@ -17,12 +17,9 @@ class SelectedLabelFocusCard extends StatelessWidget {
   final VoidCallback onSelectEndDate;
   final VoidCallback onClearDateFilter;
   
-  // Card layout management properties
   final bool isWide;
   final VoidCallback onToggleWidth;
   final VoidCallback onHide;
-  
-  // Callback for jumping to transaction history with filter applied
   final Function(int? labelId, String? owner, DateTime? start, DateTime? end)? onJumpToHistory;
 
   const SelectedLabelFocusCard({
@@ -119,7 +116,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48; // 24 padding on each side
+        final double fullWidth = availableWidth - 48;
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
@@ -204,12 +201,9 @@ class SelectedLabelFocusCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-
-              // First Row: Owner Dropdown (Left) & Date Range Picker with Separate Clear Button (Right)[cite: 29]
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Owner Dropdown Box
                   SizedBox(
                     width: boxWidth,
                     child: Container(
@@ -244,7 +238,6 @@ class SelectedLabelFocusCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Date Range Picker Box with Separate Clear Button
                   SizedBox(
                     width: boxWidth,
                     child: Row(
@@ -330,8 +323,6 @@ class SelectedLabelFocusCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-
-              // Second Row: Label Picker (Left) & Zaznams Jump Widget (Right)[cite: 31]
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -423,8 +414,6 @@ class SelectedLabelFocusCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 20),
-
-              // Third Row: Net Balance (Center Aligned)[cite: 31]
               Center(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -451,8 +440,6 @@ class SelectedLabelFocusCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // Inflow vs Outflow breakdown rows
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
@@ -477,7 +464,6 @@ class SelectedLabelFocusCard extends StatelessWidget {
                   ),
                 ],
               ),
-              
               if (recentTransactions.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 const Text(
@@ -486,16 +472,15 @@ class SelectedLabelFocusCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Container(
+                  height: 150,
                   decoration: BoxDecoration(
                     color: const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
+                  child: ListView.builder(
+                    cacheExtent: 1000,
                     itemCount: recentTransactions.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFE2E8F0)),
                     itemBuilder: (context, index) {
                       final tx = recentTransactions[index];
                       final txDate = DateTime.tryParse(tx.createdAt);

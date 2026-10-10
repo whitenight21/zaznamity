@@ -45,8 +45,28 @@ class SavingsChartCard extends StatefulWidget {
 class _SavingsChartCardState extends State<SavingsChartCard> {
   SavingsMovingAverageFilter? _maFilter;
 
-  @override
-  Widget build(BuildContext context) {
+  List<TransactionModel> _cachedSortedTx = [];
+  List<LineChartBarData> _cachedLineBars = [];
+  double _cachedMinY = 0;
+  double _cachedMaxY = 100;
+
+  int? _lastTxLength;
+  int? _lastLabelsLength;
+  String? _lastOwner;
+  DateTime? _lastStartDate;
+  DateTime? _lastEndDate;
+  SavingsMovingAverageFilter? _lastMaFilter;
+
+  void _computeChartDataIfNeeded() {
+    if (_lastTxLength == widget.transactions.length &&
+        _lastLabelsLength == widget.labels.length &&
+        _lastOwner == widget.selectedOwner &&
+        _lastStartDate == widget.startDate &&
+        _lastEndDate == widget.endDate &&
+        _lastMaFilter == _maFilter) {
+      return;
+    }
+
     int? savingsLabelId;
     for (var label in widget.labels) {
       if (label.name.toLowerCase() == 'savings') {
@@ -253,12 +273,29 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
     final double yPadding = yRange == 0 ? 50 : yRange * 0.15;
     maxY += yPadding;
 
+    _cachedSortedTx = sortedTx;
+    _cachedLineBars = lineBars;
+    _cachedMinY = minY;
+    _cachedMaxY = maxY;
+
+    _lastTxLength = widget.transactions.length;
+    _lastLabelsLength = widget.labels.length;
+    _lastOwner = widget.selectedOwner;
+    _lastStartDate = widget.startDate;
+    _lastEndDate = widget.endDate;
+    _lastMaFilter = _maFilter;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _computeChartDataIfNeeded();
+
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48; // accounting for 24 padding on each side
+        final double fullWidth = availableWidth - 48;
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
@@ -343,12 +380,9 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                 ],
               ),
               const SizedBox(height: 16),
-
-              // Second Row: Owner Dropdown (Left) & Date Range Picker (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Owner Dropdown Box
                   SizedBox(
                     width: boxWidth,
                     child: Container(
@@ -386,7 +420,6 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                       ),
                     ),
                   ),
-                  // Date Range Picker Box with Separate Clear Button
                   SizedBox(
                     width: boxWidth,
                     child: Row(
@@ -472,7 +505,6 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                 ],
               ),
               const SizedBox(height: 12),
-
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -532,8 +564,8 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                 height: 220,
                 child: LineChart(
                   LineChartData(
-                    minY: minY,
-                    maxY: maxY,
+                    minY: _cachedMinY,
+                    maxY: _cachedMaxY,
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,
@@ -551,8 +583,8 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                           reservedSize: 28,
                           getTitlesWidget: (value, meta) {
                             int index = value.toInt();
-                            if (index >= 0 && index < sortedTx.length) {
-                              final date = DateTime.tryParse(sortedTx[index].createdAt);
+                            if (index >= 0 && index < _cachedSortedTx.length) {
+                              final date = DateTime.tryParse(_cachedSortedTx[index].createdAt);
                               if (date != null) {
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 8.0),
@@ -581,8 +613,21 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                       ),
                     ),
                     borderData: FlBorderData(show: false),
-                    lineTouchData: const LineTouchData(enabled: false),
-                    lineBarsData: lineBars,
+                    lineTouchData: LineTouchData(
+                      enabled: true,
+                      handleBuiltInTouches: true,
+                      touchTooltipData: LineTouchTooltipData(
+                        getTooltipItems: (touchedSpots) {
+                          return touchedSpots.map((spot) {
+                            return LineTooltipItem(
+                              '\$${spot.y.toStringAsFixed(2)}',
+                              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                            );
+                          }).toList();
+                        },
+                      ),
+                    ),
+                    lineBarsData: _cachedLineBars,
                   ),
                 ),
               ),

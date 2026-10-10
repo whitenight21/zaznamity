@@ -50,7 +50,7 @@ class TransactionHistoryCard extends StatefulWidget {
 }
 
 class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
-  String _selectedLimit = '50'; // Default limit options: '50', '100', '150', '200', 'All'
+  String _selectedLimit = '50'; // Default lazy-render limit options: '50', '100', '150', '200', 'All'
 
   void _showDeleteConfirmation(BuildContext context, int transactionId) {
     showDialog(
@@ -82,7 +82,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
     final int totalCount = widget.transactions.length;
 
-    // Apply pagination limit based on selection
+    // Apply strict rendering cap to avoid layout lag over large lists
     int displayLimit = totalCount;
     if (_selectedLimit != 'All') {
       displayLimit = int.tryParse(_selectedLimit) ?? 50;
@@ -337,7 +337,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFEF3C7), // Light amber/yellow background matching theme
+                  color: const Color(0xFFFEF3C7),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: const Color(0xFFFCD34D)),
                 ),
@@ -378,7 +378,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               const SizedBox(height: 12),
               const Divider(color: Color(0xFFE2E8F0)),
               
-              // Transactions List View
+              // Optimized Lazy ListView.builder with cacheExtent
               displayedTransactions.isEmpty
                   ? const Padding(
                       padding: EdgeInsets.symmetric(vertical: 32),
@@ -389,6 +389,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   : ListView.separated(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
+                      cacheExtent: 1000, // Pre-renders viewport buffer for ultra-smooth scrolling
                       itemCount: displayedTransactions.length,
                       separatorBuilder: (context, index) => const Divider(color: Color(0xFFF1F5F9), height: 1),
                       itemBuilder: (context, index) {

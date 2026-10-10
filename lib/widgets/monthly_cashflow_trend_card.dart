@@ -39,8 +39,27 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
   String _selectedTimeframe = 'All time';
   bool _showNetTrendLine = true;
 
-  @override
-  Widget build(BuildContext context) {
+  // --- Memoization Cache Fields ---
+  List<BarChartGroupData> _cachedBarGroups = [];
+  List<FlSpot> _cachedNetSpots = [];
+  List<String> _cachedSortedKeys = [];
+  List<String> _cachedMonthLabels = [];
+  double _cachedMaxY = 1000.0;
+  double _cachedMinY = -1000.0;
+
+  int? _lastTxLength;
+  String? _lastOwner;
+  String? _lastPool;
+  String? _lastTimeframe;
+
+  void _computeChartDataIfNeeded() {
+    if (_lastTxLength == widget.transactions.length &&
+        _lastOwner == widget.selectedOwner &&
+        _lastPool == widget.selectedPool &&
+        _lastTimeframe == _selectedTimeframe) {
+      return;
+    }
+
     final filteredTxs = widget.transactions.where((tx) {
       if (tx.isConfirmed != 1) return false;
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && tx.owner != widget.selectedOwner) {
@@ -109,8 +128,8 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
               color: Colors.transparent,
               width: 14,
               rodStackItems: [
-                BarChartRodStackItem(-exp, 0, const Color(0xFFEF4444)), // Red expense downwards
-                BarChartRodStackItem(0, inc, const Color(0xFF10B981)),   // Green income upwards
+                BarChartRodStackItem(-exp, 0, const Color(0xFFEF4444)),
+                BarChartRodStackItem(0, inc, const Color(0xFF10B981)),
               ],
               borderRadius: const BorderRadius.vertical(top: Radius.circular(3), bottom: Radius.circular(3)),
             ),
@@ -120,6 +139,23 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
 
       netSpots.add(FlSpot(i.toDouble(), net));
     }
+
+    _cachedBarGroups = barGroups;
+    _cachedNetSpots = netSpots;
+    _cachedSortedKeys = sortedKeys;
+    _cachedMonthLabels = monthLabels;
+    _cachedMaxY = maxY;
+    _cachedMinY = minY;
+
+    _lastTxLength = widget.transactions.length;
+    _lastOwner = widget.selectedOwner;
+    _lastPool = widget.selectedPool;
+    _lastTimeframe = _selectedTimeframe;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _computeChartDataIfNeeded();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -143,7 +179,6 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -208,7 +243,6 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
               ),
               const SizedBox(height: 16),
 
-              // Row 1: Owner Dropdown & Timeframe
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -276,7 +310,6 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: Net Trend Toggle & Pool Picker
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -328,8 +361,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
               ),
               const SizedBox(height: 24),
 
-              // Chart View
-              sortedKeys.isEmpty
+              _cachedSortedKeys.isEmpty
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(40.0),
@@ -343,8 +375,8 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                           BarChart(
                             BarChartData(
                               alignment: BarChartAlignment.spaceAround,
-                              maxY: maxY * 1.25,
-                              minY: minY * 1.25,
+                              maxY: _cachedMaxY * 1.25,
+                              minY: _cachedMinY * 1.25,
                               barTouchData: BarTouchData(
                                 enabled: true,
                                 touchCallback: (FlTouchEvent event, barTouchResponse) {
@@ -353,12 +385,12 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                                       barTouchResponse.spot != null &&
                                       widget.onJumpToHistory != null) {
                                     final groupIndex = barTouchResponse.spot!.touchedBarGroupIndex;
-                                    if (groupIndex >= 0 && groupIndex < sortedKeys.length) {
-                                      final monthKey = sortedKeys[groupIndex];
+                                    if (groupIndex >= 0 && groupIndex < _cachedSortedKeys.length) {
+                                      final monthKey = _cachedSortedKeys[groupIndex];
                                       showDialog(
                                         context: context,
                                         builder: (ctx) => AlertDialog(
-                                          title: Text('View Zaznams (${monthLabels[groupIndex]})'),
+                                          title: Text('View Zaznams (${_cachedMonthLabels[groupIndex]})'),
                                           content: const Text('Display in All Zaznams:'),
                                           actions: [
                                             TextButton(
@@ -390,13 +422,13 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                                     showTitles: true,
                                     getTitlesWidget: (value, meta) {
                                       int index = value.toInt();
-                                      if (index >= 0 && index < monthLabels.length) {
+                                      if (index >= 0 && index < _cachedMonthLabels.length) {
                                         return Padding(
                                           padding: const EdgeInsets.only(top: 8.0),
                                           child: Transform.rotate(
                                             angle: -1.5708,
                                             child: Text(
-                                              monthLabels[index],
+                                              _cachedMonthLabels[index],
                                               style: const TextStyle(fontSize: 9, color: Color(0xFF64748B), fontWeight: FontWeight.bold),
                                             ),
                                           ),
@@ -425,31 +457,30 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                               gridData: FlGridData(
                                 show: true,
                                 drawVerticalLine: false,
-                                horizontalInterval: (maxY - minY) > 0 ? (maxY - minY) / 5 : 1000,
+                                horizontalInterval: (_cachedMaxY - _cachedMinY) > 0 ? (_cachedMaxY - _cachedMinY) / 5 : 1000,
                                 getDrawingHorizontalLine: (value) => FlLine(color: const Color(0xFFE2E8F0), strokeWidth: 1),
                               ),
                               borderData: FlBorderData(show: false),
-                              barGroups: barGroups,
+                              barGroups: _cachedBarGroups,
                             ),
                           ),
                           if (_showNetTrendLine)
                             LineChart(
                               LineChartData(
-                                maxY: maxY * 1.25,
-                                minY: minY * 1.25,
+                                maxY: _cachedMaxY * 1.25,
+                                minY: _cachedMinY * 1.25,
                                 lineTouchData: const LineTouchData(enabled: false),
                                 titlesData: const FlTitlesData(show: false),
                                 gridData: const FlGridData(show: false),
                                 borderData: FlBorderData(show: false),
                                 lineBarsData: [
                                   LineChartBarData(
-                                    spots: netSpots,
+                                    spots: _cachedNetSpots,
                                     isCurved: true,
                                     color: const Color(0xFF582F95),
                                     barWidth: 2.5,
                                     isStrokeCapRound: true,
                                     dotData: const FlDotData(show: true),
-                                    // Gradient fill removed here
                                   ),
                                 ],
                               ),

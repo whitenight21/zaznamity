@@ -90,7 +90,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _labelFocusStartDate;
   DateTime? _labelFocusEndDate;
 
-  // Sankey flow card specific state variables
   DateTime? _sankeyStartDate;
   DateTime? _sankeyEndDate;
   String? _sankeySelectedOwner;
@@ -901,7 +900,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Helper method for unified Date Range Picker matching FutureMetricsCard style
   Future<void> _pickDateRange(
     BuildContext context,
     DateTime? currentStart,
@@ -938,6 +936,508 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (picked != null) {
       onRangeSelected(picked.start, picked.end);
     }
+  }
+
+  Widget _buildCardWidget(CardConfig card) {
+    switch (card.id) {
+      case 'settings':
+        return AppSettingsCard(
+          initialPools: _pools,
+          initialLiquidNetPools: _liquidNetPools,
+          initialPrognosisPools: _prognosisPools,
+          initialOwners: _owners,
+          initialLeftNavItems: _leftNavItems,
+          initialRightNavItems: _rightNavItems,
+          labels: _labels,
+          cards: _cards,
+          onThemeChanged: widget.onThemeChanged,
+          onPinSettingsChanged: widget.onPinSettingsChanged,
+          onSavePools: (updatedPools) => _savePoolsPreferences(updatedPools),
+          onSaveLiquidNetPools: (updatedLiquidNet) {
+            setState(() {
+              _liquidNetPools = updatedLiquidNet;
+              calculateMetrics();
+            });
+          },
+          onSavePrognosisPools: (updatedProg) {
+            setState(() {
+              _prognosisPools = updatedProg;
+              calculateMetrics();
+            });
+          },
+          onSaveOwners: (updatedOwners) {
+            setState(() {
+              _owners = updatedOwners;
+              calculateMetrics();
+            });
+          },
+          onSaveNavItems: (left, right) {
+            setState(() {
+              _leftNavItems = left;
+              _rightNavItems = right;
+            });
+          },
+          onSaveCardOrder: (List<CardConfig> newCardsOrder) {
+            setState(() {
+              _cards.clear();
+              _cards.addAll(newCardsOrder);
+            });
+          },
+          onAddLabel: (name) => _addLabel(name),
+          onUpdateLabel: (id, name) => _updateLabel(id, name),
+          onDeleteLabel: (id) => _deleteLabel(id),
+          onImportCsv: () => loadData(showLoading: false),
+          onDeleteBulkTransactions: _deleteBulkTransactions,
+          onBulkUpdateTransactionsLabel: _bulkUpdateTransactionsLabel,
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'metrics':
+        return SummaryMetricsCard(
+          owners: _owners,
+          selectedOwner: _globalSelectedOwner ?? 'All Owners',
+          poolTotalsByOwner: _poolTotalsByOwner,
+          totalPoolTotals: _totalPoolTotals,
+          liquidNetByOwner: _liquidNetByOwner,
+          totalLiquidNet: _totalLiquidNet,
+          ownerBreakdownForLiquidNet: _ownerBreakdownForLiquidNet,
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'label_focus':
+        return SelectedLabelFocusCard(
+          transactions: _transactions,
+          labels: _labels,
+          owners: _owners,
+          startDate: _labelFocusStartDate,
+          endDate: _labelFocusEndDate,
+          selectedOwner: _labelFocusSelectedOwner ?? _globalSelectedOwner,
+          selectedLabelId: _labelFocusSelectedLabelId,
+          onLabelChanged: (val) => setState(() => _labelFocusSelectedLabelId = val),
+          onOwnerChanged: (val) => setState(() => _labelFocusSelectedOwner = val),
+          onSelectStartDate: () => _pickDateRange(
+            context,
+            _labelFocusStartDate,
+            _labelFocusEndDate,
+            (start, end) => setState(() {
+              _labelFocusStartDate = start;
+              _labelFocusEndDate = end;
+            }),
+          ),
+          onSelectEndDate: () => _pickDateRange(
+            context,
+            _labelFocusStartDate,
+            _labelFocusEndDate,
+            (start, end) => setState(() {
+              _labelFocusStartDate = start;
+              _labelFocusEndDate = end;
+            }),
+          ),
+          onClearDateFilter: () => setState(() {
+            _labelFocusStartDate = null;
+            _labelFocusEndDate = null;
+          }),
+          onJumpToHistory: (labelId, owner, start, end) {
+            setState(() {
+              _historySelectedLabelId = labelId;
+              _historySelectedOwner = owner;
+              _historyStartDate = start;
+              _historyEndDate = end;
+            });
+            final historyCard = _cards.firstWhere((c) => c.id == 'history');
+            if (!historyCard.isVisible) {
+              setState(() => historyCard.isVisible = true);
+            }
+            _scrollToCard(historyCard.key);
+          },
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'transaction_search':
+        return TransactionSearchCard(
+          transactions: _transactions,
+          labels: _labels,
+          owners: _owners,
+          pools: _pools.keys.toList(),
+          onDeleteTransaction: _deleteTransaction,
+          onEditTransaction: showEditTransactionDialog,
+          onConfirmTransaction: _confirmTransaction,
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'future_metrics':
+        return FutureMetricsCard(
+          owners: _owners,
+          selectedOwner: _futureMetricsSelectedOwner ?? _globalSelectedOwner,
+          futureFlowByOwner: _futureFlowByOwner,
+          totalFutureFlow: _totalFutureFlow,
+          prognosisByOwner: _prognosisByOwner,
+          totalPrognosis: _totalPrognosis,
+          startDate: _futureMetricsStartDate,
+          endDate: _futureMetricsEndDate,
+          onDateRangeChanged: (start, end) {
+            setState(() {
+              _futureMetricsStartDate = start;
+              _futureMetricsEndDate = end;
+              calculateMetrics();
+            });
+          },
+          onClearDateFilter: () {
+            setState(() {
+              _futureMetricsStartDate = null;
+              _futureMetricsEndDate = null;
+              calculateMetrics();
+            });
+          },
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'budget':
+        return BudgetProgressCard(
+          budgets: _budgets,
+          transactions: _transactions,
+          labels: _labels,
+          owners: _owners,
+          selectedOwner: _budgetSelectedOwner ?? _globalSelectedOwner,
+          onOwnerChanged: (owner) => setState(() => _budgetSelectedOwner = owner),
+          onAddBudget: (labelId, limitAmount, owner) => _addBudget(labelId, limitAmount, owner),
+          onDeleteBudget: _deleteBudget,
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'new_entry':
+        return NewZaznamCard(
+          labels: _labels,
+          pools: _pools.keys.toList(),
+          owners: _owners,
+          selectedGlobalOwner: _globalSelectedOwner,
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+          onSubmit: (description, amount, type, labelId, owner, pool, isRecurring, frequency, dayOfMonth, excludedWeekdays, excludedMonths, repeatUntilDate, date) {
+            _handleNewZaznamSubmit(
+              description: description,
+              amount: amount,
+              type: type,
+              labelId: labelId,
+              owner: owner,
+              pool: pool,
+              isRecurring: isRecurring,
+              frequency: frequency,
+              dayOfMonth: dayOfMonth,
+              excludedWeekdays: excludedWeekdays,
+              excludedMonths: excludedMonths,
+              repeatUntilDate: repeatUntilDate,
+              date: date,
+            );
+          },
+        );
+      case 'transfer':
+        return TransferFundsCard(
+          pools: _pools.keys.toList(),
+          owners: _owners,
+          selectedGlobalOwner: _globalSelectedOwner,
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+          onTransfer: (fromPool, toPool, fromOwner, toOwner, amount, description, date) {
+            _handleTransferFunds(
+              fromPool: fromPool,
+              toPool: toPool,
+              fromOwner: fromOwner,
+              toOwner: toOwner,
+              amount: amount,
+              description: description,
+              date: date,
+            );
+          },
+        );
+      case 'monthly_trend':
+        return MonthlyCashflowTrendCard(
+          transactions: _transactions,
+          owners: _owners,
+          pools: _pools.keys.toList(),
+          selectedOwner: _globalSelectedOwner,
+          selectedPool: _sankeySelectedPool,
+          onOwnerChanged: (owner) => setState(() => _globalSelectedOwner = owner),
+          onPoolChanged: (pool) => setState(() => _sankeySelectedPool = pool),
+          onJumpToHistory: (monthKey, type) {
+            final parts = monthKey.split('-');
+            final year = int.parse(parts[0]);
+            final month = int.parse(parts[1]);
+            final start = DateTime(year, month, 1);
+            final end = DateTime(year, month + 1, 0);
+
+            setState(() {
+              _historyStartDate = start;
+              _historyEndDate = end;
+              _historySelectedType = type;
+            });
+
+            final historyCard = _cards.firstWhere((c) => c.id == 'history');
+            if (!historyCard.isVisible) {
+              setState(() => historyCard.isVisible = true);
+            }
+            _scrollToCard(historyCard.key);
+          },
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'trend_chart':
+        return LiquidTrendChartCard(
+          transactions: _transactions,
+          liquidNetPools: _liquidNetPools,
+          owners: _owners,
+          selectedOwner: _trendSelectedOwner ?? _globalSelectedOwner,
+          onOwnerChanged: (owner) => setState(() => _trendSelectedOwner = owner),
+          startDate: _trendStartDate,
+          endDate: _trendEndDate,
+          onSelectStartDate: () => _pickDateRange(
+            context,
+            _trendStartDate,
+            _trendEndDate,
+            (start, end) => setState(() {
+              _trendStartDate = start;
+              _trendEndDate = end;
+            }),
+          ),
+          onSelectEndDate: () => _pickDateRange(
+            context,
+            _trendStartDate,
+            _trendEndDate,
+            (start, end) => setState(() {
+              _trendStartDate = start;
+              _trendEndDate = end;
+            }),
+          ),
+          onClearDateFilter: () => setState(() {
+            _trendStartDate = null;
+            _trendEndDate = null;
+          }),
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'savings_chart':
+        return SavingsChartCard(
+          transactions: _transactions,
+          labels: _labels,
+          owners: _owners,
+          selectedOwner: _savingsChartSelectedOwner ?? _globalSelectedOwner,
+          onOwnerChanged: (owner) => setState(() => _savingsChartSelectedOwner = owner),
+          startDate: _savingsChartStartDate,
+          endDate: _savingsChartEndDate,
+          onSelectStartDate: () => _pickDateRange(
+            context,
+            _savingsChartStartDate,
+            _savingsChartEndDate,
+            (start, end) => setState(() {
+              _savingsChartStartDate = start;
+              _savingsChartEndDate = end;
+            }),
+          ),
+          onSelectEndDate: () => _pickDateRange(
+            context,
+            _savingsChartStartDate,
+            _savingsChartEndDate,
+            (start, end) => setState(() {
+              _savingsChartStartDate = start;
+              _savingsChartEndDate = end;
+            }),
+          ),
+          onClearDateFilter: () => setState(() {
+            _savingsChartStartDate = null;
+            _savingsChartEndDate = null;
+          }),
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'pools_analytics':
+        return PoolsAnalyticsCard(
+          transactions: _transactions,
+          pools: _pools,
+          selectedOwner: _globalSelectedOwner,
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'calendar':
+        return CalendarCard(
+          transactions: _transactions,
+          owners: _owners,
+          selectedOwner: _calendarSelectedOwner ?? _globalSelectedOwner,
+          onOwnerChanged: (owner) => setState(() => _calendarSelectedOwner = owner),
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+          historyKey: _cards.firstWhere((c) => c.id == 'history').key,
+          onDateSelected: (selectedDate) {
+            setState(() {
+              _historyStartDate = selectedDate;
+              _historyEndDate = selectedDate;
+            });
+          },
+        );
+      case 'sankey_flow':
+        return SankeyFlowCard(
+          transactions: _transactions,
+          labels: _labels,
+          owners: _owners,
+          pools: _pools.keys.toList(),
+          selectedOwner: _sankeySelectedOwner ?? _globalSelectedOwner,
+          selectedPool: _sankeySelectedPool,
+          startDate: _sankeyStartDate,
+          endDate: _sankeyEndDate,
+          onDateRangeChanged: (start, end) => setState(() {
+            _sankeyStartDate = start;
+            _sankeyEndDate = end;
+          }),
+          onOwnerChanged: (owner) => setState(() => _sankeySelectedOwner = owner),
+          onPoolChanged: (pool) => setState(() => _sankeySelectedPool = pool),
+          onClearDateFilter: () => setState(() {
+            _sankeyStartDate = null;
+            _sankeyEndDate = null;
+            _sankeySelectedPool = null;
+          }),
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'income_expenses_labels':
+        return IncomeExpensesByLabelsCard(
+          transactions: _transactions,
+          labels: _labels,
+          owners: _owners,
+          startDate: _labelsCardStartDate,
+          endDate: _labelsCardEndDate,
+          selectedOwner: _labelsCardSelectedOwner ?? _globalSelectedOwner,
+          onSelectStartDate: () => _pickDateRange(
+            context,
+            _labelsCardStartDate,
+            _labelsCardEndDate,
+            (start, end) => setState(() {
+              _labelsCardStartDate = start;
+              _labelsCardEndDate = end;
+            }),
+          ),
+          onSelectEndDate: () => _pickDateRange(
+            context,
+            _labelsCardStartDate,
+            _labelsCardEndDate,
+            (start, end) => setState(() {
+              _labelsCardStartDate = start;
+              _labelsCardEndDate = end;
+            }),
+          ),
+          onOwnerChanged: (owner) => setState(() => _labelsCardSelectedOwner = owner),
+          onClearDateFilter: () => setState(() {
+            _labelsCardStartDate = null;
+            _labelsCardEndDate = null;
+          }),
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      case 'history':
+        final effectiveHistoryOwner = _historySelectedOwner ?? _globalSelectedOwner;
+        return TransactionHistoryCard(
+          transactions: _transactions.where((tx) {
+            final txDate = DateTime.tryParse(tx.createdAt);
+            if (txDate == null) return true;
+            if (_historyStartDate != null) {
+              final startClean = DateTime(_historyStartDate!.year, _historyStartDate!.month, _historyStartDate!.day);
+              if (txDate.isBefore(startClean)) return false;
+            }
+            if (_historyEndDate != null) {
+              final endClean = DateTime(_historyEndDate!.year, _historyEndDate!.month, _historyEndDate!.day, 23, 59, 59);
+              if (txDate.isAfter(endClean)) return false;
+            }
+            if (_historySelectedLabelId != null) {
+              if (tx.labelId != _historySelectedLabelId) return false;
+            }
+            if (effectiveHistoryOwner != null) {
+              if (tx.owner != effectiveHistoryOwner) return false;
+            }
+            if (_historySelectedType != null) {
+              if (tx.type != _historySelectedType) return false;
+            }
+            return true;
+          }).toList(),
+          labels: _labels,
+          owners: _owners,
+          startDate: _historyStartDate,
+          endDate: _historyEndDate,
+          selectedLabelId: _historySelectedLabelId,
+          selectedOwner: effectiveHistoryOwner,
+          onSelectStartDate: () => _pickDateRange(
+            context,
+            _historyStartDate,
+            _historyEndDate,
+            (start, end) => setState(() {
+              _historyStartDate = start;
+              _historyEndDate = end;
+            }),
+          ),
+          onSelectEndDate: () => _pickDateRange(
+            context,
+            _historyStartDate,
+            _historyEndDate,
+            (start, end) => setState(() {
+              _historyStartDate = start;
+              _historyEndDate = end;
+            }),
+          ),
+          onLabelChanged: (labelId) => setState(() => _historySelectedLabelId = labelId),
+          onOwnerChanged: (owner) => setState(() => _historySelectedOwner = owner),
+          onClearDateFilter: () => setState(() {
+            _historyStartDate = null;
+            _historyEndDate = null;
+          }),
+          onDeleteTransaction: _deleteTransaction,
+          onEditTransaction: showEditTransactionDialog,
+          onConfirmTransaction: _confirmTransaction,
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  List<List<CardConfig>> _chunkCardsIntoRows(List<CardConfig> visibleCards, double screenWidth) {
+    List<List<CardConfig>> rows = [];
+    List<CardConfig> currentRow = [];
+    int currentCols = 0;
+    int maxCols = screenWidth >= 1200 ? 3 : (screenWidth >= 768 ? 2 : 1);
+
+    for (var card in visibleCards) {
+      int cardCols = card.isWide ? maxCols : 1;
+      if (currentCols > 0 && (currentCols + cardCols > maxCols || card.isWide)) {
+        rows.add(List.from(currentRow));
+        currentRow.clear();
+        currentCols = 0;
+      }
+      currentRow.add(card);
+      currentCols += cardCols;
+      if (card.isWide) {
+        rows.add(List.from(currentRow));
+        currentRow.clear();
+        currentCols = 0;
+      }
+    }
+    if (currentRow.isNotEmpty) {
+      rows.add(currentRow);
+    }
+    return rows;
   }
 
   @override
@@ -1014,528 +1514,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     Expanded(
-                      child: SingleChildScrollView(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final screenWidth = constraints.maxWidth;
-                            return Wrap(
-                              spacing: 20,
-                              runSpacing: 20,
-                              children: _cards.where((card) => card.isVisible).map((card) {
-                                Widget cardWidget;
-                                switch (card.id) {
-                                  case 'settings':
-                                    cardWidget = AppSettingsCard(
-                                      initialPools: _pools,
-                                      initialLiquidNetPools: _liquidNetPools,
-                                      initialPrognosisPools: _prognosisPools,
-                                      initialOwners: _owners,
-                                      initialLeftNavItems: _leftNavItems,
-                                      initialRightNavItems: _rightNavItems,
-                                      labels: _labels,
-                                      cards: _cards,
-                                      onThemeChanged: widget.onThemeChanged,
-                                      onPinSettingsChanged: widget.onPinSettingsChanged,
-                                      onSavePools: (updatedPools) => _savePoolsPreferences(updatedPools),
-                                      onSaveLiquidNetPools: (updatedLiquidNet) {
-                                        setState(() {
-                                          _liquidNetPools = updatedLiquidNet;
-                                          calculateMetrics();
-                                        });
-                                      },
-                                      onSavePrognosisPools: (updatedProg) {
-                                        setState(() {
-                                          _prognosisPools = updatedProg;
-                                          calculateMetrics();
-                                        });
-                                      },
-                                      onSaveOwners: (updatedOwners) {
-                                        setState(() {
-                                          _owners = updatedOwners;
-                                          calculateMetrics();
-                                        });
-                                      },
-                                      onSaveNavItems: (left, right) {
-                                        setState(() {
-                                          _leftNavItems = left;
-                                          _rightNavItems = right;
-                                        });
-                                      },
-                                      onSaveCardOrder: (List<CardConfig> newCardsOrder) {
-                                        setState(() {
-                                          _cards.clear();
-                                          _cards.addAll(newCardsOrder);
-                                        });
-                                      },
-                                      onAddLabel: (name) => _addLabel(name),
-                                      onUpdateLabel: (id, name) => _updateLabel(id, name),
-                                      onDeleteLabel: (id) => _deleteLabel(id),
-                                      onImportCsv: () => loadData(showLoading: false),
-                                      onDeleteBulkTransactions: _deleteBulkTransactions,
-                                      onBulkUpdateTransactionsLabel: _bulkUpdateTransactionsLabel,
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  case 'metrics':
-                                    cardWidget = SummaryMetricsCard(
-                                      owners: _owners,
-                                      selectedOwner: _globalSelectedOwner ?? 'All Owners',
-                                      poolTotalsByOwner: _poolTotalsByOwner,
-                                      totalPoolTotals: _totalPoolTotals,
-                                      liquidNetByOwner: _liquidNetByOwner,
-                                      totalLiquidNet: _totalLiquidNet,
-                                      ownerBreakdownForLiquidNet: _ownerBreakdownForLiquidNet,
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  case 'label_focus':
-                                    cardWidget = SelectedLabelFocusCard(
-                                      transactions: _transactions,
-                                      labels: _labels,
-                                      owners: _owners,
-                                      startDate: _labelFocusStartDate,
-                                      endDate: _labelFocusEndDate,
-                                      selectedOwner: _labelFocusSelectedOwner ?? _globalSelectedOwner,
-                                      selectedLabelId: _labelFocusSelectedLabelId,
-                                      onLabelChanged: (val) => setState(() => _labelFocusSelectedLabelId = val),
-                                      onOwnerChanged: (val) => setState(() => _labelFocusSelectedOwner = val),
-                                      onSelectStartDate: () => _pickDateRange(
-                                        context,
-                                        _labelFocusStartDate,
-                                        _labelFocusEndDate,
-                                        (start, end) => setState(() {
-                                          _labelFocusStartDate = start;
-                                          _labelFocusEndDate = end;
-                                        }),
-                                      ),
-                                      onSelectEndDate: () => _pickDateRange(
-                                        context,
-                                        _labelFocusStartDate,
-                                        _labelFocusEndDate,
-                                        (start, end) => setState(() {
-                                          _labelFocusStartDate = start;
-                                          _labelFocusEndDate = end;
-                                        }),
-                                      ),
-                                      onClearDateFilter: () => setState(() {
-                                        _labelFocusStartDate = null;
-                                        _labelFocusEndDate = null;
-                                      }),
-                                      onJumpToHistory: (labelId, owner, start, end) {
-                                        setState(() {
-                                          _historySelectedLabelId = labelId;
-                                          _historySelectedOwner = owner;
-                                          _historyStartDate = start;
-                                          _historyEndDate = end;
-                                        });
-                                        final historyCard = _cards.firstWhere((c) => c.id == 'history');
-                                        if (!historyCard.isVisible) {
-                                          setState(() => historyCard.isVisible = true);
-                                        }
-                                        _scrollToCard(historyCard.key);
-                                      },
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  case 'transaction_search':
-                                    cardWidget = TransactionSearchCard(
-                                      transactions: _transactions,
-                                      labels: _labels,
-                                      owners: _owners,
-                                      pools: _pools.keys.toList(),
-                                      onDeleteTransaction: _deleteTransaction,
-                                      onEditTransaction: showEditTransactionDialog,
-                                      onConfirmTransaction: _confirmTransaction,
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  case 'future_metrics':
-                                    cardWidget = FutureMetricsCard(
-                                      owners: _owners,
-                                      selectedOwner: _futureMetricsSelectedOwner ?? _globalSelectedOwner,
-                                      futureFlowByOwner: _futureFlowByOwner,
-                                      totalFutureFlow: _totalFutureFlow,
-                                      prognosisByOwner: _prognosisByOwner,
-                                      totalPrognosis: _totalPrognosis,
-                                      startDate: _futureMetricsStartDate,
-                                      endDate: _futureMetricsEndDate,
-                                      onDateRangeChanged: (start, end) {
-                                        setState(() {
-                                          _futureMetricsStartDate = start;
-                                          _futureMetricsEndDate = end;
-                                          calculateMetrics();
-                                        });
-                                      },
-                                      onClearDateFilter: () {
-                                        setState(() {
-                                          _futureMetricsStartDate = null;
-                                          _futureMetricsEndDate = null;
-                                          calculateMetrics();
-                                        });
-                                      },
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  case 'budget':
-                                    cardWidget = BudgetProgressCard(
-                                      budgets: _budgets,
-                                      transactions: _transactions,
-                                      labels: _labels,
-                                      owners: _owners,
-                                      selectedOwner: _budgetSelectedOwner ?? _globalSelectedOwner,
-                                      onOwnerChanged: (owner) => setState(() => _budgetSelectedOwner = owner),
-                                      onAddBudget: (labelId, limitAmount, owner) => _addBudget(labelId, limitAmount, owner),
-                                      onDeleteBudget: _deleteBudget,
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  case 'new_entry':
-                                    cardWidget = NewZaznamCard(
-                                      labels: _labels,
-                                      pools: _pools.keys.toList(),
-                                      owners: _owners,
-                                      selectedGlobalOwner: _globalSelectedOwner,
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                      onSubmit: (description, amount, type, labelId, owner, pool, isRecurring, frequency, dayOfMonth, excludedWeekdays, excludedMonths, repeatUntilDate, date) {
-                                        _handleNewZaznamSubmit(
-                                          description: description,
-                                          amount: amount,
-                                          type: type,
-                                          labelId: labelId,
-                                          owner: owner,
-                                          pool: pool,
-                                          isRecurring: isRecurring,
-                                          frequency: frequency,
-                                          dayOfMonth: dayOfMonth,
-                                          excludedWeekdays: excludedWeekdays,
-                                          excludedMonths: excludedMonths,
-                                          repeatUntilDate: repeatUntilDate,
-                                          date: date,
-                                        );
-                                      },
-                                    );
-                                    break;
-                                  case 'transfer':
-                                    cardWidget = TransferFundsCard(
-                                      pools: _pools.keys.toList(),
-                                      owners: _owners,
-                                      selectedGlobalOwner: _globalSelectedOwner,
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                      onTransfer: (fromPool, toPool, fromOwner, toOwner, amount, description, date) {
-                                        _handleTransferFunds(
-                                          fromPool: fromPool,
-                                          toPool: toPool,
-                                          fromOwner: fromOwner,
-                                          toOwner: toOwner,
-                                          amount: amount,
-                                          description: description,
-                                          date: date,
-                                        );
-                                      },
-                                    );
-                                    break;
-                                  case 'monthly_trend':
-                                    cardWidget = MonthlyCashflowTrendCard(
-                                      transactions: _transactions,
-                                      owners: _owners,
-                                      pools: _pools.keys.toList(),
-                                      selectedOwner: _globalSelectedOwner,
-                                      selectedPool: _sankeySelectedPool,
-                                      onOwnerChanged: (owner) => setState(() => _globalSelectedOwner = owner),
-                                      onPoolChanged: (pool) => setState(() => _sankeySelectedPool = pool),
-                                      onJumpToHistory: (monthKey, type) {
-                                        final parts = monthKey.split('-');
-                                        final year = int.parse(parts[0]);
-                                        final month = int.parse(parts[1]);
-                                        final start = DateTime(year, month, 1);
-                                        final end = DateTime(year, month + 1, 0);
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final screenWidth = constraints.maxWidth;
+                          final visibleCards = _cards.where((card) => card.isVisible).toList();
+                          final rows = _chunkCardsIntoRows(visibleCards, screenWidth);
 
-                                        setState(() {
-                                          _historyStartDate = start;
-                                          _historyEndDate = end;
-                                          _historySelectedType = type; // Store the selected type ('income' or 'expense')
-                                        });
+                          return ListView.builder(
+                            controller: _scrollController,
+                            cacheExtent: 1000,
+                            padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
+                            itemCount: rows.length,
+                            itemBuilder: (context, rowIndex) {
+                              final rowCards = rows[rowIndex];
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 20),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: rowCards.map((card) {
+                                    double cardWidth;
+                                    if (card.isWide) {
+                                      cardWidth = screenWidth - 48;
+                                    } else {
+                                      if (screenWidth >= 1200) {
+                                        cardWidth = (screenWidth - 48 - 40) / 3;
+                                      } else if (screenWidth >= 768) {
+                                        cardWidth = (screenWidth - 48 - 20) / 2;
+                                      } else {
+                                        cardWidth = screenWidth - 48;
+                                      }
+                                    }
 
-                                        final historyCard = _cards.firstWhere((c) => c.id == 'history');
-                                        if (!historyCard.isVisible) {
-                                          setState(() => historyCard.isVisible = true);
-                                        }
-                                        _scrollToCard(historyCard.key);
-                                      },
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  case 'trend_chart':
-                                    cardWidget = LiquidTrendChartCard(
-                                      transactions: _transactions,
-                                      liquidNetPools: _liquidNetPools,
-                                      owners: _owners,
-                                      selectedOwner: _trendSelectedOwner ?? _globalSelectedOwner,
-                                      onOwnerChanged: (owner) => setState(() => _trendSelectedOwner = owner),
-                                      startDate: _trendStartDate,
-                                      endDate: _trendEndDate,
-                                      onSelectStartDate: () => _pickDateRange(
-                                        context,
-                                        _trendStartDate,
-                                        _trendEndDate,
-                                        (start, end) => setState(() {
-                                          _trendStartDate = start;
-                                          _trendEndDate = end;
-                                        }),
+                                    return Expanded(
+                                      key: card.key,
+                                      child: Padding(
+                                        padding: EdgeInsets.only(
+                                          right: rowCards.last == card ? 0 : 20,
+                                        ),
+                                        child: SizedBox(
+                                          width: cardWidth,
+                                          child: RepaintBoundary(
+                                            child: _buildCardWidget(card),
+                                          ),
+                                        ),
                                       ),
-                                      onSelectEndDate: () => _pickDateRange(
-                                        context,
-                                        _trendStartDate,
-                                        _trendEndDate,
-                                        (start, end) => setState(() {
-                                          _trendStartDate = start;
-                                          _trendEndDate = end;
-                                        }),
-                                      ),
-                                      onClearDateFilter: () => setState(() {
-                                        _trendStartDate = null;
-                                        _trendEndDate = null;
-                                      }),
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
                                     );
-                                    break;
-                                  case 'savings_chart':
-                                    cardWidget = SavingsChartCard(
-                                      transactions: _transactions,
-                                      labels: _labels,
-                                      owners: _owners,
-                                      selectedOwner: _savingsChartSelectedOwner ?? _globalSelectedOwner,
-                                      onOwnerChanged: (owner) => setState(() => _savingsChartSelectedOwner = owner),
-                                      startDate: _savingsChartStartDate,
-                                      endDate: _savingsChartEndDate,
-                                      onSelectStartDate: () => _pickDateRange(
-                                        context,
-                                        _savingsChartStartDate,
-                                        _savingsChartEndDate,
-                                        (start, end) => setState(() {
-                                          _savingsChartStartDate = start;
-                                          _savingsChartEndDate = end;
-                                        }),
-                                      ),
-                                      onSelectEndDate: () => _pickDateRange(
-                                        context,
-                                        _savingsChartStartDate,
-                                        _savingsChartEndDate,
-                                        (start, end) => setState(() {
-                                          _savingsChartStartDate = start;
-                                          _savingsChartEndDate = end;
-                                        }),
-                                      ),
-                                      onClearDateFilter: () => setState(() {
-                                        _savingsChartStartDate = null;
-                                        _savingsChartEndDate = null;
-                                      }),
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  case 'pools_analytics':
-                                    cardWidget = PoolsAnalyticsCard(
-                                      transactions: _transactions,
-                                      pools: _pools,
-                                      selectedOwner: _globalSelectedOwner,
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  case 'calendar':
-                                    cardWidget = CalendarCard(
-                                      transactions: _transactions,
-                                      owners: _owners,
-                                      selectedOwner: _calendarSelectedOwner ?? _globalSelectedOwner,
-                                      onOwnerChanged: (owner) => setState(() => _calendarSelectedOwner = owner),
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                      historyKey: _cards.firstWhere((c) => c.id == 'history').key,
-                                      onDateSelected: (selectedDate) {
-                                        setState(() {
-                                          _historyStartDate = selectedDate;
-                                          _historyEndDate = selectedDate;
-                                        });
-                                      },
-                                    );
-                                    break;
-                                  case 'sankey_flow':
-                                    cardWidget = SankeyFlowCard(
-                                      transactions: _transactions,
-                                      labels: _labels,
-                                      owners: _owners,
-                                      pools: _pools.keys.toList(), // Pass your active pools list
-                                      selectedOwner: _sankeySelectedOwner ?? _globalSelectedOwner,
-                                      selectedPool: _sankeySelectedPool,
-                                      startDate: _sankeyStartDate,
-                                      endDate: _sankeyEndDate,
-                                      onDateRangeChanged: (start, end) => setState(() {
-                                        _sankeyStartDate = start;
-                                        _sankeyEndDate = end;
-                                      }),
-                                      onOwnerChanged: (owner) => setState(() => _sankeySelectedOwner = owner),
-                                      onPoolChanged: (pool) => setState(() => _sankeySelectedPool = pool),
-                                      onClearDateFilter: () => setState(() {
-                                        _sankeyStartDate = null;
-                                        _sankeyEndDate = null;
-                                        _sankeySelectedPool = null;
-                                      }),
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  case 'income_expenses_labels':
-                                    cardWidget = IncomeExpensesByLabelsCard(
-                                      transactions: _transactions,
-                                      labels: _labels,
-                                      owners: _owners,
-                                      startDate: _labelsCardStartDate,
-                                      endDate: _labelsCardEndDate,
-                                      selectedOwner: _labelsCardSelectedOwner ?? _globalSelectedOwner,
-                                      onSelectStartDate: () => _pickDateRange(
-                                        context,
-                                        _labelsCardStartDate,
-                                        _labelsCardEndDate,
-                                        (start, end) => setState(() {
-                                          _labelsCardStartDate = start;
-                                          _labelsCardEndDate = end;
-                                        }),
-                                      ),
-                                      onSelectEndDate: () => _pickDateRange(
-                                        context,
-                                        _labelsCardStartDate,
-                                        _labelsCardEndDate,
-                                        (start, end) => setState(() {
-                                          _labelsCardStartDate = start;
-                                          _labelsCardEndDate = end;
-                                        }),
-                                      ),
-                                      onOwnerChanged: (owner) => setState(() => _labelsCardSelectedOwner = owner),
-                                      onClearDateFilter: () => setState(() {
-                                        _labelsCardStartDate = null;
-                                        _labelsCardEndDate = null;
-                                      }),
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  case 'history':
-                                    final effectiveHistoryOwner = _historySelectedOwner ?? _globalSelectedOwner;
-                                    cardWidget = TransactionHistoryCard(
-                                      transactions: _transactions.where((tx) {
-                                        final txDate = DateTime.tryParse(tx.createdAt);
-                                        if (txDate == null) return true;
-                                        if (_historyStartDate != null) {
-                                          final startClean = DateTime(_historyStartDate!.year, _historyStartDate!.month, _historyStartDate!.day);
-                                          if (txDate.isBefore(startClean)) return false;
-                                        }
-                                        if (_historyEndDate != null) {
-                                          final endClean = DateTime(_historyEndDate!.year, _historyEndDate!.month, _historyEndDate!.day, 23, 59, 59);
-                                          if (txDate.isAfter(endClean)) return false;
-                                        }
-                                        if (_historySelectedLabelId != null) {
-                                          if (tx.labelId != _historySelectedLabelId) return false;
-                                        }
-                                        if (effectiveHistoryOwner != null) {
-                                          if (tx.owner != effectiveHistoryOwner) return false;
-                                        }
-                                        if (_historySelectedType != null) {
-                                          if (tx.type != _historySelectedType) return false; // Filter strictly by type
-                                        }
-                                        return true;
-                                      }).toList(),
-                                      labels: _labels,
-                                      owners: _owners,
-                                      startDate: _historyStartDate,
-                                      endDate: _historyEndDate,
-                                      selectedLabelId: _historySelectedLabelId,
-                                      selectedOwner: effectiveHistoryOwner,
-                                      onSelectStartDate: () => _pickDateRange(
-                                        context,
-                                        _historyStartDate,
-                                        _historyEndDate,
-                                        (start, end) => setState(() {
-                                          _historyStartDate = start;
-                                          _historyEndDate = end;
-                                        }),
-                                      ),
-                                      onSelectEndDate: () => _pickDateRange(
-                                        context,
-                                        _historyStartDate,
-                                        _historyEndDate,
-                                        (start, end) => setState(() {
-                                          _historyStartDate = start;
-                                          _historyEndDate = end;
-                                        }),
-                                      ),
-                                      onLabelChanged: (labelId) => setState(() => _historySelectedLabelId = labelId),
-                                      onOwnerChanged: (owner) => setState(() => _historySelectedOwner = owner),
-                                      onClearDateFilter: () => setState(() {
-                                        _historyStartDate = null;
-                                        _historyEndDate = null;
-                                      }),
-                                      onDeleteTransaction: _deleteTransaction,
-                                      onEditTransaction: showEditTransactionDialog,
-                                      onConfirmTransaction: _confirmTransaction,
-                                      isWide: card.isWide,
-                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-                                      onHide: () => setState(() => card.isVisible = false),
-                                    );
-                                    break;
-                                  default:
-                                    cardWidget = const SizedBox.shrink();
-                                }
-
-                                double cardWidth = screenWidth;
-                                if (card.isWide) {
-                                  cardWidth = screenWidth;
-                                } else {
-                                  if (screenWidth >= 1200) {
-                                    cardWidth = (screenWidth - 40) / 3;
-                                  } else if (screenWidth >= 768) {
-                                    cardWidth = (screenWidth - 20) / 2;
-                                  } else {
-                                    cardWidth = screenWidth;
-                                  }
-                                }
-
-                                return SizedBox(
-                                  key: card.key,
-                                  width: cardWidth,
-                                  child: cardWidget,
-                                );
-                              }).toList(),
-                            );
-                          },
-                        ),
+                                  }).toList(),
+                                ),
+                              );
+                            },
+                          );
+                        },
                       ),
                     ),
                   ],

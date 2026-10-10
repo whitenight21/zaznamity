@@ -49,14 +49,35 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   final Set<int> selectedExpenseLabels = {};
   bool _initializedLabels = false;
 
-  @override
-  Widget build(BuildContext context) {
-    if (!_initializedLabels && widget.labels.isNotEmpty) {
-      for (var l in widget.labels) {
-        selectedIncomeLabels.add(l.id);
-        selectedExpenseLabels.add(l.id);
-      }
-      _initializedLabels = true;
+  // --- Memoization Cache Fields ---
+  double _cachedTotalIncome = 0;
+  double _cachedTotalExpenses = 0;
+  List<MapEntry<String, double>> _cachedSortedEntries = [];
+  double _cachedActiveModeTotalSum = 0;
+  double _cachedMaxTopAmount = 1.0;
+  double _cachedMaxChartAmount = 1.0;
+
+  // Track dependency changes to invalidate cache
+  int? _lastTxLength;
+  String? _lastOwner;
+  DateTime? _lastStartDate;
+  DateTime? _lastEndDate;
+  String? _lastDisplayMode;
+  String _lastIncomeLabelsKey = '';
+  String _lastExpenseLabelsKey = '';
+
+  void _computeDataIfNeeded() {
+    final incomeLabelsKey = selectedIncomeLabels.join(',');
+    final expenseLabelsKey = selectedExpenseLabels.join(',');
+
+    if (_lastTxLength == widget.transactions.length &&
+        _lastOwner == widget.selectedOwner &&
+        _lastStartDate == widget.startDate &&
+        _lastEndDate == widget.endDate &&
+        _lastDisplayMode == chartDisplayMode &&
+        _lastIncomeLabelsKey == incomeLabelsKey &&
+        _lastExpenseLabelsKey == expenseLabelsKey) {
+      return; // Cache is valid
     }
 
     final filteredTransactions = widget.transactions.where((tx) {
@@ -104,14 +125,37 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     final sortedEntries = labelTotals.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    final double activeModeTotalSum = sortedEntries.fold(0.0, (sum, entry) => sum + entry.value);
-
-    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
-    final maxTopAmount = (totalIncome > totalExpenses ? totalIncome : totalExpenses) > 0 
+    _cachedTotalIncome = totalIncome;
+    _cachedTotalExpenses = totalExpenses;
+    _cachedSortedEntries = sortedEntries;
+    _cachedActiveModeTotalSum = sortedEntries.fold(0.0, (sum, entry) => sum + entry.value);
+    _cachedMaxTopAmount = (totalIncome > totalExpenses ? totalIncome : totalExpenses) > 0 
         ? (totalIncome > totalExpenses ? totalIncome : totalExpenses) 
         : 1.0;
+    _cachedMaxChartAmount = sortedEntries.isNotEmpty ? sortedEntries.first.value : 1.0;
 
-    final maxChartAmount = sortedEntries.isNotEmpty ? sortedEntries.first.value : 1.0;
+    _lastTxLength = widget.transactions.length;
+    _lastOwner = widget.selectedOwner;
+    _lastStartDate = widget.startDate;
+    _lastEndDate = widget.endDate;
+    _lastDisplayMode = chartDisplayMode;
+    _lastIncomeLabelsKey = incomeLabelsKey;
+    _lastExpenseLabelsKey = expenseLabelsKey;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_initializedLabels && widget.labels.isNotEmpty) {
+      for (var l in widget.labels) {
+        selectedIncomeLabels.add(l.id);
+        selectedExpenseLabels.add(l.id);
+      }
+      _initializedLabels = true;
+    }
+
+    _computeDataIfNeeded();
+
+    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
     
     final paletteColors = [
       const Color(0xFFEF4444),
@@ -129,7 +173,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48; // accounting for 24 padding on each side
+        final double fullWidth = availableWidth - 48;
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
@@ -217,7 +261,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 16),
 
-              // Owner Dropdown (Left) & Date Range Picker with Separate Clear Button (Right)[cite: 31]
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -347,7 +390,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 20),
 
-              // Total Income & Total Expenses Cards
               Column(
                 children: [
                   Container(
@@ -365,7 +407,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
-                            value: (totalIncome / maxTopAmount).clamp(0.0, 1.0),
+                            value: (_cachedTotalIncome / _cachedMaxTopAmount).clamp(0.0, 1.0),
                             backgroundColor: const Color(0xDDA7F3D0),
                             color: const Color(0xFF10B981),
                             minHeight: 10,
@@ -377,7 +419,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                              currencyFormat.format(totalIncome),
+                              currencyFormat.format(_cachedTotalIncome),
                               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
                             ),
                           ),
@@ -401,7 +443,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
-                            value: (totalExpenses / maxTopAmount).clamp(0.0, 1.0),
+                            value: (_cachedTotalExpenses / _cachedMaxTopAmount).clamp(0.0, 1.0),
                             backgroundColor: const Color(0xDDFECACA),
                             color: const Color(0xFFEF4444),
                             minHeight: 10,
@@ -413,7 +455,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                              currencyFormat.format(totalExpenses),
+                              currencyFormat.format(_cachedTotalExpenses),
                               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
                             ),
                           ),
@@ -425,7 +467,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 16),
 
-              // Switch Button Mode Selection (Left) & Labels Multi-Select Picker (Right)[cite: 30, 31]
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -503,8 +544,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 24),
 
-              // Chart Rendering Section
-              sortedEntries.isEmpty
+              _cachedSortedEntries.isEmpty
                   ? const SizedBox(
                       height: 150,
                       child: Center(
@@ -514,11 +554,11 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                   : chartType == 'Bar'
                       ? Column(
                           children: [
-                            ...List.generate(sortedEntries.length, (index) {
-                              final entry = sortedEntries[index];
+                            ...List.generate(_cachedSortedEntries.length, (index) {
+                              final entry = _cachedSortedEntries[index];
                               final barColor = paletteColors[index % paletteColors.length];
-                              final double widthFactor = maxChartAmount > 0 ? (entry.value / maxChartAmount).clamp(0.02, 1.0) : 0.02;
-                              final percentageShare = activeModeTotalSum > 0 ? (entry.value / activeModeTotalSum) * 100 : 0.0;
+                              final double widthFactor = _cachedMaxChartAmount > 0 ? (entry.value / _cachedMaxChartAmount).clamp(0.02, 1.0) : 0.02;
+                              final percentageShare = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
 
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 12.0),
@@ -610,8 +650,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       const Text('\$0', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                      Text('\$${(maxChartAmount * 0.5).toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                      Text('\$${maxChartAmount.toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                                      Text('\$${(_cachedMaxChartAmount * 0.5).toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                                      Text('\$${_cachedMaxChartAmount.toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
                                     ],
                                   ),
                                 ],
@@ -641,12 +681,12 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                   borderData: FlBorderData(show: false),
                                   sectionsSpace: 2,
                                   centerSpaceRadius: 45,
-                                  sections: List.generate(sortedEntries.length, (index) {
-                                    final entry = sortedEntries[index];
+                                  sections: List.generate(_cachedSortedEntries.length, (index) {
+                                    final entry = _cachedSortedEntries[index];
                                     final isTouched = index == touchedPieIndex;
                                     final radius = isTouched ? 65.0 : 55.0;
                                     final color = paletteColors[index % paletteColors.length];
-                                    final percentage = activeModeTotalSum > 0 ? (entry.value / activeModeTotalSum) * 100 : 0.0;
+                                    final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
 
                                     return PieChartSectionData(
                                       color: color,
@@ -668,10 +708,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                               spacing: 12,
                               runSpacing: 8,
                               alignment: WrapAlignment.center,
-                              children: List.generate(sortedEntries.length, (index) {
-                                final entry = sortedEntries[index];
+                              children: List.generate(_cachedSortedEntries.length, (index) {
+                                final entry = _cachedSortedEntries[index];
                                 final color = paletteColors[index % paletteColors.length];
-                                final percentage = activeModeTotalSum > 0 ? (entry.value / activeModeTotalSum) * 100 : 0.0;
+                                final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
 
                                 return Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -709,7 +749,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         ),
               const SizedBox(height: 20),
 
-              // Chart View Toggle
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

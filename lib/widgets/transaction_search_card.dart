@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/transaction_model.dart';
@@ -9,12 +10,10 @@ class TransactionSearchCard extends StatefulWidget {
   final List<String> owners;
   final List<String> pools;
   
-  // Callbacks for live actions
   final Function(int) onDeleteTransaction;
   final Function(TransactionModel) onEditTransaction;
   final Function(TransactionModel) onConfirmTransaction;
   
-  // Card layout management properties
   final bool isWide;
   final VoidCallback onToggleWidth;
   final VoidCallback onHide;
@@ -41,75 +40,87 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _minAmountController = TextEditingController();
   final TextEditingController _maxAmountController = TextEditingController();
+  Timer? _debounceTimer;
 
   int? _selectedLabelId;
   String? _selectedOwner;
-  String? _selectedType; // 'income', 'expense', or null for all
+  String? _selectedType;
   String? _selectedPool;
   DateTime? _startDate;
   DateTime? _endDate;
+  String _selectedLimit = '50';
+  String _debouncedQuery = '';
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _searchController.dispose();
     _minAmountController.dispose();
     _maxAmountController.dispose();
     super.dispose();
   }
 
+  void _onSearchChanged(String val) {
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      setState(() {
+        _debouncedQuery = val.trim().toLowerCase();
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Filter transactions based on all criteria
-    final filteredTransactions = widget.transactions.where((tx) {
-      // 1. Description search query
-      if (_searchController.text.isNotEmpty) {
-        final query = _searchController.text.toLowerCase();
-        final desc = tx.description.toLowerCase();
-        if (!desc.contains(query)) return false;
-      }
+    // Default to showing no transactions if no search text or filters are active
+    final bool hasActiveFilter = _debouncedQuery.isNotEmpty ||
+        _selectedLabelId != null ||
+        _selectedOwner != null ||
+        _selectedType != null ||
+        _selectedPool != null ||
+        _startDate != null ||
+        _endDate != null ||
+        _minAmountController.text.isNotEmpty ||
+        _maxAmountController.text.isNotEmpty;
 
-      // 2. Label filter
-      if (_selectedLabelId != null && tx.labelId != _selectedLabelId) {
-        return false;
-      }
+    final filteredTransactions = !hasActiveFilter
+        ? <TransactionModel>[]
+        : widget.transactions.where((tx) {
+            if (_debouncedQuery.isNotEmpty) {
+              final desc = tx.description.toLowerCase();
+              if (!desc.contains(_debouncedQuery)) return false;
+            }
+            if (_selectedLabelId != null && tx.labelId != _selectedLabelId) return false;
+            if (_selectedOwner != null && tx.owner != _selectedOwner) return false;
+            if (_selectedType != null && tx.type != _selectedType) return false;
+            if (_selectedPool != null && tx.pool != _selectedPool) return false;
 
-      // 3. Owner filter
-      if (_selectedOwner != null && tx.owner != _selectedOwner) {
-        return false;
-      }
+            final txDate = DateTime.tryParse(tx.createdAt);
+            if (txDate != null) {
+              if (_startDate != null) {
+                final startClean = DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
+                if (txDate.isBefore(startClean)) return false;
+              }
+              if (_endDate != null) {
+                final endClean = DateTime(_endDate!.year, _endDate!.month, _endDate!.day, 23, 59, 59);
+                if (txDate.isAfter(endClean)) return false;
+              }
+            }
 
-      // 4. Type filter (income/expense)
-      if (_selectedType != null && tx.type != _selectedType) {
-        return false;
-      }
+            final minAmt = double.tryParse(_minAmountController.text);
+            if (minAmt != null && tx.amount < minAmt) return false;
 
-      // 5. Pool filter
-      if (_selectedPool != null && tx.pool != _selectedPool) {
-        return false;
-      }
+            final maxAmt = double.tryParse(_maxAmountController.text);
+            if (maxAmt != null && tx.amount > maxAmt) return false;
 
-      // 6. Date Range filter
-      final txDate = DateTime.tryParse(tx.createdAt);
-      if (txDate != null) {
-        if (_startDate != null) {
-          final startClean = DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
-          if (txDate.isBefore(startClean)) return false;
-        }
-        if (_endDate != null) {
-          final endClean = DateTime(_endDate!.year, _endDate!.month, _endDate!.day, 23, 59, 59);
-          if (txDate.isAfter(endClean)) return false;
-        }
-      }
+            return true;
+          }).toList();
 
-      // 7. Amount Range filter
-      final minAmt = double.tryParse(_minAmountController.text);
-      if (minAmt != null && tx.amount < minAmt) return false;
-
-      final maxAmt = double.tryParse(_maxAmountController.text);
-      if (maxAmt != null && tx.amount > maxAmt) return false;
-
-      return true;
-    }).toList();
+    final int totalFound = filteredTransactions.length;
+    int displayLimit = totalFound;
+    if (_selectedLimit != 'All') {
+      displayLimit = int.tryParse(_selectedLimit) ?? 50;
+    }
+    final displayedTransactions = filteredTransactions.take(displayLimit).toList();
 
     return Container(
       padding: const EdgeInsets.all(24.0),
@@ -127,7 +138,6 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row matching other cards
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -194,11 +204,9 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
             ],
           ),
           const SizedBox(height: 16),
-
-          // Search Field (Description)
           TextField(
             controller: _searchController,
-            onChanged: (val) => setState(() {}),
+            onChanged: _onSearchChanged,
             decoration: InputDecoration(
               isDense: true,
               labelText: 'SEARCH DESCRIPTION',
@@ -212,8 +220,6 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
             ),
           ),
           const SizedBox(height: 12),
-
-          // Dropdowns Row 1: Label & Owner
           Row(
             children: [
               Expanded(
@@ -268,8 +274,6 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
             ],
           ),
           const SizedBox(height: 12),
-
-          // Dropdowns Row 2: Type & Pool
           Row(
             children: [
               Expanded(
@@ -325,8 +329,6 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
             ],
           ),
           const SizedBox(height: 12),
-
-          // Date Selection Row
           Row(
             children: [
               Expanded(
@@ -402,8 +404,6 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
             ],
           ),
           const SizedBox(height: 12),
-
-          // Amount Range Row
           Row(
             children: [
               Expanded(
@@ -444,31 +444,34 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
             ],
           ),
           const SizedBox(height: 20),
-
-          // Results Section Header & Count
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'FOUND ZAZNAMS',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
+              Text(
+                'Showing ${displayedTransactions.length} of $totalFound found',
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '${filteredTransactions.length} found',
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
-                ),
+              Row(
+                children: [
+                  const Text('Show: ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedLimit,
+                      isDense: true,
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+                      items: ['50', '100', '150', '200', 'All']
+                          .map((lim) => DropdownMenuItem(value: lim, child: Text(lim)))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) setState(() => _selectedLimit = val);
+                      },
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 8),
-
-          // Transaction Results List View Container (Interactive layout matches History Card)
           Container(
             height: 260,
             decoration: BoxDecoration(
@@ -476,142 +479,150 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
-            child: filteredTransactions.isEmpty
+            child: !hasActiveFilter
                 ? const Center(
                     child: Text(
-                      'No matching transactions found.',
+                      'Enter search query or select filters above to show results.',
                       style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
                     ),
                   )
-                : ListView.separated(
-                    itemCount: filteredTransactions.length,
-                    separatorBuilder: (context, index) => const Divider(color: Color(0xFFE2E8F0), height: 1),
-                    itemBuilder: (context, index) {
-                      final tx = filteredTransactions[index];
-                      final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
-                      final formattedDate = DateFormat('MMM d, yyyy hh:mm a').format(txDate);
-                      
-                      final labelObj = widget.labels.firstWhere(
-                        (l) => l.id == tx.labelId,
-                        orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
-                      );
-
-                      final isIncome = tx.type == 'income';
-                      final amountString = '${isIncome ? '+' : '-'}\$${tx.amount.toStringAsFixed(2)}';
-                      final isConfirmed = tx.isConfirmed == 1;
-                      final isFuture = txDate.isAfter(DateTime.now());
-
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: isFuture ? const Color(0xFFF1F5F9) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
+                : displayedTransactions.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No matching transactions found.',
+                          style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    tx.description.isNotEmpty ? tx.description : 'Unnamed Transaction',
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF1E293B)),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Wrap(
-                                    spacing: 4,
-                                    runSpacing: 2,
-                                    crossAxisAlignment: WrapCrossAlignment.center,
+                      )
+                    : ListView.separated(
+                        cacheExtent: 1000,
+                        itemCount: displayedTransactions.length,
+                        separatorBuilder: (context, index) => const Divider(color: Color(0xFFE2E8F0), height: 1),
+                        itemBuilder: (context, index) {
+                          final tx = displayedTransactions[index];
+                          final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+                          final formattedDate = DateFormat('MMM d, yyyy hh:mm a').format(txDate);
+                          
+                          final labelObj = widget.labels.firstWhere(
+                            (l) => l.id == tx.labelId,
+                            orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
+                          );
+
+                          final isIncome = tx.type == 'income';
+                          final amountString = '${isIncome ? '+' : '-'}\$${tx.amount.toStringAsFixed(2)}';
+                          final isConfirmed = tx.isConfirmed == 1;
+                          final isFuture = txDate.isAfter(DateTime.now());
+
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: isFuture ? const Color(0xFFF1F5F9) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(formattedDate, style: const TextStyle(fontSize: 9, color: Color(0xFF64748B))),
-                                      const Text('•', style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8))),
-                                      Text(tx.owner, style: const TextStyle(fontSize: 9, color: Color(0xFF4338CA), fontWeight: FontWeight.w500)),
-                                      const Text('•', style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8))),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFFEF3C7),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          labelObj.name,
-                                          style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFFD97706)),
-                                        ),
+                                      Text(
+                                        tx.description.isNotEmpty ? tx.description : 'Unnamed Transaction',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF1E293B)),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Wrap(
+                                        spacing: 4,
+                                        runSpacing: 2,
+                                        crossAxisAlignment: WrapCrossAlignment.center,
+                                        children: [
+                                          Text(formattedDate, style: const TextStyle(fontSize: 9, color: Color(0xFF64748B))),
+                                          const Text('•', style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8))),
+                                          Text(tx.owner, style: const TextStyle(fontSize: 9, color: Color(0xFF4338CA), fontWeight: FontWeight.w500)),
+                                          const Text('•', style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8))),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFFEF3C7),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              labelObj.name,
+                                              style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFFD97706)),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  amountString,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                    color: isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                                  ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  isFuture ? 'SCHEDULED' : (isConfirmed ? 'CONFIRMED' : 'SCHEDULED'),
-                                  style: TextStyle(
-                                    fontSize: 7,
-                                    fontWeight: FontWeight.bold,
-                                    color: isFuture
-                                        ? const Color(0xFF64748B)
-                                        : (isConfirmed ? const Color(0xFF10B981) : const Color(0xFFD97706)),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(width: 8),
-                            Wrap(
-                              spacing: 2,
-                              alignment: WrapAlignment.end,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                if (!isConfirmed)
-                                  ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFD1FAE5),
-                                      foregroundColor: const Color(0xFF047857),
-                                      elevation: 0,
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                      minimumSize: Size.zero,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      amountString,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                        color: isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                                      ),
                                     ),
-                                    onPressed: () => widget.onConfirmTransaction(tx),
-                                    child: const Text('Confirm', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
-                                  ),
-                                IconButton(
-                                  constraints: const BoxConstraints(),
-                                  padding: const EdgeInsets.all(4),
-                                  icon: const Icon(Icons.edit, size: 14, color: Color(0xFF64748B)),
-                                  tooltip: 'Edit',
-                                  onPressed: () => widget.onEditTransaction(tx),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      isFuture ? 'SCHEDULED' : (isConfirmed ? 'CONFIRMED' : 'SCHEDULED'),
+                                      style: TextStyle(
+                                        fontSize: 7,
+                                        fontWeight: FontWeight.bold,
+                                        color: isFuture
+                                            ? const Color(0xFF64748B)
+                                            : (isConfirmed ? const Color(0xFF10B981) : const Color(0xFFD97706)),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                IconButton(
-                                  constraints: const BoxConstraints(),
-                                  padding: const EdgeInsets.all(4),
-                                  icon: const Icon(Icons.delete, size: 14, color: Color(0xFFDC2626)),
-                                  tooltip: 'Delete',
-                                  onPressed: () => widget.onDeleteTransaction(tx.id!),
+                                const SizedBox(width: 8),
+                                Wrap(
+                                  spacing: 2,
+                                  alignment: WrapAlignment.end,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    if (!isConfirmed)
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFFD1FAE5),
+                                          foregroundColor: const Color(0xFF047857),
+                                          elevation: 0,
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                          minimumSize: Size.zero,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                        ),
+                                        onPressed: () => widget.onConfirmTransaction(tx),
+                                        child: const Text('Confirm', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                                      ),
+                                    IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.all(4),
+                                      icon: const Icon(Icons.edit, size: 14, color: Color(0xFF64748B)),
+                                      tooltip: 'Edit',
+                                      onPressed: () => widget.onEditTransaction(tx),
+                                    ),
+                                    IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.all(4),
+                                      icon: const Icon(Icons.delete, size: 14, color: Color(0xFFDC2626)),
+                                      tooltip: 'Delete',
+                                      onPressed: () => widget.onDeleteTransaction(tx.id!),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

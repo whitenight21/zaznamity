@@ -47,41 +47,42 @@ class SankeyFlowCard extends StatefulWidget {
 class _SankeyFlowCardState extends State<SankeyFlowCard> {
   String _flowMode = 'Expenses';
 
-  Future<void> _pickDateRange(BuildContext context) async {
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-      initialDateRange: (widget.startDate != null && widget.endDate != null)
-          ? DateTimeRange(start: widget.startDate!, end: widget.endDate!)
-          : null,
-      builder: (context, child) {
-        return Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 70.0),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 1.0,
-                maxHeight: MediaQuery.of(context).size.height * 0.8,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: child!,
-              ),
-            ),
-          ),
-        );
-      },
-    );
+  List<MapEntry<String, double>> _cachedSortedSources = [];
+  List<MapEntry<String, double>> _cachedSortedTargets = [];
+  List<Map<String, dynamic>> _cachedFlows = [];
+  double _cachedDynamicHeight = 300.0;
 
-    if (picked != null && widget.onDateRangeChanged != null) {
-      widget.onDateRangeChanged!(picked.start, picked.end);
+  int? _lastTxLength;
+  String? _lastOwner;
+  String? _lastPool;
+  DateTime? _lastStartDate;
+  DateTime? _lastEndDate;
+  String? _lastFlowMode;
+
+  @override
+  void initState() {
+    super.initState();
+    // Default to current month if dates are not already provided externally
+    if (widget.startDate == null && widget.endDate == null && widget.onDateRangeChanged != null) {
+      final now = DateTime.now();
+      final firstDay = DateTime(now.year, now.month, 1);
+      final lastDay = DateTime(now.year, now.month + 1, 0);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onDateRangeChanged!(firstDay, lastDay);
+      });
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  void _computeDataIfNeeded() {
+    if (_lastTxLength == widget.transactions.length &&
+        _lastOwner == widget.selectedOwner &&
+        _lastPool == widget.selectedPool &&
+        _lastStartDate == widget.startDate &&
+        _lastEndDate == widget.endDate &&
+        _lastFlowMode == _flowMode) {
+      return;
+    }
+
     final filteredTransactions = widget.transactions.where((tx) {
       if (tx.isConfirmed != 1) return false;
       if (widget.selectedOwner != null && tx.owner != widget.selectedOwner) {
@@ -110,7 +111,6 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
       return true;
     }).toList();
 
-    // Aggregate source to target mappings
     final Map<String, double> sourceTotals = {};
     final Map<String, double> targetTotals = {};
     final List<Map<String, dynamic>> flows = [];
@@ -146,12 +146,61 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
     final sortedTargets = targetTotals.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
-
     int maxItems = sortedSources.length > sortedTargets.length ? sortedSources.length : sortedTargets.length;
     double dynamicHeight = maxItems * 50.0 + 80.0;
     if (dynamicHeight < 300.0) dynamicHeight = 300.0;
 
+    _cachedSortedSources = sortedSources;
+    _cachedSortedTargets = sortedTargets;
+    _cachedFlows = flows;
+    _cachedDynamicHeight = dynamicHeight;
+
+    _lastTxLength = widget.transactions.length;
+    _lastOwner = widget.selectedOwner;
+    _lastPool = widget.selectedPool;
+    _lastStartDate = widget.startDate;
+    _lastEndDate = widget.endDate;
+    _lastFlowMode = _flowMode;
+  }
+
+  Future<void> _pickDateRange(BuildContext context) async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      initialDateRange: (widget.startDate != null && widget.endDate != null)
+          ? DateTimeRange(start: widget.startDate!, end: widget.endDate!)
+          : null,
+      builder: (context, child) {
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 70.0),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 1.0,
+                maxHeight: MediaQuery.of(context).size.height * 0.8,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: child!,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (picked != null && widget.onDateRangeChanged != null) {
+      widget.onDateRangeChanged!(picked.start, picked.end);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _computeDataIfNeeded();
+
+    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
 
     return LayoutBuilder(
@@ -176,7 +225,6 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Card Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -249,12 +297,9 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                 ],
               ),
               const SizedBox(height: 16),
-
-              // Row 1: Owner Dropdown (Left) & Date Range Picker (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Owner Dropdown Box
                   SizedBox(
                     width: boxWidth,
                     child: Container(
@@ -271,19 +316,19 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
+                              child: DropdownButton<String?>(
                                 value: widget.selectedOwner,
                                 isDense: true,
                                 isExpanded: true,
                                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                                 hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
                                 items: [
-                                  const DropdownMenuItem<String>(
+                                  const DropdownMenuItem<String?>(
                                     value: null,
                                     child: Text('All Owners'),
                                   ),
                                   ...widget.owners.map(
-                                    (owner) => DropdownMenuItem<String>(
+                                    (owner) => DropdownMenuItem<String?>(
                                       value: owner,
                                       child: Text(owner),
                                     ),
@@ -297,7 +342,6 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                       ),
                     ),
                   ),
-                  // Date Range Picker Box with Separate Clear Button
                   SizedBox(
                     width: boxWidth,
                     child: Row(
@@ -381,12 +425,9 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                 ],
               ),
               const SizedBox(height: 12),
-
-              // Row 2: Expense/Income Selector (Left) & Pool Dropdown (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Mode Selection Controls (Expenses / Income)
                   SizedBox(
                     width: boxWidth,
                     child: SizedBox(
@@ -410,7 +451,6 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                       ),
                     ),
                   ),
-                  // Pool Dropdown Box
                   SizedBox(
                     width: boxWidth,
                     child: Container(
@@ -427,19 +467,19 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
+                              child: DropdownButton<String?>(
                                 value: widget.selectedPool,
                                 isDense: true,
                                 isExpanded: true,
                                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                                 hint: const Text('All Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
                                 items: [
-                                  const DropdownMenuItem<String>(
+                                  const DropdownMenuItem<String?>(
                                     value: null,
                                     child: Text('All Pools'),
                                   ),
                                   ...widget.pools.map(
-                                    (pool) => DropdownMenuItem<String>(
+                                    (pool) => DropdownMenuItem<String?>(
                                       value: pool,
                                       child: Text(pool.toUpperCase()),
                                     ),
@@ -456,9 +496,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                 ],
               ),
               const SizedBox(height: 20),
-
-              // Graphical Custom Sankey Flow Diagram View with Dynamic Height
-              sortedSources.isEmpty || sortedTargets.isEmpty
+              _cachedSortedSources.isEmpty || _cachedSortedTargets.isEmpty
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(32.0),
@@ -468,22 +506,24 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                         ),
                       ),
                     )
-                  : Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: SizedBox(
-                        height: dynamicHeight,
-                        child: CustomPaint(
-                          size: Size(double.infinity, dynamicHeight),
-                          painter: SankeyDiagramPainter(
-                            sources: sortedSources,
-                            targets: sortedTargets,
-                            flows: flows,
-                            currencyFormat: currencyFormat,
+                  : RepaintBoundary(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: SizedBox(
+                          height: _cachedDynamicHeight,
+                          child: CustomPaint(
+                            size: Size(double.infinity, _cachedDynamicHeight),
+                            painter: SankeyDiagramPainter(
+                              sources: _cachedSortedSources,
+                              targets: _cachedSortedTargets,
+                              flows: _cachedFlows,
+                              currencyFormat: currencyFormat,
+                            ),
                           ),
                         ),
                       ),
