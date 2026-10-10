@@ -15,8 +15,8 @@ class CsvImportMapperWorkflow {
     try {
       const XTypeGroup typeGroup = XTypeGroup(
         label: 'Spreadsheets',
-        extensions: <String>['csv', 'txt', 'xls', 'xlsx'],
-        mimeTypes: <String>['*/*'], // Accept all MIME types to allow for various spreadsheet formats
+        extensions: <String>['csv', 'txt'],
+        mimeTypes: <String>['*/*'],
       );
 
       final XFile? file = await openFile(acceptedTypeGroups: <XTypeGroup>[typeGroup]);
@@ -34,14 +34,12 @@ class CsvImportMapperWorkflow {
       List<String> lines = content.split('\n');
       if (lines.isEmpty) return;
 
-      // Extract headers from the first row and clean UTF-8 BOM if present
       List<String> headers = _parseCsvRow(lines[0].trim());
       if (headers.isNotEmpty) {
         headers[0] = headers[0].replaceAll('\uFEFF', '');
       }
       if (headers.isEmpty) return;
 
-      // Open Mapping Dialog
       if (!context.mounted) return;
       await showDialog(
         context: context,
@@ -115,6 +113,9 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
   String? _mapLabel;
 
   bool _autoDetectFuture = true;
+  bool _createMissingOwners = true;
+  bool _createMissingLabels = true;
+  bool _createMissingPools = true;
   bool _isProcessing = false;
 
   @override
@@ -151,9 +152,13 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
     int poolIndex = _mapPool != null ? widget.headers.indexOf(_mapPool!) : -1;
     int labelIndex = _mapLabel != null ? widget.headers.indexOf(_mapLabel!) : -1;
 
-    // Check for helper columns like Is_Savings or Is_Loan in headers
     int isSavingsIndex = widget.headers.indexWhere((h) => h.toLowerCase() == 'is_savings');
     int isLoanIndex = widget.headers.indexWhere((h) => h.toLowerCase() == 'is_loan');
+
+    // Local mutable lists to track newly created entries during import
+    List<String> activeOwners = List.from(widget.owners);
+    List<LabelModel> activeLabels = List.from(widget.labels);
+    List<String> activePools = List.from(widget.pools);
 
     for (int i = 1; i < widget.lines.length; i++) {
       String line = widget.lines[i].trim();
@@ -182,17 +187,32 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
         }
         amount = amount.abs();
 
-        String owner = widget.owners.isNotEmpty ? widget.owners.first : 'Shared';
+        // Owner Handling & Auto-Creation
+        String owner = activeOwners.isNotEmpty ? activeOwners.first : 'Shared';
         if (ownerIndex != -1 && cols.length > ownerIndex) {
           String val = cols[ownerIndex].trim();
-          if (widget.owners.contains(val)) owner = val;
+          if (val.isNotEmpty) {
+            if (activeOwners.contains(val)) {
+              owner = val;
+            } else if (_createMissingOwners) {
+              activeOwners.add(val);
+              owner = val;
+            }
+          }
         }
 
-        // Smart pool assignment
+        // Pool Handling & Auto-Creation
         String pool = 'checking';
         if (poolIndex != -1 && cols.length > poolIndex) {
           String val = cols[poolIndex].trim().toLowerCase();
-          if (widget.pools.contains(val)) pool = val;
+          if (val.isNotEmpty) {
+            if (activePools.contains(val)) {
+              pool = val;
+            } else if (_createMissingPools) {
+              activePools.add(val);
+              pool = val;
+            }
+          }
         } else {
           if (isSavingsIndex != -1 && cols.length > isSavingsIndex) {
             if (cols[isSavingsIndex].trim().toLowerCase() == 'true') pool = 'savings';
@@ -202,13 +222,29 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
           }
         }
 
-        int labelId = widget.labels.isNotEmpty ? widget.labels.first.id : 1;
+        // Label Handling & Auto-Creation
+        int labelId = activeLabels.isNotEmpty ? activeLabels.first.id : 1;
         if (labelIndex != -1 && cols.length > labelIndex) {
           String labelName = cols[labelIndex].trim();
-          for (var l in widget.labels) {
-            if (l.name.toLowerCase() == labelName.toLowerCase()) {
-              labelId = l.id;
-              break;
+          if (labelName.isNotEmpty) {
+            bool found = false;
+            for (var l in activeLabels) {
+              if (l.name.toLowerCase() == labelName.toLowerCase()) {
+                labelId = l.id;
+                found = true;
+                break;
+              }
+            }
+            if (!found && _createMissingLabels) {
+              await DatabaseHelper.instance.insertLabel(labelName, '#4338CA');
+              final refreshedLabels = await DatabaseHelper.instance.getLabels();
+              activeLabels = refreshedLabels;
+              for (var l in activeLabels) {
+                if (l.name.toLowerCase() == labelName.toLowerCase()) {
+                  labelId = l.id;
+                  break;
+                }
+              }
             }
           }
         }
@@ -240,7 +276,7 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
     widget.onImportCompleted();
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Successfully mapped and imported $importedCount Zaznams!')),
+      SnackBar(content: Text('Successfully imported $importedCount transactions with auto-created entities!')),
     );
   }
 
@@ -268,13 +304,37 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
               _buildDropdownMapping('Pool', _mapPool, (val) => setState(() => _mapPool = val)),
               _buildDropdownMapping('Label / Category', _mapLabel, (val) => setState(() => _mapLabel = val)),
               const Divider(height: 24),
-              SwitchListTile(
+              CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Auto-set Future (isConfirmed = 0)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                subtitle: const Text('Automatically flag transactions with dates after today as future items.', style: TextStyle(fontSize: 10)),
+                title: const Text('Auto-set Future transactions', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                subtitle: const Text('Flag transactions with dates after today as future items.', style: TextStyle(fontSize: 10)),
                 value: _autoDetectFuture,
-                activeThumbColor: const Color(0xFF582F95),
-                onChanged: (val) => setState(() => _autoDetectFuture = val),
+                activeColor: const Color(0xFF582F95),
+                onChanged: (val) => setState(() => _autoDetectFuture = val ?? true),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Auto-create missing Owners', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                subtitle: const Text('Create new owners found in CSV automatically.', style: TextStyle(fontSize: 10)),
+                value: _createMissingOwners,
+                activeColor: const Color(0xFF582F95),
+                onChanged: (val) => setState(() => _createMissingOwners = val ?? true),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Auto-create missing Labels', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                subtitle: const Text('Create new labels/categories found in CSV automatically.', style: TextStyle(fontSize: 10)),
+                value: _createMissingLabels,
+                activeColor: const Color(0xFF582F95),
+                onChanged: (val) => setState(() => _createMissingLabels = val ?? true),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Auto-create missing Pools', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                subtitle: const Text('Create new asset pools found in CSV automatically.', style: TextStyle(fontSize: 10)),
+                value: _createMissingPools,
+                activeColor: const Color(0xFF582F95),
+                onChanged: (val) => setState(() => _createMissingPools = val ?? true),
               ),
             ],
           ),

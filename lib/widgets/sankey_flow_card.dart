@@ -9,6 +9,9 @@ class SankeyFlowCard extends StatefulWidget {
   final List<LabelModel> labels;
   final List<String> owners;
   final String? selectedOwner;
+  final List<String> pools;
+  final String? selectedPool;
+  final Function(String?)? onPoolChanged;
   final DateTime? startDate;
   final DateTime? endDate;
   final Function(DateTime?, DateTime?)? onDateRangeChanged;
@@ -24,6 +27,9 @@ class SankeyFlowCard extends StatefulWidget {
     required this.labels,
     required this.owners,
     this.selectedOwner,
+    required this.pools,
+    this.selectedPool,
+    this.onPoolChanged,
     this.startDate,
     this.endDate,
     this.onDateRangeChanged,
@@ -80,6 +86,11 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
       if (tx.isConfirmed != 1) return false;
       if (widget.selectedOwner != null && tx.owner != widget.selectedOwner) {
         return false;
+      }
+      if (widget.selectedPool != null && widget.selectedPool!.isNotEmpty) {
+        if (tx.pool.toLowerCase() != widget.selectedPool!.toLowerCase()) {
+          return false;
+        }
       }
       final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
       if (widget.startDate != null && txDate.isBefore(widget.startDate!)) {
@@ -138,7 +149,6 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
     final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
 
     int maxItems = sortedSources.length > sortedTargets.length ? sortedSources.length : sortedTargets.length;
-    // Generous vertical calculation ensuring plenty of room for all categories
     double dynamicHeight = maxItems * 50.0 + 80.0;
     if (dynamicHeight < 300.0) dynamicHeight = 300.0;
 
@@ -147,7 +157,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48; // accounting for 24 padding on each side
+        final double fullWidth = availableWidth - 48;
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
@@ -240,7 +250,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
               ),
               const SizedBox(height: 16),
 
-              // Owner Dropdown (Left) & Date Range Picker with Separate Clear Button (Right)
+              // Row 1: Owner Dropdown (Left) & Date Range Picker (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -370,28 +380,77 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
-              // Mode Selection Controls (Expenses / Income) underneath the date picker row
+              // Row 2: Expense/Income Selector (Left) & Pool Dropdown (Right)
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: ToggleButtons(
-                      isSelected: [_flowMode == 'Expenses', _flowMode == 'Income'],
-                      onPressed: (index) {
-                        setState(() {
-                          _flowMode = index == 0 ? 'Expenses' : 'Income';
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(8),
-                      constraints: const BoxConstraints(minHeight: 34, minWidth: 65),
-                      selectedColor: Colors.white,
-                      fillColor: const Color(0xFF582F95),
-                      color: const Color(0xFF475569),
-                      children: const [
-                        Text('Expenses', style: TextStyle(fontSize: 11)),
-                        Text('Income', style: TextStyle(fontSize: 11)),
-                      ],
+                  // Mode Selection Controls (Expenses / Income)
+                  SizedBox(
+                    width: boxWidth,
+                    child: SizedBox(
+                      height: 44,
+                      child: ToggleButtons(
+                        isSelected: [_flowMode == 'Expenses', _flowMode == 'Income'],
+                        onPressed: (index) {
+                          setState(() {
+                            _flowMode = index == 0 ? 'Expenses' : 'Income';
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(10),
+                        constraints: BoxConstraints(minHeight: 44, minWidth: boxWidth / 2 - 2),
+                        selectedColor: Colors.white,
+                        fillColor: const Color(0xFF582F95),
+                        color: const Color(0xFF475569),
+                        children: const [
+                          Text('Expenses', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          Text('Income', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Pool Dropdown Box
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.account_balance_wallet_outlined, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: widget.selectedPool,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                hint: const Text('All Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                items: [
+                                  const DropdownMenuItem<String>(
+                                    value: null,
+                                    child: Text('All Pools'),
+                                  ),
+                                  ...widget.pools.map(
+                                    (pool) => DropdownMenuItem<String>(
+                                      value: pool,
+                                      child: Text(pool.toUpperCase()),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: widget.onPoolChanged,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -437,7 +496,6 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
   }
 }
 
-// Custom Painter with 10px horizontal padding bounds and fully proportional vertical node layout
 class SankeyDiagramPainter extends CustomPainter {
   final List<MapEntry<String, double>> sources;
   final List<MapEntry<String, double>> targets;
@@ -461,13 +519,11 @@ class SankeyDiagramPainter extends CustomPainter {
     if (totalSourceVal <= 0 || totalTargetVal <= 0) return;
 
     double nodeWidth = 4.0;
-    // Horizontal padding kept at 10px on both edges
     double leftX = 10.0;
     double rightX = size.width - 10.0;
 
     double usableHeight = size.height - 20.0;
 
-    // --- Dynamic Source Node Positioning ---
     Map<String, Rect> sourceRects = {};
     int srcCount = sources.length;
     double sourceGap = srcCount > 1 ? (usableHeight * 0.04 / (srcCount - 1)).clamp(2.0, 6.0) : 0.0;
@@ -486,7 +542,6 @@ class SankeyDiagramPainter extends CustomPainter {
       currentSourceY += nodeHeight + sourceGap;
     }
 
-    // --- Dynamic Target Node Positioning ---
     Map<String, Rect> targetRects = {};
     int tgtCount = targets.length;
     double targetGap = tgtCount > 1 ? (usableHeight * 0.04 / (tgtCount - 1)).clamp(2.0, 6.0) : 0.0;
@@ -514,7 +569,6 @@ class SankeyDiagramPainter extends CustomPainter {
       targetOffsets[tgt.key] = targetRects[tgt.key]!.top;
     }
 
-    // Draw Flow Ribbons (Beziers)
     final List<Color> ribbonColors = [
       const Color(0xFFCBD5E1),
       const Color(0xFF93C5FD),
@@ -562,7 +616,6 @@ class SankeyDiagramPainter extends CustomPainter {
       colorIndex++;
     }
 
-    // Draw Source Nodes (Left) & Labels inside to the right of the node
     paintNode.color = const Color(0xFF582F95);
     for (var entry in sourceRects.entries) {
       canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
@@ -579,7 +632,6 @@ class SankeyDiagramPainter extends CustomPainter {
       tp.paint(canvas, Offset(entry.value.right + 6, entry.value.top + (entry.value.height / 2) - 10));
     }
 
-    // Draw Target Nodes (Right) & Labels inside to the left of the node
     paintNode.color = const Color.fromARGB(255, 62, 0, 103);
     for (var entry in targetRects.entries) {
       canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);

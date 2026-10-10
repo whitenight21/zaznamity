@@ -72,12 +72,22 @@ class _CalendarCardState extends State<CalendarCard> {
       return true;
     }).toList();
 
+    // Group confirmed transactions by date for daily totals calculation
+    final Map<String, double> incomeByDate = {};
+    final Map<String, double> expenseByDate = {};
     final Map<String, List<TransactionModel>> txByDate = {};
+
     for (var tx in filteredTransactions) {
       final date = DateTime.tryParse(tx.createdAt);
-      if (date != null) {
+      if (date != null && tx.isConfirmed == 1) {
         final key = DateFormat('yyyy-MM-dd').format(date);
         txByDate.putIfAbsent(key, () => []).add(tx);
+
+        if (tx.type == 'income') {
+          incomeByDate[key] = (incomeByDate[key] ?? 0.0) + tx.amount;
+        } else if (tx.type == 'expense') {
+          expenseByDate[key] = (expenseByDate[key] ?? 0.0) + tx.amount;
+        }
       }
     }
 
@@ -120,15 +130,14 @@ class _CalendarCardState extends State<CalendarCard> {
     for (int day = 1; day <= totalDays; day++) {
       final currentDate = DateTime(_displayedMonth.year, _displayedMonth.month, day);
       final dateKey = DateFormat('yyyy-MM-dd').format(currentDate);
-      final dayTxs = txByDate[dateKey] ?? [];
-      final hasTx = dayTxs.isNotEmpty;
+      final hasTx = txByDate.containsKey(dateKey);
 
       final isToday = currentDate.year == now.year &&
           currentDate.month == now.month &&
           currentDate.day == now.day;
 
-      bool hasIncome = dayTxs.any((t) => t.type == 'income' && t.isConfirmed == 1);
-      bool hasExpense = dayTxs.any((t) => t.type == 'expense' && t.isConfirmed == 1);
+      final double dayIncome = incomeByDate[dateKey] ?? 0.0;
+      final double dayExpense = expenseByDate[dateKey] ?? 0.0;
 
       flatCells.add(
         Padding(
@@ -137,7 +146,7 @@ class _CalendarCardState extends State<CalendarCard> {
             onTap: () => _handleDateTap(currentDate),
             borderRadius: BorderRadius.circular(8),
             child: Container(
-              height: 36,
+              height: 52, // Increased height to comfortably fit totals
               decoration: BoxDecoration(
                 color: hasTx ? const Color(0xFFF8FAFC) : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
@@ -148,16 +157,16 @@ class _CalendarCardState extends State<CalendarCard> {
                   width: isToday ? 1.5 : 1.0,
                 ),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
                       '$day',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: (hasTx || isToday) ? FontWeight.bold : FontWeight.normal,
                         color: isToday
                             ? const Color.fromARGB(255, 88, 47, 149)
@@ -165,32 +174,31 @@ class _CalendarCardState extends State<CalendarCard> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (hasIncome)
-                        Container(
-                          width: 3.5,
-                          height: 3.5,
-                          margin: const EdgeInsets.symmetric(horizontal: 0.5),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF10B981),
-                            shape: BoxShape.circle,
-                          ),
+                  const Spacer(),
+                  if (dayIncome > 0)
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        '+${dayIncome.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF10B981),
                         ),
-                      if (hasExpense)
-                        Container(
-                          width: 3.5,
-                          height: 3.5,
-                          margin: const EdgeInsets.symmetric(horizontal: 0.5),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFEF4444),
-                            shape: BoxShape.circle,
-                          ),
+                      ),
+                    ),
+                  if (dayExpense > 0)
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        '-${dayExpense.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFEF4444),
                         ),
-                    ],
-                  ),
+                      ),
+                    ),
                 ],
               ),
             ),

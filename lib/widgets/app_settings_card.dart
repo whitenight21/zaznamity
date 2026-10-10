@@ -1231,10 +1231,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   ),
                   _buildSubSectionCard(
                     title: 'CSV Import Mapper',
-                    subtitle: 'Select, map, and import your custom CSV data',
+                    subtitle: 'Select, map, and import your CSV data',
                     children: [
                       const Text(
-                        'Upload any bank or custom CSV file, match your columns dynamically to Zaznamity fields, and auto-detect future transactions.',
+                        'Upload any bank or CSV file, match your columns to Zaznamity fields, choose to create labels, owners and pools, and detect future transactions.\n\n'
+                        'This feature is designed to help you import your financial data from other sources into Zaznamity with ease and efficiency.',
                         style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
                       ),
                       const SizedBox(height: 12),

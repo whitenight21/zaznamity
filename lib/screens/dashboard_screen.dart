@@ -22,6 +22,7 @@ import '../widgets/budget_progress_card.dart';
 import '../widgets/selected_label_focus_card.dart';
 import '../widgets/transaction_search_card.dart';
 import '../widgets/sankey_flow_card.dart';
+import '../widgets/pools_analytics_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -91,6 +92,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _sankeyStartDate;
   DateTime? _sankeyEndDate;
   String? _sankeySelectedOwner;
+  String? _sankeySelectedPool;
 
   List<String> _leftNavItems = ['metrics', 'budget'];
   List<String> _rightNavItems = ['history', 'settings'];
@@ -130,6 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     CardConfig(id: 'budget', title: 'Budget', key: GlobalKey()),
     CardConfig(id: 'trend_chart', title: 'Liquid Trend', key: GlobalKey()),
     CardConfig(id: 'savings_chart', title: 'Savings Trend', key: GlobalKey()),
+    CardConfig(id: 'pools_analytics', title: 'Pools Analytics', key: GlobalKey()),
     CardConfig(id: 'calendar', title: 'Calendar', key: GlobalKey()),
     CardConfig(id: 'sankey_flow', title: 'Sankey Flow', key: GlobalKey()),
     CardConfig(id: 'history', title: 'All Zaznams', key: GlobalKey()),
@@ -175,7 +178,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _pools = updatedPools;
       for (var entry in updatedPools.entries) {
         if (!_liquidNetPools.containsKey(entry.key)) {
-          _liquidNetPools[entry.key] = true;
+          _liquidNetPools[entry.key] = false;
         }
         if (!_prognosisPools.containsKey(entry.key)) {
           _prognosisPools[entry.key] = false;
@@ -1318,6 +1321,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       onHide: () => setState(() => card.isVisible = false),
                                     );
                                     break;
+                                  case 'pools_analytics':
+                                    cardWidget = PoolsAnalyticsCard(
+                                      transactions: _transactions,
+                                      pools: _pools,
+                                      selectedOwner: _globalSelectedOwner,
+                                      isWide: card.isWide,
+                                      onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+                                      onHide: () => setState(() => card.isVisible = false),
+                                    );
+                                    break;
                                   case 'calendar':
                                     cardWidget = CalendarCard(
                                       transactions: _transactions,
@@ -1341,7 +1354,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       transactions: _transactions,
                                       labels: _labels,
                                       owners: _owners,
+                                      pools: _pools.keys.toList(), // Pass your active pools list
                                       selectedOwner: _sankeySelectedOwner ?? _globalSelectedOwner,
+                                      selectedPool: _sankeySelectedPool,
                                       startDate: _sankeyStartDate,
                                       endDate: _sankeyEndDate,
                                       onDateRangeChanged: (start, end) => setState(() {
@@ -1349,9 +1364,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         _sankeyEndDate = end;
                                       }),
                                       onOwnerChanged: (owner) => setState(() => _sankeySelectedOwner = owner),
+                                      onPoolChanged: (pool) => setState(() => _sankeySelectedPool = pool),
                                       onClearDateFilter: () => setState(() {
                                         _sankeyStartDate = null;
                                         _sankeyEndDate = null;
+                                        _sankeySelectedPool = null;
                                       }),
                                       isWide: card.isWide,
                                       onToggleWidth: () => setState(() => card.isWide = !card.isWide),
