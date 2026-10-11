@@ -21,25 +21,83 @@ class BottomCardNavBar extends StatelessWidget {
     this.rightItems = const ['history', 'calendar', 'manager'],
   });
 
-  void _scrollToCard(BuildContext context, GlobalKey key, String cardId) {
-    final cardConfig = cards.firstWhere((c) => c.id == cardId, orElse: () => cards.first);
-    
-    if (!cardConfig.isVisible) {
-      onToggleVisibility(cardConfig);
-    }
-    
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final targetContext = key.currentContext;
-        if (targetContext != null) {
-          Scrollable.ensureVisible(
-            targetContext,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
-          );
-        }
-      });
-    });
+  @override
+  Widget build(BuildContext context) {
+    final effectiveLeft = [
+      'settings',
+      if (leftItems.length > 1 && leftItems[1] != 'settings' && leftItems[1] != 'manager') leftItems[1] else 'metrics',
+      if (leftItems.length > 2 && leftItems[2] != 'settings' && leftItems[2] != 'manager') leftItems[2] else 'budget',
+    ];
+
+    final effectiveRight = [
+      if (rightItems.isNotEmpty && rightItems[0] != 'manager' && rightItems[0] != 'settings') rightItems[0] else 'history',
+      if (rightItems.length > 1 && rightItems[1] != 'manager' && rightItems[1] != 'settings') rightItems[1] else 'calendar',
+      'manager',
+    ];
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1333).withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(color: Colors.white10),
+      ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildNavItem(context, effectiveLeft[0]),
+            const SizedBox(width: 4),
+            _buildNavItem(context, effectiveLeft[1]),
+            const SizedBox(width: 4),
+            _buildNavItem(context, effectiveLeft[2]),
+            const SizedBox(width: 6),
+
+            // Center Icon: Zaznamity Logo Button
+            GestureDetector(
+              onTap: onQuickAdd,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/ZaznamityLogoFULL.jpg',
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+
+            _buildNavItem(context, effectiveRight[0]),
+            const SizedBox(width: 4),
+            _buildNavItem(context, effectiveRight[1]),
+            const SizedBox(width: 4),
+            _buildNavItem(context, effectiveRight[2]),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildNavItem(BuildContext context, String itemKey) {
@@ -117,87 +175,25 @@ class BottomCardNavBar extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       padding: EdgeInsets.zero,
       icon: Icon(iconData, color: iconColor, size: 20),
-      onPressed: () => _scrollToCard(context, cardConfig.key, cardConfig.id),
+      onPressed: () {
+        if (!cardConfig.isVisible) {
+          onToggleVisibility(cardConfig);
+        }
+        
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final targetContext = cardConfig.key.currentContext;
+            if (targetContext != null) {
+              Scrollable.ensureVisible(
+                targetContext,
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.easeInOut,
+              );
+            }
+          });
+        });
+      },
       tooltip: tooltip,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final effectiveLeft = [
-      'settings',
-      if (leftItems.length > 1 && leftItems[1] != 'settings' && leftItems[1] != 'manager') leftItems[1] else 'metrics',
-      if (leftItems.length > 2 && leftItems[2] != 'settings' && leftItems[2] != 'manager') leftItems[2] else 'budget',
-    ];
-
-    final effectiveRight = [
-      if (rightItems.isNotEmpty && rightItems[0] != 'manager' && rightItems[0] != 'settings') rightItems[0] else 'history',
-      if (rightItems.length > 1 && rightItems[1] != 'manager' && rightItems[1] != 'settings') rightItems[1] else 'calendar',
-      'manager',
-    ];
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1333).withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(color: Colors.white10),
-      ),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _buildNavItem(context, effectiveLeft[0]),
-            const SizedBox(width: 4),
-            _buildNavItem(context, effectiveLeft[1]),
-            const SizedBox(width: 4),
-            _buildNavItem(context, effectiveLeft[2]),
-            const SizedBox(width: 6),
-
-            // Center Icon: Zaznamity Logo Button
-            GestureDetector(
-              onTap: onQuickAdd,
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: ClipOval(
-                  child: Image.asset(
-                    'assets/ZaznamityLogoFULL.jpg',
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-
-            _buildNavItem(context, effectiveRight[0]),
-            const SizedBox(width: 4),
-            _buildNavItem(context, effectiveRight[1]),
-            const SizedBox(width: 4),
-            _buildNavItem(context, effectiveRight[2]),
-          ],
-        ),
-      ),
     );
   }
 }

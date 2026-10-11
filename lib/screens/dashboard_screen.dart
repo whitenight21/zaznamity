@@ -26,6 +26,7 @@ import '../widgets/sankey_flow_card.dart';
 import '../widgets/pools_analytics_card.dart';
 import '../widgets/monthly_cashflow_trend_card.dart';
 import '../widgets/savings_goals_card.dart';
+import '../widgets/dashboard_section.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -44,6 +45,12 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final ScrollController _scrollController = ScrollController();
   
+  // Section GlobalKeys for reliable scrolling when collapsed
+  final GlobalKey _overviewSectionKey = GlobalKey();
+  final GlobalKey _analyticsSectionKey = GlobalKey();
+  final GlobalKey _analysisSectionKey = GlobalKey();
+  final GlobalKey _actionsSectionKey = GlobalKey();
+
   List<TransactionModel> _transactions = [];
   List<LabelModel> _labels = [];
   List<Map<String, dynamic>> _budgets = [];
@@ -100,6 +107,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String? _monthlyTrendSelectedOwner;
 
+  // Section Expansion States (persisted via SharedPreferences)
+  bool _sectionOverviewExpanded = true;
+  bool _sectionAnalyticsExpanded = true;
+  bool _sectionAnalysisExpanded = true;
+  bool _sectionActionsExpanded = true;
+
   List<String> _leftNavItems = ['metrics', 'budget'];
   List<String> _rightNavItems = ['history', 'settings'];
 
@@ -155,15 +168,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _labelsCardStartDate = DateTime(now.year, now.month, 1);
     _labelsCardEndDate = DateTime(now.year, now.month + 1, 0);
 
-    // Default history filter range: 15 days back from today up to today
     _historyStartDate = now.subtract(const Duration(days: 15));
     _historyEndDate = now;
 
-    _loadNavPreferences();
+    _loadPreferences();
     loadData(showLoading: true);
   }
 
-  Future<void> _loadNavPreferences() async {
+  Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       final leftSaved = prefs.getStringList('leftNavItems');
@@ -185,7 +197,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (!loadedPools.containsKey('goals')) loadedPools['goals'] = true;
         _pools = loadedPools;
       }
+
+      _sectionOverviewExpanded = prefs.getBool('section_overview_expanded') ?? true;
+      _sectionAnalyticsExpanded = prefs.getBool('section_analytics_expanded') ?? true;
+      _sectionAnalysisExpanded = prefs.getBool('section_analysis_expanded') ?? true;
+      _sectionActionsExpanded = prefs.getBool('section_actions_expanded') ?? true;
     });
+  }
+
+  Future<void> _saveSectionPreference(String key, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, value);
   }
 
   Future<void> _savePoolsPreferences(Map<String, bool> updatedPools) async {
@@ -208,16 +230,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
     calculateMetrics();
   }
 
-  void _scrollToCard(GlobalKey key) {
+  void _scrollToCardById(String cardId) {
+    final cardConfig = _cards.firstWhere(
+      (c) => c.id == cardId,
+      orElse: () => _cards.first,
+    );
+
+    setState(() {
+      cardConfig.isVisible = true;
+      if (['metrics', 'savings_goals', 'future_metrics'].contains(cardId)) {
+        _sectionOverviewExpanded = true;
+        _saveSectionPreference('section_overview_expanded', true);
+      } else if (['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(cardId)) {
+        _sectionAnalyticsExpanded = true;
+        _saveSectionPreference('section_analytics_expanded', true);
+      } else if (['budget', 'label_focus', 'income_expenses_labels', 'calendar'].contains(cardId)) {
+        _sectionAnalysisExpanded = true;
+        _saveSectionPreference('section_analysis_expanded', true);
+      } else {
+        _sectionActionsExpanded = true;
+        _saveSectionPreference('section_actions_expanded', true);
+      }
+    });
+
+    // Allow frames to build, then grab the precise card context
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final context = key.currentContext;
+        final context = cardConfig.key.currentContext;
         if (context != null) {
           Scrollable.ensureVisible(
             context,
             duration: const Duration(milliseconds: 500),
             curve: Curves.easeInOut,
           );
+        } else {
+          // Fallback retry if the widget was just mounted by opening the section
+          Future.delayed(const Duration(milliseconds: 80), () {
+            final retryContext = cardConfig.key.currentContext;
+            if (retryContext != null) {
+              Scrollable.ensureVisible(
+                retryContext,
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeInOut,
+              );
+            }
+          });
         }
       });
     });
@@ -279,12 +336,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       onTap: () {
                         Navigator.pop(modalContext);
-                        Future.delayed(const Duration(milliseconds: 200), () {
-                          setState(() {
-                            card.isVisible = true;
-                          });
-                          onScrollTo(card.key);
-                        });
+                        _scrollToCardById(card.id);
                       },
                     );
                   },
@@ -295,6 +347,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
     );
+  }
+
+  void _scrollToCard(GlobalKey key) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final context = key.currentContext;
+        if (context != null) {
+          Scrollable.ensureVisible(
+            context,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOut,
+          );
+        }
+      });
+    });
   }
 
   Future<void> loadData({bool showLoading = false}) async {
@@ -1137,9 +1204,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _historyStartDate = start;
               _historyEndDate = end;
             });
-            final historyCard = _cards.firstWhere((c) => c.id == 'history');
-            if (!historyCard.isVisible) setState(() => historyCard.isVisible = true);
-            _scrollToCard(historyCard.key);
+            _scrollToCardById('history');
           },
           isWide: card.isWide,
           onToggleWidth: () => setState(() => card.isWide = !card.isWide),
@@ -1252,7 +1317,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           transactions: _transactions,
           owners: _owners,
           pools: _pools.keys.toList(),
-          selectedOwner: _monthlyTrendSelectedOwner,
+          selectedOwner: _monthlyTrendSelectedOwner ?? _globalSelectedOwner,
           onOwnerChanged: (owner) => setState(() => _monthlyTrendSelectedOwner = owner),
           selectedPool: _sankeySelectedPool,
           onPoolChanged: (pool) => setState(() => _sankeySelectedPool = pool),
@@ -1269,9 +1334,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _historySelectedType = type;
             });
 
-            final historyCard = _cards.firstWhere((c) => c.id == 'history');
-            if (!historyCard.isVisible) setState(() => historyCard.isVisible = true);
-            _scrollToCard(historyCard.key);
+            _scrollToCardById('history');
           },
           isWide: card.isWide,
           onToggleWidth: () => setState(() => card.isWide = !card.isWide),
@@ -1460,13 +1523,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  List<List<CardConfig>> _chunkCardsIntoRows(List<CardConfig> visibleCards, double screenWidth) {
+  List<List<CardConfig>> _chunkCardsIntoRows(List<CardConfig> sectionCards, double screenWidth) {
     List<List<CardConfig>> rows = [];
     List<CardConfig> currentRow = [];
     int currentCols = 0;
     int maxCols = screenWidth >= 1200 ? 3 : (screenWidth >= 768 ? 2 : 1);
 
-    for (var card in visibleCards) {
+    for (var card in sectionCards) {
       int cardCols = card.isWide ? maxCols : 1;
       if (currentCols > 0 && (currentCols + cardCols > maxCols || card.isWide)) {
         rows.add(List.from(currentRow));
@@ -1485,6 +1548,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
       rows.add(currentRow);
     }
     return rows;
+  }
+
+  Widget _buildCardRowList(List<CardConfig> sectionCards, double screenWidth) {
+    final rows = _chunkCardsIntoRows(sectionCards, screenWidth);
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    // 2 pixels padding on the side as requested
+    const double sidePadding = 4.0; 
+    final double netWidth = screenWidth - sidePadding;
+
+    return Column(
+      children: rows.map((rowCards) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: rowCards.map((card) {
+              double cardWidth;
+              if (card.isWide) {
+                cardWidth = netWidth;
+              } else {
+                if (screenWidth >= 1200) {
+                  cardWidth = (netWidth - 40) / 3;
+                } else if (screenWidth >= 768) {
+                  cardWidth = (netWidth - 20) / 2;
+                } else {
+                  cardWidth = netWidth;
+                }
+              }
+
+              return Expanded(
+                key: card.key,
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    right: rowCards.last == card ? 0 : 16,
+                  ),
+                  child: SizedBox(
+                    width: cardWidth,
+                    child: RepaintBoundary(
+                      child: _buildCardWidget(card),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      }).toList(),
+    );
   }
 
   @override
@@ -1564,52 +1676,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final screenWidth = constraints.maxWidth;
-                          final visibleCards = _cards.where((card) => card.isVisible).toList();
-                          final rows = _chunkCardsIntoRows(visibleCards, screenWidth);
 
-                          return ListView.builder(
+                          final overviewCards = _cards.where((c) => c.isVisible && ['metrics', 'savings_goals', 'future_metrics'].contains(c.id)).toList();
+                          final analyticsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
+                          final analysisCards = _cards.where((c) => c.isVisible && ['budget', 'label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
+                          final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
+
+                          return ListView(
                             controller: _scrollController,
                             cacheExtent: 1000,
-                            padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                            itemCount: rows.length,
-                            itemBuilder: (context, rowIndex) {
-                              final rowCards = rows[rowIndex];
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 20),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: rowCards.map((card) {
-                                    double cardWidth;
-                                    if (card.isWide) {
-                                      cardWidth = screenWidth - 48;
-                                    } else {
-                                      if (screenWidth >= 1200) {
-                                        cardWidth = (screenWidth - 48 - 40) / 3;
-                                      } else if (screenWidth >= 768) {
-                                        cardWidth = (screenWidth - 48 - 20) / 2;
-                                      } else {
-                                        cardWidth = screenWidth - 48;
-                                      }
-                                    }
-
-                                    return Expanded(
-                                      key: card.key,
-                                      child: Padding(
-                                        padding: EdgeInsets.only(
-                                          right: rowCards.last == card ? 0 : 20,
-                                        ),
-                                        child: SizedBox(
-                                          width: cardWidth,
-                                          child: RepaintBoundary(
-                                            child: _buildCardWidget(card),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
+                            padding: const EdgeInsets.fromLTRB(2, 8, 2, 100),
+                            children: [
+                              if (overviewCards.isNotEmpty)
+                                DashboardSection(
+                                  key: _overviewSectionKey,
+                                  title: 'Financial Overview & Metrics',
+                                  icon: Icons.dashboard_rounded,
+                                  isExpanded: _sectionOverviewExpanded,
+                                  onExpansionChanged: (val) {
+                                    setState(() => _sectionOverviewExpanded = val);
+                                    _saveSectionPreference('section_overview_expanded', val);
+                                  },
+                                  children: [_buildCardRowList(overviewCards, screenWidth)],
                                 ),
-                              );
-                            },
+                              if (analyticsCards.isNotEmpty)
+                                DashboardSection(
+                                  key: _analyticsSectionKey,
+                                  title: 'Analytics & Trends',
+                                  icon: Icons.trending_up_rounded,
+                                  isExpanded: _sectionAnalyticsExpanded,
+                                  onExpansionChanged: (val) {
+                                    setState(() => _sectionAnalyticsExpanded = val);
+                                    _saveSectionPreference('section_analytics_expanded', val);
+                                  },
+                                  children: [_buildCardRowList(analyticsCards, screenWidth)],
+                                ),
+                              if (analysisCards.isNotEmpty)
+                                DashboardSection(
+                                  key: _analysisSectionKey,
+                                  title: 'Analysis & Budgets',
+                                  icon: Icons.pie_chart_rounded,
+                                  isExpanded: _sectionAnalysisExpanded,
+                                  onExpansionChanged: (val) {
+                                    setState(() => _sectionAnalysisExpanded = val);
+                                    _saveSectionPreference('section_analysis_expanded', val);
+                                  },
+                                  children: [_buildCardRowList(analysisCards, screenWidth)],
+                                ),
+                              if (actionsCards.isNotEmpty)
+                                DashboardSection(
+                                  key: _actionsSectionKey,
+                                  title: 'Quick Actions & History',
+                                  icon: Icons.receipt_long_rounded,
+                                  isExpanded: _sectionActionsExpanded,
+                                  onExpansionChanged: (val) {
+                                    setState(() => _sectionActionsExpanded = val);
+                                    _saveSectionPreference('section_actions_expanded', val);
+                                  },
+                                  children: [_buildCardRowList(actionsCards, screenWidth)],
+                                ),
+                            ],
                           );
                         },
                       ),
@@ -1632,24 +1758,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         (card) => setState(() => card.isVisible = !card.isVisible),
                         (key) => _scrollToCard(key),
                       ),
-                      onQuickAdd: () {
-                        final index = _cards.indexWhere((c) => c.id == 'new_entry');
-                        if (index != -1) {
-                          setState(() {
-                            _cards[index].isVisible = true;
-                          });
-                          _scrollToCard(_cards[index].key);
-                        }
-                      },
-                      onOpenSettings: () {
-                        final index = _cards.indexWhere((c) => c.id == 'settings');
-                        if (index != -1) {
-                          setState(() {
-                            _cards[index].isVisible = true;
-                          });
-                          _scrollToCard(_cards[index].key);
-                        }
-                      },
+                      onQuickAdd: () => _scrollToCardById('new_entry'),
+                      onOpenSettings: () => _scrollToCardById('settings'),
                       onToggleVisibility: (card) {
                         setState(() {
                           card.isVisible = true;
