@@ -160,88 +160,82 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48;
+        final double fullWidth = availableWidth - 32;
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: const Text(
-                        'CASHFLOW TREND',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF582F95),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
+                  const Text(
+                    'CASHFLOW TREND',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF582F95),
+                      letterSpacing: 0.8,
                     ),
                   ),
-                  const SizedBox(width: 8),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (widget.onToggleWidth != null)
                         Padding(
-                          padding: const EdgeInsets.only(right: 6.0),
+                          padding: const EdgeInsets.only(right: 4.0),
                           child: SizedBox(
-                            height: 32,
-                            width: 32,
+                            height: 28,
+                            width: 28,
                             child: IconButton(
                               style: IconButton.styleFrom(
                                 backgroundColor: const Color(0xFFF1F5F9),
                                 foregroundColor: const Color(0xFF64748B),
                                 padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                               ),
                               onPressed: widget.onToggleWidth,
                               icon: Icon(
                                 widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                                size: 18,
+                                size: 16,
                               ),
                             ),
                           ),
                         ),
                       if (widget.onHide != null)
                         SizedBox(
-                          height: 32,
-                          width: 32,
+                          height: 28,
+                          width: 28,
                           child: IconButton(
                             style: IconButton.styleFrom(
                               backgroundColor: const Color(0xFFF1F5F9),
                               foregroundColor: const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                             ),
                             onPressed: widget.onHide,
-                            icon: const Icon(Icons.visibility_off_outlined, size: 16),
+                            icon: const Icon(Icons.visibility_off_outlined, size: 14),
                           ),
                         ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -249,7 +243,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                   SizedBox(
                     width: boxWidth,
                     child: Container(
-                      height: 40,
+                      height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
@@ -283,26 +277,34 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                   SizedBox(
                     width: boxWidth,
                     child: Container(
-                      height: 40,
+                      height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: const Color(0xFFCBD5E1)),
                       ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedTimeframe,
-                          isDense: true,
-                          isExpanded: true,
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                          items: ['All time', 'This Year', 'Last 12 Months']
-                              .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                              .toList(),
-                          onChanged: (val) {
-                            if (val != null) setState(() => _selectedTimeframe = val);
-                          },
-                        ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedTimeframe,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: ['All time', 'This Year', 'Last 12 Months']
+                                    .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                                    .toList(),
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _selectedTimeframe = val);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -315,18 +317,21 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                 children: [
                   SizedBox(
                     width: boxWidth,
-                    child: FilterChip(
-                      label: const Text('Purple Net Line', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                      selected: _showNetTrendLine,
-                      selectedColor: const Color(0xFF582F95).withValues(alpha: 0.2),
-                      checkmarkColor: const Color(0xFF582F95),
-                      onSelected: (val) => setState(() => _showNetTrendLine = val),
+                    child: SizedBox(
+                      height: 40,
+                      child: FilterChip(
+                        label: const Text('Net Trend', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                        selected: _showNetTrendLine,
+                        selectedColor: const Color(0xFF582F95).withValues(alpha: 0.2),
+                        checkmarkColor: const Color(0xFF582F95),
+                        onSelected: (val) => setState(() => _showNetTrendLine = val),
+                      ),
                     ),
                   ),
                   SizedBox(
                     width: boxWidth,
                     child: Container(
-                      height: 40,
+                      height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
@@ -359,7 +364,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
               _cachedSortedKeys.isEmpty
                   ? const Center(
@@ -465,24 +470,26 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                             ),
                           ),
                           if (_showNetTrendLine)
-                            LineChart(
-                              LineChartData(
-                                maxY: _cachedMaxY * 1.25,
-                                minY: _cachedMinY * 1.25,
-                                lineTouchData: const LineTouchData(enabled: false),
-                                titlesData: const FlTitlesData(show: false),
-                                gridData: const FlGridData(show: false),
-                                borderData: FlBorderData(show: false),
-                                lineBarsData: [
-                                  LineChartBarData(
-                                    spots: _cachedNetSpots,
-                                    isCurved: true,
-                                    color: const Color(0xFF582F95),
-                                    barWidth: 2.5,
-                                    isStrokeCapRound: true,
-                                    dotData: const FlDotData(show: true),
-                                  ),
-                                ],
+                            IgnorePointer(
+                              child: LineChart(
+                                LineChartData(
+                                  maxY: _cachedMaxY * 1.25,
+                                  minY: _cachedMinY * 1.25,
+                                  lineTouchData: const LineTouchData(enabled: false),
+                                  titlesData: const FlTitlesData(show: false),
+                                  gridData: const FlGridData(show: false),
+                                  borderData: FlBorderData(show: false),
+                                  lineBarsData: [
+                                    LineChartBarData(
+                                      spots: _cachedNetSpots,
+                                      isCurved: true,
+                                      color: const Color(0xFF582F95),
+                                      barWidth: 2.5,
+                                      isStrokeCapRound: true,
+                                      dotData: const FlDotData(show: true),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                         ],

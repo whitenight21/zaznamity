@@ -50,7 +50,7 @@ class TransactionHistoryCard extends StatefulWidget {
 }
 
 class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
-  String _selectedLimit = '50'; // Default lazy-render limit options: '50', '100', '150', '200', 'All'
+  String _selectedLimit = '25'; // Default to 25 transactions
 
   void _showDeleteConfirmation(BuildContext context, int transactionId) {
     showDialog(
@@ -85,7 +85,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     // Apply strict rendering cap to avoid layout lag over large lists
     int displayLimit = totalCount;
     if (_selectedLimit != 'All') {
-      displayLimit = int.tryParse(_selectedLimit) ?? 50;
+      displayLimit = int.tryParse(_selectedLimit) ?? 25;
     }
     final displayedTransactions = widget.transactions.take(displayLimit).toList();
 
@@ -333,13 +333,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 14),
 
-              // Yellow Box Area: Showing X of Y Zaznams + Limit Selector
+              // Showing X of Y Zaznams + Limit Selector Area
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFEF3C7),
+                  color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFFCD34D)),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -349,19 +349,19 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                       style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF92400E),
+                        color: Color(0xFF582F95),
                       ),
                     ),
                     Row(
                       children: [
-                        const Text('Show: ', style: TextStyle(fontSize: 11, color: Color(0xFF92400E))),
+                        const Text('Show: ', style: TextStyle(fontSize: 11, color: Color(0xFF582F95))),
                         DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
                             value: _selectedLimit,
                             isDense: true,
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
-                            dropdownColor: const Color(0xFFFEF3C7),
-                            items: ['50', '100', '150', '200', 'All']
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color.fromARGB(255, 88, 47, 149)),
+                            dropdownColor: const Color(0xFF582F95),
+                            items: ['10', '25', '50', '100', 'All']
                                 .map((lim) => DropdownMenuItem(value: lim, child: Text(lim)))
                                 .toList(),
                             onChanged: (val) {
@@ -389,7 +389,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   : ListView.separated(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      cacheExtent: 1000, // Pre-renders viewport buffer for ultra-smooth scrolling
+                      cacheExtent: 1000,
                       itemCount: displayedTransactions.length,
                       separatorBuilder: (context, index) => const Divider(color: Color(0xFFF1F5F9), height: 1),
                       itemBuilder: (context, index) {

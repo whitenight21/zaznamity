@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zaznamity/models/card_config.dart';
 import 'package:zaznamity/models/label.dart';
 import 'package:zaznamity/models/transaction_model.dart';
+import 'package:zaznamity/models/savings_goal_model.dart';
 import 'package:zaznamity/services/database_helper.dart';
 import 'package:intl/intl.dart';
 
@@ -24,6 +25,7 @@ import '../widgets/transaction_search_card.dart';
 import '../widgets/sankey_flow_card.dart';
 import '../widgets/pools_analytics_card.dart';
 import '../widgets/monthly_cashflow_trend_card.dart';
+import '../widgets/savings_goals_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -45,6 +47,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<TransactionModel> _transactions = [];
   List<LabelModel> _labels = [];
   List<Map<String, dynamic>> _budgets = [];
+  List<SavingsGoalModel> _goals = [];
   bool _isLoading = true;
 
   String? _globalSelectedOwner;
@@ -95,6 +98,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _sankeySelectedOwner;
   String? _sankeySelectedPool;
 
+  String? _monthlyTrendSelectedOwner;
+
   List<String> _leftNavItems = ['metrics', 'budget'];
   List<String> _rightNavItems = ['history', 'settings'];
 
@@ -103,6 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'cash': true,
     'savings': false,
     'loan': false,
+    'goals': true,
   };
 
   Map<String, bool> _liquidNetPools = {
@@ -110,6 +116,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'cash': true,
     'savings': false,
     'loan': false,
+    'goals': false,
   };
 
   Map<String, bool> _prognosisPools = {
@@ -124,6 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final List<CardConfig> _cards = [
     CardConfig(id: 'settings', title: 'Zaznamity Settings', key: GlobalKey(), isVisible: false),
     CardConfig(id: 'metrics', title: 'Metrics', key: GlobalKey()),
+    CardConfig(id: 'savings_goals', title: 'Savings Goals', key: GlobalKey()),
     CardConfig(id: 'future_metrics', title: 'Future Metrics', key: GlobalKey()),
     CardConfig(id: 'label_focus', title: 'Single-Label Analysis', key: GlobalKey()),
     CardConfig(id: 'income_expenses_labels', title: 'Multi-Label Analytics', key: GlobalKey()),
@@ -146,6 +154,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final now = DateTime.now();
     _labelsCardStartDate = DateTime(now.year, now.month, 1);
     _labelsCardEndDate = DateTime(now.year, now.month + 1, 0);
+
+    // Default history filter range: 15 days back from today up to today
+    _historyStartDate = now.subtract(const Duration(days: 15));
+    _historyEndDate = now;
+
     _loadNavPreferences();
     loadData(showLoading: true);
   }
@@ -169,6 +182,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         for (var p in poolsSaved) {
           loadedPools[p] = prefs.getBool('pool_active_$p') ?? true;
         }
+        if (!loadedPools.containsKey('goals')) loadedPools['goals'] = true;
         _pools = loadedPools;
       }
     });
@@ -291,14 +305,100 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final txs = await DatabaseHelper.instance.getTransactions();
     final lbls = await DatabaseHelper.instance.getLabels();
     final bdgs = await DatabaseHelper.instance.getBudgets();
+    final gls = await DatabaseHelper.instance.getSavingsGoals();
 
     setState(() {
       _transactions = txs;
       _labels = lbls;
       _budgets = bdgs;
+      _goals = gls;
       calculateMetrics();
       _isLoading = false;
     });
+  }
+
+  Future<void> _handleSaveGoal(SavingsGoalModel goal) async {
+    await DatabaseHelper.instance.insertSavingsGoal(goal);
+    await Future.delayed(const Duration(milliseconds: 150));
+    await loadData();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Savings goal created!')));
+  }
+
+  Future<void> _handleAddFundsToGoal(int goalId, double amountToAdd, String owner, String fromPool, String goalName) async {
+    final goal = _goals.firstWhere((g) => g.id == goalId);
+    final updatedAmount = goal.currentAmount + amountToAdd;
+
+    await DatabaseHelper.instance.updateSavingsGoalCurrentAmount(goalId, updatedAmount);
+
+    final labelObj = _labels.firstWhere(
+      (l) => l.name.toLowerCase() == 'goals',
+      orElse: () => _labels.first,
+    );
+
+    int transferLabelId = _labels.isNotEmpty ? _labels.first.id : 1;
+    for (var label in _labels) {
+      if (label.name.toLowerCase() == 'transfer') {
+        transferLabelId = label.id;
+        break;
+      }
+    }
+
+    final outboundTx = TransactionModel(
+      description: 'Transfer out to Goal: $goalName',
+      amount: amountToAdd,
+      type: 'expense',
+      pool: fromPool,
+      labelId: transferLabelId,
+      owner: owner,
+      createdAt: DateTime.now().toIso8601String(),
+      isConfirmed: 1,
+      isSavings: 0,
+    );
+
+    final inboundTx = TransactionModel(
+      description: 'Contribution to Goal: $goalName',
+      amount: amountToAdd,
+      type: 'income',
+      pool: 'goals',
+      labelId: labelObj.id,
+      owner: owner,
+      createdAt: DateTime.now().toIso8601String(),
+      isConfirmed: 1,
+      isSavings: 0,
+    );
+
+    await DatabaseHelper.instance.insertTransaction(outboundTx);
+    await DatabaseHelper.instance.insertTransaction(inboundTx);
+
+    await Future.delayed(const Duration(milliseconds: 150));
+    await loadData();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Funds transferred to goal pool successfully!')));
+  }
+
+  Future<void> _deleteSavingsGoal(int id) async {
+    final goalToDelete = _goals.firstWhere((g) => g.id == id, orElse: () => _goals.first);
+    final matchingTxs = _transactions.where((tx) => tx.description.contains(goalToDelete.name)).toList();
+    for (var tx in matchingTxs) {
+      if (tx.id != null) {
+        await DatabaseHelper.instance.deleteTransaction(tx.id!);
+      }
+    }
+
+    await DatabaseHelper.instance.deleteSavingsGoal(id);
+    await Future.delayed(const Duration(milliseconds: 150));
+    await loadData();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Savings goal removed and funds restored!')));
+  }
+
+  Future<void> _completeSavingsGoal(int id) async {
+    await DatabaseHelper.instance.deleteSavingsGoal(id);
+    await Future.delayed(const Duration(milliseconds: 150));
+    await loadData();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🎉 Goal completed and achieved!')));
   }
 
   void calculateMetrics() {
@@ -457,13 +557,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (file == null) return;
 
       String content = await file.readAsString();
-      if (content.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('The selected file is empty.')),
-        );
-        return;
-      }
+      if (content.isEmpty) return;
 
       List<String> lines = content.split('\n');
       if (lines.isEmpty) return;
@@ -504,13 +598,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               labelId = l.id;
               break;
             }
-          }
-
-          if (labelId == 1 && labelName.isNotEmpty && !_labels.any((l) => l.name.toLowerCase() == labelName.toLowerCase())) {
-            await DatabaseHelper.instance.insertLabel(labelName, '#4338CA');
-            final updatedLabels = await DatabaseHelper.instance.getLabels();
-            setState(() => _labels = updatedLabels);
-            labelId = updatedLabels.last.id;
           }
 
           int confirmed = 1;
@@ -583,8 +670,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _deleteTransaction(int id) async {
+    final txToDelete = _transactions.firstWhere((tx) => tx.id == id, orElse: () => _transactions.first);
+    
+    if (txToDelete.description.contains('Goal:')) {
+      final goalName = txToDelete.description.split(':').last.trim();
+      await DatabaseHelper.instance.subtractFromSavingsGoalByName(goalName, txToDelete.amount);
+
+      final matchingTx = _transactions.firstWhere(
+        (tx) => tx.id != id && 
+                tx.description.contains(goalName) && 
+                tx.amount == txToDelete.amount &&
+                tx.createdAt == txToDelete.createdAt,
+        orElse: () => txToDelete,
+      );
+
+      if (matchingTx.id != txToDelete.id && matchingTx.id != null) {
+        await DatabaseHelper.instance.deleteTransaction(matchingTx.id!);
+      }
+    }
+
     await DatabaseHelper.instance.deleteTransaction(id);
     await loadData();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transaction deleted & funds restored!')));
   }
 
   Future<void> _confirmTransaction(TransactionModel tx) async {
@@ -688,12 +796,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   bool _isExcluded(DateTime date, List<int> excludedWeekdays, List<int> excludedMonths) {
-    if (excludedWeekdays.contains(date.weekday)) {
-      return true;
-    }
-    if (excludedMonths.contains(date.month)) {
-      return true;
-    }
+    if (excludedWeekdays.contains(date.weekday)) return true;
+    if (excludedMonths.contains(date.month)) return true;
     return false;
   }
 
@@ -913,24 +1017,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       initialDateRange: (currentStart != null && currentEnd != null)
           ? DateTimeRange(start: currentStart, end: currentEnd)
           : null,
-      builder: (context, child) {
-        return Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 70.0),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 1.0,
-                maxHeight: MediaQuery.of(context).size.height * 0.8,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: child!,
-              ),
-            ),
-          ),
-        );
-      },
     );
 
     if (picked != null) {
@@ -940,6 +1026,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildCardWidget(CardConfig card) {
     switch (card.id) {
+      case 'savings_goals':
+        return SavingsGoalsCard(
+          goals: _goals,
+          labels: _labels,
+          owners: _owners,
+          pools: _pools.keys.toList(),
+          selectedOwner: _globalSelectedOwner,
+          onSaveGoal: _handleSaveGoal,
+          onAddFundsToGoal: _handleAddFundsToGoal,
+          onDeleteGoal: _deleteSavingsGoal,
+          onCompleteGoal: _completeSavingsGoal,
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
       case 'settings':
         return AppSettingsCard(
           initialPools: _pools,
@@ -986,7 +1087,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onAddLabel: (name) => _addLabel(name),
           onUpdateLabel: (id, name) => _updateLabel(id, name),
           onDeleteLabel: (id) => _deleteLabel(id),
-          onImportCsv: () => loadData(showLoading: false),
+          onImportCsv: () => _importCsvFile(context),
           onDeleteBulkTransactions: _deleteBulkTransactions,
           onBulkUpdateTransactionsLabel: _bulkUpdateTransactionsLabel,
           isWide: card.isWide,
@@ -1017,24 +1118,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           selectedLabelId: _labelFocusSelectedLabelId,
           onLabelChanged: (val) => setState(() => _labelFocusSelectedLabelId = val),
           onOwnerChanged: (val) => setState(() => _labelFocusSelectedOwner = val),
-          onSelectStartDate: () => _pickDateRange(
-            context,
-            _labelFocusStartDate,
-            _labelFocusEndDate,
-            (start, end) => setState(() {
-              _labelFocusStartDate = start;
-              _labelFocusEndDate = end;
-            }),
-          ),
-          onSelectEndDate: () => _pickDateRange(
-            context,
-            _labelFocusStartDate,
-            _labelFocusEndDate,
-            (start, end) => setState(() {
-              _labelFocusStartDate = start;
-              _labelFocusEndDate = end;
-            }),
-          ),
+          onSelectStartDate: () => _pickDateRange(context, _labelFocusStartDate, _labelFocusEndDate, (start, end) => setState(() {
+            _labelFocusStartDate = start;
+            _labelFocusEndDate = end;
+          })),
+          onSelectEndDate: () => _pickDateRange(context, _labelFocusStartDate, _labelFocusEndDate, (start, end) => setState(() {
+            _labelFocusStartDate = start;
+            _labelFocusEndDate = end;
+          })),
           onClearDateFilter: () => setState(() {
             _labelFocusStartDate = null;
             _labelFocusEndDate = null;
@@ -1047,9 +1138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _historyEndDate = end;
             });
             final historyCard = _cards.firstWhere((c) => c.id == 'history');
-            if (!historyCard.isVisible) {
-              setState(() => historyCard.isVisible = true);
-            }
+            if (!historyCard.isVisible) setState(() => historyCard.isVisible = true);
             _scrollToCard(historyCard.key);
           },
           isWide: card.isWide,
@@ -1163,9 +1252,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           transactions: _transactions,
           owners: _owners,
           pools: _pools.keys.toList(),
-          selectedOwner: _globalSelectedOwner,
+          selectedOwner: _monthlyTrendSelectedOwner,
+          onOwnerChanged: (owner) => setState(() => _monthlyTrendSelectedOwner = owner),
           selectedPool: _sankeySelectedPool,
-          onOwnerChanged: (owner) => setState(() => _globalSelectedOwner = owner),
           onPoolChanged: (pool) => setState(() => _sankeySelectedPool = pool),
           onJumpToHistory: (monthKey, type) {
             final parts = monthKey.split('-');
@@ -1181,9 +1270,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             });
 
             final historyCard = _cards.firstWhere((c) => c.id == 'history');
-            if (!historyCard.isVisible) {
-              setState(() => historyCard.isVisible = true);
-            }
+            if (!historyCard.isVisible) setState(() => historyCard.isVisible = true);
             _scrollToCard(historyCard.key);
           },
           isWide: card.isWide,
@@ -1199,24 +1286,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onOwnerChanged: (owner) => setState(() => _trendSelectedOwner = owner),
           startDate: _trendStartDate,
           endDate: _trendEndDate,
-          onSelectStartDate: () => _pickDateRange(
-            context,
-            _trendStartDate,
-            _trendEndDate,
-            (start, end) => setState(() {
-              _trendStartDate = start;
-              _trendEndDate = end;
-            }),
-          ),
-          onSelectEndDate: () => _pickDateRange(
-            context,
-            _trendStartDate,
-            _trendEndDate,
-            (start, end) => setState(() {
-              _trendStartDate = start;
-              _trendEndDate = end;
-            }),
-          ),
+          onSelectStartDate: () => _pickDateRange(context, _trendStartDate, _trendEndDate, (start, end) => setState(() {
+            _trendStartDate = start;
+            _trendEndDate = end;
+          })),
+          onSelectEndDate: () => _pickDateRange(context, _trendStartDate, _trendEndDate, (start, end) => setState(() {
+            _trendStartDate = start;
+            _trendEndDate = end;
+          })),
           onClearDateFilter: () => setState(() {
             _trendStartDate = null;
             _trendEndDate = null;
@@ -1234,24 +1311,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onOwnerChanged: (owner) => setState(() => _savingsChartSelectedOwner = owner),
           startDate: _savingsChartStartDate,
           endDate: _savingsChartEndDate,
-          onSelectStartDate: () => _pickDateRange(
-            context,
-            _savingsChartStartDate,
-            _savingsChartEndDate,
-            (start, end) => setState(() {
-              _savingsChartStartDate = start;
-              _savingsChartEndDate = end;
-            }),
-          ),
-          onSelectEndDate: () => _pickDateRange(
-            context,
-            _savingsChartStartDate,
-            _savingsChartEndDate,
-            (start, end) => setState(() {
-              _savingsChartStartDate = start;
-              _savingsChartEndDate = end;
-            }),
-          ),
+          onSelectStartDate: () => _pickDateRange(context, _savingsChartStartDate, _savingsChartEndDate, (start, end) => setState(() {
+            _savingsChartStartDate = start;
+            _savingsChartEndDate = end;
+          })),
+          onSelectEndDate: () => _pickDateRange(context, _savingsChartStartDate, _savingsChartEndDate, (start, end) => setState(() {
+            _savingsChartStartDate = start;
+            _savingsChartEndDate = end;
+          })),
           onClearDateFilter: () => setState(() {
             _savingsChartStartDate = null;
             _savingsChartEndDate = null;
@@ -1319,24 +1386,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           startDate: _labelsCardStartDate,
           endDate: _labelsCardEndDate,
           selectedOwner: _labelsCardSelectedOwner ?? _globalSelectedOwner,
-          onSelectStartDate: () => _pickDateRange(
-            context,
-            _labelsCardStartDate,
-            _labelsCardEndDate,
-            (start, end) => setState(() {
-              _labelsCardStartDate = start;
-              _labelsCardEndDate = end;
-            }),
-          ),
-          onSelectEndDate: () => _pickDateRange(
-            context,
-            _labelsCardStartDate,
-            _labelsCardEndDate,
-            (start, end) => setState(() {
-              _labelsCardStartDate = start;
-              _labelsCardEndDate = end;
-            }),
-          ),
+          onSelectStartDate: () => _pickDateRange(context, _labelsCardStartDate, _labelsCardEndDate, (start, end) => setState(() {
+            _labelsCardStartDate = start;
+            _labelsCardEndDate = end;
+          })),
+          onSelectEndDate: () => _pickDateRange(context, _labelsCardStartDate, _labelsCardEndDate, (start, end) => setState(() {
+            _labelsCardStartDate = start;
+            _labelsCardEndDate = end;
+          })),
           onOwnerChanged: (owner) => setState(() => _labelsCardSelectedOwner = owner),
           onClearDateFilter: () => setState(() {
             _labelsCardStartDate = null;
@@ -1377,24 +1434,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           endDate: _historyEndDate,
           selectedLabelId: _historySelectedLabelId,
           selectedOwner: effectiveHistoryOwner,
-          onSelectStartDate: () => _pickDateRange(
-            context,
-            _historyStartDate,
-            _historyEndDate,
-            (start, end) => setState(() {
-              _historyStartDate = start;
-              _historyEndDate = end;
-            }),
-          ),
-          onSelectEndDate: () => _pickDateRange(
-            context,
-            _historyStartDate,
-            _historyEndDate,
-            (start, end) => setState(() {
-              _historyStartDate = start;
-              _historyEndDate = end;
-            }),
-          ),
+          onSelectStartDate: () => _pickDateRange(context, _historyStartDate, _historyEndDate, (start, end) => setState(() {
+            _historyStartDate = start;
+            _historyEndDate = end;
+          })),
+          onSelectEndDate: () => _pickDateRange(context, _historyStartDate, _historyEndDate, (start, end) => setState(() {
+            _historyStartDate = start;
+            _historyEndDate = end;
+          })),
           onLabelChanged: (labelId) => setState(() => _historySelectedLabelId = labelId),
           onOwnerChanged: (owner) => setState(() => _historySelectedOwner = owner),
           onClearDateFilter: () => setState(() {

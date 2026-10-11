@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/label.dart';
 import '../models/transaction_model.dart';
+import '../models/savings_goal_model.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -22,7 +23,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2, // Upgraded version for budgets table
+      version: 3, // Upgraded version for savings_goals table
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -65,7 +66,16 @@ class DatabaseHelper {
       );
     ''');
 
-    // Insert default labels matching the web version[cite: 7]
+    await db.execute('''
+      CREATE TABLE savings_goals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        target_amount REAL NOT NULL,
+        current_amount REAL NOT NULL DEFAULT 0.0,
+        target_date TEXT
+      );
+    ''');
+
     await db.rawInsert("INSERT INTO labels (name, color) VALUES ('General', '#6366f1')");
     await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Food', '#f97316')");
     await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Utilities', '#06b6d4')");
@@ -73,6 +83,8 @@ class DatabaseHelper {
     await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Investments', '#3b82f6')");
     await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Side Hustles', '#8b5cf6')");
     await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Transfer', '#64748b')");
+    await db.rawInsert("INSERT INTO labels (name, color) VALUES ('GoalsSavings', '#10b981')");
+    await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Goals', '#10b981')");
   }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -83,6 +95,17 @@ class DatabaseHelper {
           label_id INTEGER NOT NULL,
           limit_amount REAL NOT NULL,
           FOREIGN KEY (label_id) REFERENCES labels (id) ON DELETE CASCADE
+        );
+      ''');
+    }
+    if (oldVersion < 3) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS savings_goals (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          target_amount REAL NOT NULL,
+          current_amount REAL NOT NULL DEFAULT 0.0,
+          target_date TEXT
         );
       ''');
     }
@@ -133,6 +156,53 @@ class DatabaseHelper {
     return await db.delete('budgets', where: 'id = ?', whereArgs: [id]);
   }
 
+  // Savings Goals Methods
+  Future<List<SavingsGoalModel>> getSavingsGoals() async {
+    final db = await instance.database;
+    final result = await db.query('savings_goals', orderBy: 'name ASC');
+    return result.map((json) => SavingsGoalModel.fromMap(json)).toList();
+  }
+
+  Future<int> insertSavingsGoal(SavingsGoalModel goal) async {
+    final db = await instance.database;
+    return await db.insert('savings_goals', goal.toMap());
+  }
+
+  Future<int> updateSavingsGoal(SavingsGoalModel goal) async {
+    final db = await instance.database;
+    return await db.update('savings_goals', goal.toMap(), where: 'id = ?', whereArgs: [goal.id]);
+  }
+
+  Future<int> updateSavingsGoalCurrentAmount(int id, double currentAmount) async {
+    final db = await instance.database;
+    return await db.update('savings_goals', {'current_amount': currentAmount}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteSavingsGoal(int id) async {
+    final db = await instance.database;
+    return await db.delete('savings_goals', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> subtractFromSavingsGoalByName(String goalName, double amount) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'savings_goals',
+      where: 'name = ?',
+      whereArgs: [goalName],
+    );
+
+    if (result.isNotEmpty) {
+      final goal = SavingsGoalModel.fromMap(result.first);
+      final newAmount = (goal.currentAmount - amount).clamp(0.0, double.infinity);
+      await db.update(
+        'savings_goals',
+        {'current_amount': newAmount},
+        where: 'id = ?',
+        whereArgs: [goal.id],
+      );
+    }
+  }
+
   Future<List<TransactionModel>> getTransactions() async {
     final db = await instance.database;
     final result = await db.rawQuery('''
@@ -164,11 +234,9 @@ class DatabaseHelper {
     return await db.update('transactions', {'is_confirmed': 1}, where: 'id = ?', whereArgs: [id]);
   }
 
-  // Bulk edit transactions by label: change all transactions labeled "x" to "y"
   Future<int> bulkUpdateTransactionsLabel(String oldLabelName, String newLabelName) async {
     final db = await instance.database;
     
-    // Find old label ID
     final oldLabelResult = await db.query(
       'labels',
       where: 'name = ?',
@@ -177,7 +245,6 @@ class DatabaseHelper {
     if (oldLabelResult.isEmpty) return 0;
     final int oldLabelId = oldLabelResult.first['id'] as int;
 
-    // Find or create new label ID
     final newLabelResult = await db.query(
       'labels',
       where: 'name = ?',
@@ -191,7 +258,6 @@ class DatabaseHelper {
       newLabelId = await db.insert('labels', {'name': newLabelName, 'color': '#4338CA'});
     }
 
-    // Update all matching transactions
     return await db.update(
       'transactions',
       {'label_id': newLabelId},

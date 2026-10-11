@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 
 class SummaryMetricsCard extends StatefulWidget {
   final List<String> owners;
-  final String? selectedOwner; // Added to sync with global master selector
+  final String? selectedOwner;
   final Map<String, Map<String, double>> poolTotalsByOwner;
   final Map<String, double> totalPoolTotals;
   final Map<String, double> liquidNetByOwner;
@@ -76,27 +76,25 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 40;
-        final double boxWidth = (fullWidth - 16) / 2;
+        final double fullWidth = availableWidth - 32;
+        final double boxWidth = (fullWidth - 12) / 2;
 
         Map<String, double> currentPools;
         double currentLiquidNet;
-        String displayTitle;
+        String displayTitle = 'LIQUID NET';
         String? singleSubtitle;
         List<Widget> wrapSubtitles = [];
 
         if (_selectedOwner == 'All Owners') {
           currentPools = widget.totalPoolTotals;
           currentLiquidNet = widget.totalLiquidNet;
-          displayTitle = 'LIQUID NET';
           
-          // Build a list of Text widgets for the Wrap component
           wrapSubtitles = widget.ownerBreakdownForLiquidNet.entries.map((e) {
             final val = e.value['liquidNet'] ?? 0;
             return Text(
               '${e.key}: ${_formatCurrency(val)}',
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 color: Colors.grey.shade700,
                 fontWeight: FontWeight.w700,
               ),
@@ -105,7 +103,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         } else {
           currentPools = widget.poolTotalsByOwner[_selectedOwner] ?? {};
           currentLiquidNet = widget.liquidNetByOwner[_selectedOwner] ?? 0.0;
-          displayTitle = 'LIQUID NET';
           singleSubtitle = _selectedOwner.toUpperCase();
         }
 
@@ -121,82 +118,55 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         }
 
         return Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // Top Row: Title & Action Buttons matching Future Metrics style
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: const Text(
-                        'METRICS',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 88, 47, 149),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
+                  const Text(
+                    'METRICS',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF582F95),
+                      letterSpacing: 0.8,
                     ),
                   ),
-                  const SizedBox(width: 8),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _selectedOwner,
-                            isDense: true,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF582F95)),
-                            items: [
-                              const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
-                              ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
-                            ],
-                            onChanged: (val) {
-                              if (val != null) setState(() => _selectedOwner = val);
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
                       if (widget.onToggleWidth != null)
                         Padding(
-                          padding: const EdgeInsets.only(right: 6.0),
+                          padding: const EdgeInsets.only(right: 4.0),
                           child: SizedBox(
-                            height: 32,
-                            width: 32,
+                            height: 28,
+                            width: 28,
                             child: IconButton(
                               style: IconButton.styleFrom(
                                 backgroundColor: const Color(0xFFF1F5F9),
                                 foregroundColor: const Color(0xFF64748B),
                                 padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                               ),
                               onPressed: widget.onToggleWidth,
                               icon: Icon(
                                 widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                                size: 18,
+                                size: 16,
                               ),
                               tooltip: widget.isWide ? 'Narrow' : 'Wide',
                             ),
@@ -204,19 +174,19 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                         ),
                       if (widget.onHide != null)
                         SizedBox(
-                          height: 32,
-                          width: 32,
+                          height: 28,
+                          width: 28,
                           child: IconButton(
                             style: IconButton.styleFrom(
                               backgroundColor: const Color(0xFFF1F5F9),
                               foregroundColor: const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                             ),
                             onPressed: widget.onHide,
                             icon: const Icon(
                               Icons.visibility_off_outlined,
-                              size: 16,
+                              size: 14,
                             ),
                             tooltip: 'Hide',
                           ),
@@ -225,27 +195,118 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
-              Center(
-                child: SizedBox(
-                  width: fullWidth,
-                  child: _buildMetricBox(
-                    title: displayTitle,
-                    amount: currentLiquidNet,
-                    amountColor: const Color.fromARGB(255, 88, 47, 149),
-                    subtitle: singleSubtitle,
-                    customSubtitleWrap: _selectedOwner == 'All Owners' ? wrapSubtitles : null,
-                    width: fullWidth,
-                    isCentered: true,
+              // Second Row: Owner Dropdown (Left) & Liquid Net Box (Right) matching Future Metrics layout
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Owner Dropdown Box
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedOwner,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: [
+                                  const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
+                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _selectedOwner = val);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  // Liquid Net Display Box
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            displayTitle,
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.grey.shade600,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              _formatCurrency(currentLiquidNet),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF582F95),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
+
+              // Subtitle/Owner breakdown row rendered directly below if needed
+              if (singleSubtitle != null || (wrapSubtitles.isNotEmpty)) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                  child: singleSubtitle != null
+                      ? Text(
+                          singleSubtitle,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade700,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        )
+                      : Wrap(
+                          spacing: 12.0,
+                          runSpacing: 4.0,
+                          children: wrapSubtitles,
+                        ),
+                ),
+              ],
               const SizedBox(height: 16),
 
+              // Rest of Pool Boxes
               ...poolRows.map((rowEntries) {
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
+                  padding: const EdgeInsets.only(bottom: 12.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: rowEntries.map((entry) {
@@ -274,62 +335,35 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     required String title,
     required double amount,
     required Color amountColor,
-    String? subtitle,
-    List<Widget>? customSubtitleWrap,
     required double width,
-    bool isCentered = false,
   }) {
     return SizedBox(
       width: width,
       child: Column(
-        crossAxisAlignment: isCentered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 9,
               fontWeight: FontWeight.w900,
               color: Colors.grey.shade600,
-              letterSpacing: 0.8,
+              letterSpacing: 0.6,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           FittedBox(
             fit: BoxFit.scaleDown,
-            alignment: isCentered ? Alignment.center : Alignment.centerLeft,
+            alignment: Alignment.centerLeft,
             child: Text(
               _formatCurrency(amount),
               style: TextStyle(
-                fontSize: 22,
+                fontSize: 18,
                 fontWeight: FontWeight.w900,
                 color: amountColor,
               ),
             ),
           ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: isCentered ? Alignment.center : Alignment.centerLeft,
-              child: Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade700,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-          if (customSubtitleWrap != null && customSubtitleWrap.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Wrap(
-              alignment: isCentered ? WrapAlignment.center : WrapAlignment.start,
-              spacing: 12.0,
-              runSpacing: 4.0,
-              children: customSubtitleWrap,
-            ),
-          ],
         ],
       ),
     );
