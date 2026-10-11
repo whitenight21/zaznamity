@@ -151,6 +151,16 @@ class DatabaseHelper {
     return await db.update('budgets', {'limit_amount': limitAmount}, where: 'id = ?', whereArgs: [id]);
   }
 
+  Future<int> updateBudgetLimit(int budgetId, double newLimit) async {
+    final db = await database;
+    return await db.update(
+      'budgets',
+      {'limit_amount': newLimit},
+      where: 'id = ?',
+      whereArgs: [budgetId],
+    );
+  }
+
   Future<int> deleteBudget(int id) async {
     final db = await instance.database;
     return await db.delete('budgets', where: 'id = ?', whereArgs: [id]);

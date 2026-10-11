@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/label.dart';
@@ -11,6 +13,7 @@ class BudgetProgressCard extends StatefulWidget {
   final String? selectedOwner;
   final ValueChanged<String?>? onOwnerChanged;
   final Function(int labelId, double limitAmount, String owner) onAddBudget;
+  final Function(int budgetId, double newLimit) onUpdateBudgetLimit;
   final Function(int budgetId) onDeleteBudget;
   final bool isWide;
   final VoidCallback onToggleWidth;
@@ -25,6 +28,7 @@ class BudgetProgressCard extends StatefulWidget {
     this.selectedOwner,
     this.onOwnerChanged,
     required this.onAddBudget,
+    required this.onUpdateBudgetLimit,
     required this.onDeleteBudget,
     required this.isWide,
     required this.onToggleWidth,
@@ -58,7 +62,6 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
   void _showAddBudgetDialog(BuildContext context) {
     int? selectedLabelId = widget.labels.isNotEmpty ? widget.labels.first.id : null;
     
-    // Default to the currently filtered owner, or the first available owner
     String selectedDialogOwner = (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty)
         ? widget.selectedOwner!
         : (widget.owners.isNotEmpty ? widget.owners.first : '');
@@ -74,7 +77,6 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Category / Label Dropdown
               DropdownButtonFormField<int>(
                 initialValue: selectedLabelId,
                 decoration: InputDecoration(
@@ -96,8 +98,6 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 },
               ),
               const SizedBox(height: 14),
-
-              // Owner Dropdown inside the Modal
               DropdownButtonFormField<String>(
                 initialValue: widget.owners.contains(selectedDialogOwner) ? selectedDialogOwner : (widget.owners.isNotEmpty ? widget.owners.first : null),
                 decoration: InputDecoration(
@@ -121,8 +121,6 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 },
               ),
               const SizedBox(height: 14),
-
-              // Limit TextField
               TextField(
                 controller: limitController,
                 keyboardType: TextInputType.number,
@@ -157,6 +155,82 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 }
               },
               child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditBudgetsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Edit Budgets', style: TextStyle(color: Color.fromARGB(255, 88, 47, 149), fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: widget.budgets.length,
+              itemBuilder: (context, index) {
+                final b = widget.budgets[index];
+                final budgetId = b['id'] as int;
+                final labelName = b['label_name'] ?? 'General';
+                final limitAmount = (b['limit_amount'] as num).toDouble();
+                final controller = TextEditingController(text: limitAmount.toString());
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: Text(labelName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF334155))),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: TextField(
+                          controller: controller,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onChanged: (val) {
+                            final parsed = double.tryParse(val);
+                            if (parsed != null) {
+                              widget.onUpdateBudgetLimit(budgetId, parsed);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Color(0xFFDC2626), size: 18),
+                        onPressed: () {
+                          widget.onDeleteBudget(budgetId);
+                          setDialogState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
             ),
           ],
         ),
@@ -202,279 +276,324 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
 
     double overallProgress = totalLimitAll > 0 ? (totalSpentAll / totalLimitAll).clamp(0.0, 1.0) : 0.0;
 
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header Row with Title, Owner Dropdown Pill, and Controls
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: const Text(
-                    'BUDGET',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color.fromARGB(255, 88, 47, 149),
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final double fullWidth = availableWidth - 48;
+        final double boxWidth = (fullWidth - 12) / 2;
+
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
-              const SizedBox(width: 8),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header Row matching Future Metrics style
               Row(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: widget.selectedOwner ?? 'All Owners',
-                        isDense: true,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF582F95)),
-                        items: [
-                          const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
-                          ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) {
-                            widget.onOwnerChanged?.call(val == 'All Owners' ? null : val);
-                          }
-                        },
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: const Text(
+                        'BUDGET',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color.fromARGB(255, 88, 47, 149),
+                          letterSpacing: 0.8,
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6.0),
-                    child: SizedBox(
-                      height: 32,
-                      width: 32,
-                      child: IconButton(
-                        style: IconButton.styleFrom(
-                          backgroundColor: const Color(0xFFF1F5F9),
-                          foregroundColor: const Color(0xFF64748B),
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6.0),
+                        child: SizedBox(
+                          height: 32,
+                          width: 32,
+                          child: IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: const Color(0xFFF1F5F9),
+                              foregroundColor: const Color(0xFF64748B),
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: widget.onToggleWidth,
+                            icon: Icon(
+                              widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
+                              size: 18,
+                            ),
+                            tooltip: widget.isWide ? 'Narrow' : 'Wide',
+                          ),
                         ),
-                        onPressed: widget.onToggleWidth,
-                        icon: Icon(
-                          widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                          size: 18,
+                      ),
+                      SizedBox(
+                        height: 32,
+                        width: 32,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFFF1F5F9),
+                            foregroundColor: const Color(0xFF64748B),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: widget.onHide,
+                          icon: const Icon(
+                            Icons.visibility_off_outlined,
+                            size: 16,
+                          ),
+                          tooltip: 'Hide',
                         ),
-                        tooltip: widget.isWide ? 'Narrow' : 'Wide',
                       ),
-                    ),
-                  ),
-                  SizedBox(
-                    height: 32,
-                    width: 32,
-                    child: IconButton(
-                      style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        foregroundColor: const Color(0xFF64748B),
-                        padding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      onPressed: widget.onHide,
-                      icon: const Icon(
-                        Icons.visibility_off_outlined,
-                        size: 16,
-                      ),
-                      tooltip: 'Hide',
-                    ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-          // Second Row: Month Selector and Add Budget Button
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () => _selectMonth(context),
-                  borderRadius: BorderRadius.circular(10),
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'MONTH',
-                      labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          DateFormat('MMM yyyy').format(_selectedMonth),
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
-                        ),
-                        const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF64748B)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                height: 38,
-                width: 38,
-                child: IconButton(
-                  style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    foregroundColor: const Color(0xFF582F95),
-                    padding: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: () => _showAddBudgetDialog(context),
-                  icon: const Icon(Icons.add, size: 18),
-                  tooltip: 'Add Budget Limit',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Divider(color: Color(0xFFE2E8F0)),
-          const SizedBox(height: 8),
-
-          // Overall Summary Progress
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Total: ${currencyFormat.format(totalSpentAll)} / ${currencyFormat.format(totalLimitAll)}',
-                style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500),
-              ),
-              Text(
-                '${(overallProgress * 100).toStringAsFixed(0)}% Spent',
-                style: TextStyle(
-                  color: overallProgress > 0.9 ? Colors.red.shade700 : Colors.green.shade700,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: overallProgress,
-              minHeight: 8,
-              backgroundColor: const Color(0xFFF1F5F9),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                overallProgress > 0.9 ? Colors.red.shade700 : const Color.fromARGB(255, 88, 47, 149),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          processedBudgets.isEmpty
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24.0),
-                  child: Center(
-                    child: Text(
-                      'No budget limits set. Tap "+" to add one.',
-                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: processedBudgets.length,
-                  itemBuilder: (context, index) {
-                    final b = processedBudgets[index];
-                    final spent = b['spent'] as double;
-                    final limit = b['limit'] as double;
-                    final progress = limit > 0 ? (spent / limit).clamp(0.0, 1.0) : 0.0;
-                    final isOverBudget = spent > limit;
-                    final colorHex = b['label_color'].toString().replaceAll('#', '');
-                    final cardColor = Color(int.parse('0xFF$colorHex'));
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 14.0),
-                      child: Column(
+              // Row 1: Owners Dropdown & Month Picker (Sized identically)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 10,
-                                    height: 10,
-                                    decoration: BoxDecoration(color: cardColor, shape: BoxShape.circle),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    b['label_name'],
-                                    style: const TextStyle(color: Color(0xFF334155), fontSize: 13, fontWeight: FontWeight.w600),
-                                  ),
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: widget.selectedOwner ?? 'All Owners',
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: [
+                                  const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
+                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
                                 ],
-                              ),
-                              Row(
-                                children: [
-                                  Text(
-                                    '${currencyFormat.format(spent)} / ${currencyFormat.format(limit)}',
-                                    style: TextStyle(
-                                      color: isOverBudget ? Colors.red.shade700 : const Color(0xFF64748B),
-                                      fontSize: 13,
-                                      fontWeight: isOverBudget ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  InkWell(
-                                    onTap: () => widget.onDeleteBudget(b['id']),
-                                    child: const Icon(Icons.close, color: Color(0xFF94A3B8), size: 16),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              minHeight: 5,
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                isOverBudget ? Colors.red.shade700 : cardColor,
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    widget.onOwnerChanged?.call(val == 'All Owners' ? null : val);
+                                  }
+                                },
                               ),
                             ),
                           ),
                         ],
                       ),
-                    );
-                  },
+                    ),
+                  ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: InkWell(
+                      onTap: () => _selectMonth(context),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF582F95)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                DateFormat('MMM yyyy').format(_selectedMonth),
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Row 2: "Edit Budgets" (Left) and "Add new Budget" (Right, grey color)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF1F5F9),
+                        foregroundColor: const Color(0xFF334155),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () => _showEditBudgetsDialog(context),
+                      child: const Text('Edit Budgets', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF1F5F9),
+                        foregroundColor: const Color(0xFF64748B),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () => _showAddBudgetDialog(context),
+                      child: const Text('Add new Budget', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Divider(color: Color(0xFFE2E8F0)),
+              const SizedBox(height: 8),
+
+              // Overall Summary Progress
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Total: ${currencyFormat.format(totalSpentAll)} / ${currencyFormat.format(totalLimitAll)}',
+                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                  Text(
+                    '${(overallProgress * 100).toStringAsFixed(0)}% Spent',
+                    style: TextStyle(
+                      color: overallProgress > 0.9 ? Colors.red.shade700 : Colors.green.shade700,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: overallProgress,
+                  minHeight: 8,
+                  backgroundColor: const Color(0xFFF1F5F9),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    overallProgress > 0.9 ? Colors.red.shade700 : const Color.fromARGB(255, 88, 47, 149),
+                  ),
                 ),
-        ],
-      ),
+              ),
+              const SizedBox(height: 20),
+
+              processedBudgets.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24.0),
+                      child: Center(
+                        child: Text(
+                          'No budget limits set. Tap "Add new Budget" to start.',
+                          style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: processedBudgets.length,
+                      itemBuilder: (context, index) {
+                        final b = processedBudgets[index];
+                        final spent = b['spent'] as double;
+                        final limit = b['limit'] as double;
+                        final progress = limit > 0 ? (spent / limit).clamp(0.0, 1.0) : 0.0;
+                        final isOverBudget = spent > limit;
+                        final colorHex = b['label_color'].toString().replaceAll('#', '');
+                        final cardColor = Color(int.parse('0xFF$colorHex'));
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 14.0),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 10,
+                                        height: 10,
+                                        decoration: BoxDecoration(color: cardColor, shape: BoxShape.circle),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        b['label_name'],
+                                        style: const TextStyle(color: Color(0xFF334155), fontSize: 13, fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        '${currencyFormat.format(spent)} / ${currencyFormat.format(limit)}',
+                                        style: TextStyle(
+                                          color: isOverBudget ? Colors.red.shade700 : const Color(0xFF64748B),
+                                          fontSize: 13,
+                                          fontWeight: isOverBudget ? FontWeight.bold : FontWeight.normal,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      InkWell(
+                                        onTap: () => widget.onDeleteBudget(b['id']),
+                                        child: const Icon(Icons.close, color: Color(0xFF94A3B8), size: 16),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: progress,
+                                  minHeight: 5,
+                                  backgroundColor: const Color(0xFFF1F5F9),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    isOverBudget ? Colors.red.shade700 : cardColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

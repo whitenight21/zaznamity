@@ -356,7 +356,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                         ),
                         onPressed: _showCreateGoalDialog,
                         icon: const Icon(Icons.add, size: 16),
-                        label: const Text('New Goal', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        label: const Text('New Savings Goal', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ),

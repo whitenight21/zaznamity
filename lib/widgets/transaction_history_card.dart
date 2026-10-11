@@ -359,8 +359,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                           child: DropdownButton<String>(
                             value: _selectedLimit,
                             isDense: true,
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color.fromARGB(255, 88, 47, 149)),
-                            dropdownColor: const Color(0xFF582F95),
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95)),
+                            dropdownColor: Color(0xFFF8FAFC),
                             items: ['10', '25', '50', '100', 'All']
                                 .map((lim) => DropdownMenuItem(value: lim, child: Text(lim)))
                                 .toList(),

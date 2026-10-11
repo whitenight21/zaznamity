@@ -76,7 +76,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         return Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 70.0),
+            padding: const EdgeInsets.only(bottom: 10.0),
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 1.0,

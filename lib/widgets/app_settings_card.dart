@@ -103,7 +103,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     _owners = List.from(widget.initialOwners);
     
     _leftNavItems = [
-      'settings',
+      'owner',
       widget.initialLeftNavItems.length > 1 ? widget.initialLeftNavItems[1] : 'metrics',
       widget.initialLeftNavItems.length > 2 ? widget.initialLeftNavItems[2] : 'budget',
     ];
@@ -135,7 +135,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
       final leftSaved = prefs.getStringList('leftNavItems');
       if (leftSaved != null && leftSaved.length >= 3) {
-        _leftNavItems = ['settings', leftSaved[1], leftSaved[2]];
+        _leftNavItems = ['owner', leftSaved[1], leftSaved[2]];
       }
       final rightSaved = prefs.getStringList('rightNavItems');
       if (rightSaved != null && rightSaved.length >= 3) {
@@ -146,7 +146,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
   Future<void> _saveNavPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    _leftNavItems[0] = 'settings';
+    _leftNavItems[0] = 'owner';
     _rightNavItems[2] = 'manager';
 
     await prefs.setStringList('leftNavItems', _leftNavItems);
@@ -791,9 +791,9 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         ),
                         child: const Row(
                           children: [
-                            Icon(Icons.settings_outlined, size: 18, color: Color(0xFF475569)),
+                            Icon(Icons.person_outline, size: 18, color: Color(0xFF475569)),
                             SizedBox(width: 8),
-                            Text('Settings (Fixed)', style: TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
+                            Text('Master Owner Selector (Fixed)', style: TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
                           ],
                         ),
                       ),
@@ -1054,7 +1054,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   ),
                   _buildSubSectionCard(
                     title: 'Liquid Net Counting Pools',
-                    subtitle: 'Choose which pools are counted toward liquid net',
+                    subtitle: 'Choose which pools contribute to liquid net',
                     children: _pools.keys.map((poolKey) {
                       return CheckboxListTile(
                         contentPadding: EdgeInsets.zero,
@@ -1201,14 +1201,14 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               // ==========================================
               _buildMainCategoryGroup(
                 title: 'Data Management & System',
-                subtitle: 'PDF reports, CSV imports, and zone actions',
+                subtitle: 'Reports, CSV imports, and zone actions',
                 children: [
                   _buildSubSectionCard(
-                    title: 'Generate Zaznamity Reports',
+                    title: 'Zaznamity Reports',
                     subtitle: 'Generate PDF Financial Reports',
                     children: [
                       const Text(
-                        'Generate customized PDF Zaznamity Reports by selecting your preferred timeframe, pools, and chart modules.\n'
+                        'Generate customized PDF Zaznamity Reports by selecting your preferred timeframe, pools, charts and more.\n'
                         'Reports are saved automatically to your device\'s Downloads folder.',
                         style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
                       ),
@@ -1234,7 +1234,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     subtitle: 'Select, map, and import your CSV data',
                     children: [
                       const Text(
-                        'Upload any bank or CSV file, match your columns to Zaznamity fields, choose to create labels, owners and pools, and detect future transactions.\n\n'
+                        'Upload any CSV file, match your columns to Zaznamity fields, choose to create labels, owners and pools, and detect future transactions.\n\n'
                         'This feature is designed to help you import your financial data from other sources into Zaznamity with ease and efficiency.',
                         style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
                       ),
@@ -1272,7 +1272,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     subtitle: 'Delete Zaznams in bulk by month, year, or all',
                     children: [
                       const Text(
-                        'Permanently delete multiple records based on time range.',
+                        'Permanently delete zaznams based on time range.',
                         style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
                       ),
                       const SizedBox(height: 12),

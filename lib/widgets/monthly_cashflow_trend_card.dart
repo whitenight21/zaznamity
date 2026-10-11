@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
@@ -11,7 +13,7 @@ class MonthlyCashflowTrendCard extends StatefulWidget {
   final String? selectedPool;
   final Function(String?)? onOwnerChanged;
   final Function(String?)? onPoolChanged;
-  final Function(String monthKey, String type)? onJumpToHistory;
+  final Function(String monthKey, String type, String? owner)? onJumpToHistory;
   final bool isWide;
   final VoidCallback? onToggleWidth;
   final VoidCallback? onHide;
@@ -395,23 +397,46 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                                       showDialog(
                                         context: context,
                                         builder: (ctx) => AlertDialog(
-                                          title: Text('View Zaznams (${_cachedMonthLabels[groupIndex]})'),
+                                          title: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Text(
+                                                'View Zaznams',
+                                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                _cachedMonthLabels[groupIndex],
+                                                style: const TextStyle(fontSize: 16, color: Color(0xFF64748B), fontWeight: FontWeight.bold),
+                                              ),
+                                            ],
+                                          ),
                                           content: const Text('Display in All Zaznams:'),
                                           actions: [
-                                            TextButton(
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFFEF4444),
+                                                foregroundColor: Colors.white,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                              ),
                                               onPressed: () {
                                                 Navigator.pop(ctx);
-                                                widget.onJumpToHistory!(monthKey, 'expense');
+                                                widget.onJumpToHistory!(monthKey, 'expense', widget.selectedOwner);
                                               },
-                                              child: const Text('Expenses', style: TextStyle(color: Color(0xFFEF4444))),
+                                              child: const Text('Expenses'),
                                             ),
                                             ElevatedButton(
-                                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF10B981),
+                                                foregroundColor: Colors.white,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                              ),
                                               onPressed: () {
                                                 Navigator.pop(ctx);
-                                                widget.onJumpToHistory!(monthKey, 'income');
+                                                widget.onJumpToHistory!(monthKey, 'income', widget.selectedOwner);
                                               },
-                                              child: const Text('Income', style: TextStyle(color: Colors.white)),
+                                              child: const Text('Income'),
                                             ),
                                           ],
                                         ),

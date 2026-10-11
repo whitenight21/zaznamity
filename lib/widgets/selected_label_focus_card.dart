@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/transaction_model.dart';
@@ -44,17 +46,21 @@ class SelectedLabelFocusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Default to the past 15 days including today if start/end are not set
+    final now = DateTime.now();
+    final effectiveStartDate = startDate ?? now.subtract(const Duration(days: 15));
+    final effectiveEndDate = endDate ?? now;
+
     final filteredTxs = transactions.where((tx) {
       final txDate = DateTime.tryParse(tx.createdAt);
       if (txDate == null) return true;
-      if (startDate != null) {
-        final startClean = DateTime(startDate!.year, startDate!.month, startDate!.day);
-        if (txDate.isBefore(startClean)) return false;
-      }
-      if (endDate != null) {
-        final endClean = DateTime(endDate!.year, endDate!.month, endDate!.day, 23, 59, 59);
-        if (txDate.isAfter(endClean)) return false;
-      }
+      
+      final startClean = DateTime(effectiveStartDate.year, effectiveStartDate.month, effectiveStartDate.day);
+      if (txDate.isBefore(startClean)) return false;
+
+      final endClean = DateTime(effectiveEndDate.year, effectiveEndDate.month, effectiveEndDate.day, 23, 59, 59);
+      if (txDate.isAfter(endClean)) return false;
+
       if (selectedLabelId != null && tx.labelId != selectedLabelId) return false;
       if (selectedOwner != null && tx.owner != selectedOwner) return false;
       return true;
@@ -76,14 +82,13 @@ class SelectedLabelFocusCard extends StatelessWidget {
     final allCardFilteredTxs = transactions.where((tx) {
       final txDate = DateTime.tryParse(tx.createdAt);
       if (txDate == null) return true;
-      if (startDate != null) {
-        final startClean = DateTime(startDate!.year, startDate!.month, startDate!.day);
-        if (txDate.isBefore(startClean)) return false;
-      }
-      if (endDate != null) {
-        final endClean = DateTime(endDate!.year, endDate!.month, endDate!.day, 23, 59, 59);
-        if (txDate.isAfter(endClean)) return false;
-      }
+      
+      final startClean = DateTime(effectiveStartDate.year, effectiveStartDate.month, effectiveStartDate.day);
+      if (txDate.isBefore(startClean)) return false;
+
+      final endClean = DateTime(effectiveEndDate.year, effectiveEndDate.month, effectiveEndDate.day, 23, 59, 59);
+      if (txDate.isAfter(endClean)) return false;
+
       if (selectedOwner != null && tx.owner != selectedOwner) return false;
       return true;
     }).toList();
@@ -269,19 +274,11 @@ class SelectedLabelFocusCard extends StatelessWidget {
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
-                                          startDate != null && endDate != null
-                                              ? '${DateFormat('MM/dd').format(startDate!)} - ${DateFormat('MM/dd').format(endDate!)}'
-                                              : startDate != null
-                                                  ? DateFormat('MM/dd').format(startDate!)
-                                                  : 'Select Date Range',
-                                          style: TextStyle(
+                                          '${DateFormat('MM/dd').format(effectiveStartDate)} - ${DateFormat('MM/dd').format(effectiveEndDate)}',
+                                          style: const TextStyle(
                                             fontSize: 11,
-                                            color: hasDateFilter
-                                                ? const Color(0xFF1E293B)
-                                                : const Color(0xFF64748B),
-                                            fontWeight: hasDateFilter
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
+                                            color: Color(0xFF1E293B),
+                                            fontWeight: FontWeight.bold,
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),

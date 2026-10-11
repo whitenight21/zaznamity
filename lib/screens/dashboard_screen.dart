@@ -26,7 +26,6 @@ import '../widgets/sankey_flow_card.dart';
 import '../widgets/pools_analytics_card.dart';
 import '../widgets/monthly_cashflow_trend_card.dart';
 import '../widgets/savings_goals_card.dart';
-import '../widgets/dashboard_section.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -42,14 +41,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
-  final ScrollController _scrollController = ScrollController();
-  
-  // Section GlobalKeys for reliable scrolling when collapsed
-  final GlobalKey _overviewSectionKey = GlobalKey();
-  final GlobalKey _analyticsSectionKey = GlobalKey();
-  final GlobalKey _analysisSectionKey = GlobalKey();
-  final GlobalKey _actionsSectionKey = GlobalKey();
+class _DashboardScreenState extends State<DashboardScreen> with TickerProviderStateMixin {
+  late final TabController _tabController;
 
   List<TransactionModel> _transactions = [];
   List<LabelModel> _labels = [];
@@ -107,14 +100,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String? _monthlyTrendSelectedOwner;
 
-  // Section Expansion States (persisted via SharedPreferences)
-  bool _sectionOverviewExpanded = true;
-  bool _sectionAnalyticsExpanded = true;
-  bool _sectionAnalysisExpanded = true;
-  bool _sectionActionsExpanded = true;
-
-  List<String> _leftNavItems = ['metrics', 'budget'];
-  List<String> _rightNavItems = ['history', 'settings'];
+  List<String> _leftNavItems = ['owner', 'metrics', 'budget'];
+  List<String> _rightNavItems = ['history', 'calendar', 'manager'];
 
   Map<String, bool> _pools = {
     'checking': true,
@@ -164,6 +151,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {});
+      }
+    });
+
     final now = DateTime.now();
     _labelsCardStartDate = DateTime(now.year, now.month, 1);
     _labelsCardEndDate = DateTime(now.year, now.month + 1, 0);
@@ -173,6 +167,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     _loadPreferences();
     loadData(showLoading: true);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPreferences() async {
@@ -197,17 +197,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (!loadedPools.containsKey('goals')) loadedPools['goals'] = true;
         _pools = loadedPools;
       }
-
-      _sectionOverviewExpanded = prefs.getBool('section_overview_expanded') ?? true;
-      _sectionAnalyticsExpanded = prefs.getBool('section_analytics_expanded') ?? true;
-      _sectionAnalysisExpanded = prefs.getBool('section_analysis_expanded') ?? true;
-      _sectionActionsExpanded = prefs.getBool('section_actions_expanded') ?? true;
     });
-  }
-
-  Future<void> _saveSectionPreference(String key, bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, value);
   }
 
   Future<void> _savePoolsPreferences(Map<String, bool> updatedPools) async {
@@ -230,7 +220,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
     calculateMetrics();
   }
 
-  void _scrollToCardById(String cardId) {
+  void _showOwnerSelectionDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Select Owner (Master Filter)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.people_outline, color: Color(0xFF582F95)),
+              title: const Text('All Owners', style: TextStyle(fontWeight: FontWeight.bold)),
+              onTap: () {
+                setState(() {
+                  _globalSelectedOwner = null;
+                  calculateMetrics();
+                });
+                Navigator.pop(ctx);
+              },
+            ),
+            const Divider(),
+            ..._owners.map((owner) => ListTile(
+                  leading: const Icon(Icons.person, color: Color(0xFF582F95)),
+                  title: Text(owner),
+                  selected: _globalSelectedOwner == owner,
+                  onTap: () {
+                    setState(() {
+                      _globalSelectedOwner = owner;
+                      calculateMetrics();
+                    });
+                    Navigator.pop(ctx);
+                  },
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _navigateToCard(String cardId) {
+    if (cardId == 'owner') {
+      _showOwnerSelectionDialog();
+      return;
+    }
+
     final cardConfig = _cards.firstWhere(
       (c) => c.id == cardId,
       orElse: () => _cards.first,
@@ -238,43 +271,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     setState(() {
       cardConfig.isVisible = true;
-      if (['metrics', 'savings_goals', 'future_metrics'].contains(cardId)) {
-        _sectionOverviewExpanded = true;
-        _saveSectionPreference('section_overview_expanded', true);
-      } else if (['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(cardId)) {
-        _sectionAnalyticsExpanded = true;
-        _saveSectionPreference('section_analytics_expanded', true);
-      } else if (['budget', 'label_focus', 'income_expenses_labels', 'calendar'].contains(cardId)) {
-        _sectionAnalysisExpanded = true;
-        _saveSectionPreference('section_analysis_expanded', true);
-      } else {
-        _sectionActionsExpanded = true;
-        _saveSectionPreference('section_actions_expanded', true);
-      }
     });
 
-    // Allow frames to build, then grab the precise card context
+    int targetTab = 0;
+    if (['metrics', 'savings_goals', 'future_metrics'].contains(cardId)) {
+      targetTab = 0; // Overview Tab
+    } else if (['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(cardId)) {
+      targetTab = 1; // Analytics Tab
+    } else if (['budget', 'label_focus', 'income_expenses_labels', 'calendar'].contains(cardId)) {
+      targetTab = 2; // Analysis Tab
+    } else {
+      targetTab = 3; // Actions & History Tab
+    }
+
+    _tabController.animateTo(
+      targetTab,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeInOut,
+    );
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final context = cardConfig.key.currentContext;
         if (context != null) {
           Scrollable.ensureVisible(
             context,
-            duration: const Duration(milliseconds: 500),
+            duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
           );
-        } else {
-          // Fallback retry if the widget was just mounted by opening the section
-          Future.delayed(const Duration(milliseconds: 80), () {
-            final retryContext = cardConfig.key.currentContext;
-            if (retryContext != null) {
-              Scrollable.ensureVisible(
-                retryContext,
-                duration: const Duration(milliseconds: 400),
-                curve: Curves.easeInOut,
-              );
-            }
-          });
         }
       });
     });
@@ -284,37 +308,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     BuildContext context,
     List<CardConfig> cards,
     Function(CardConfig) onToggleVisibility,
-    Function(GlobalKey) onScrollTo,
   ) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (modalContext) => StatefulBuilder(
-        builder: (stateContext, setModalState) => Container(
-          padding: const EdgeInsets.all(20),
-          height: MediaQuery.of(context).size.height * 0.6,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Cards Stack Manager',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: ReorderableListView.builder(
-                  itemCount: cards.length,
-                  onReorderItem: (oldIndex, newIndex) {
-                    setModalState(() {
-                      final item = cards.removeAt(oldIndex);
-                      cards.insert(newIndex, item);
-                    });
-                    setState(() {});
-                  },
-                  itemBuilder: (itemContext, index) {
-                    final card = cards[index];
-                    return ListTile(
+        builder: (stateContext, setModalState) {
+          final overviewCards = cards.where((c) => ['metrics', 'savings_goals', 'future_metrics'].contains(c.id)).toList();
+          final analyticsCards = cards.where((c) => ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
+          final analysisCards = cards.where((c) => ['budget', 'label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
+          final actionsCards = cards.where((c) => ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
+
+          Widget buildCategorySection(String title, List<CardConfig> catCards) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF582F95)),
+                  ),
+                ),
+                ...catCards.map((card) => ListTile(
                       key: ValueKey(card.id),
                       title: Text(card.title),
                       trailing: Row(
@@ -329,39 +345,75 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               setModalState(() {
                                 onToggleVisibility(card);
                               });
+                              setState(() {});
                             },
                           ),
-                          const Icon(Icons.drag_handle),
+                          IconButton(
+                            icon: const Icon(Icons.arrow_upward, size: 18),
+                            onPressed: () {
+                              int index = cards.indexOf(card);
+                              if (index > 0) {
+                                setModalState(() {
+                                  cards.removeAt(index);
+                                  cards.insert(index - 1, card);
+                                });
+                                setState(() {});
+                              }
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.arrow_downward, size: 18),
+                            onPressed: () {
+                              int index = cards.indexOf(card);
+                              if (index < cards.length - 1) {
+                                setModalState(() {
+                                  cards.removeAt(index);
+                                  cards.insert(index + 1, card);
+                                });
+                                setState(() {});
+                              }
+                            },
+                          ),
                         ],
                       ),
                       onTap: () {
                         Navigator.pop(modalContext);
-                        _scrollToCardById(card.id);
+                        _navigateToCard(card.id);
                       },
-                    );
-                  },
+                    )),
+                const Divider(),
+              ],
+            );
+          }
+
+          return Container(
+            padding: const EdgeInsets.all(20),
+            height: MediaQuery.of(context).size.height * 0.75,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Cards Stack Manager',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-              ),
-            ],
-          ),
-        ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView(
+                    children: [
+                      buildCategorySection('Overview', overviewCards),
+                      buildCategorySection('Analytics', analyticsCards),
+                      buildCategorySection('Analysis', analysisCards),
+                      buildCategorySection('Actions', actionsCards),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
-  }
-
-  void _scrollToCard(GlobalKey key) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final context = key.currentContext;
-        if (context != null) {
-          Scrollable.ensureVisible(
-            context,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
-          );
-        }
-      });
-    });
   }
 
   Future<void> loadData({bool showLoading = false}) async {
@@ -1204,7 +1256,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _historyStartDate = start;
               _historyEndDate = end;
             });
-            _scrollToCardById('history');
+            _navigateToCard('history');
           },
           isWide: card.isWide,
           onToggleWidth: () => setState(() => card.isWide = !card.isWide),
@@ -1260,6 +1312,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           selectedOwner: _budgetSelectedOwner ?? _globalSelectedOwner,
           onOwnerChanged: (owner) => setState(() => _budgetSelectedOwner = owner),
           onAddBudget: (labelId, limitAmount, owner) => _addBudget(labelId, limitAmount, owner),
+          onUpdateBudgetLimit: (budgetId, newLimit) async {
+            await DatabaseHelper.instance.updateBudgetLimit(budgetId, newLimit);
+            await loadData();
+          },
           onDeleteBudget: _deleteBudget,
           isWide: card.isWide,
           onToggleWidth: () => setState(() => card.isWide = !card.isWide),
@@ -1321,7 +1377,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onOwnerChanged: (owner) => setState(() => _monthlyTrendSelectedOwner = owner),
           selectedPool: _sankeySelectedPool,
           onPoolChanged: (pool) => setState(() => _sankeySelectedPool = pool),
-          onJumpToHistory: (monthKey, type) {
+          onJumpToHistory: (monthKey, type, owner) {
             final parts = monthKey.split('-');
             final year = int.parse(parts[0]);
             final month = int.parse(parts[1]);
@@ -1332,9 +1388,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _historyStartDate = start;
               _historyEndDate = end;
               _historySelectedType = type;
+              _historySelectedOwner = owner;
             });
 
-            _scrollToCardById('history');
+            _navigateToCard('history');
           },
           isWide: card.isWide,
           onToggleWidth: () => setState(() => card.isWide = !card.isWide),
@@ -1394,7 +1451,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return PoolsAnalyticsCard(
           transactions: _transactions,
           pools: _pools,
+          owners: _owners,
           selectedOwner: _globalSelectedOwner,
+          onOwnerChanged: (owner) => setState(() => _globalSelectedOwner = owner),
+          startDate: _savingsChartStartDate, // or create dedicated pool analytics date state if preferred
+          endDate: _savingsChartEndDate,
+          onSelectStartDate: () => _pickDateRange(context, _savingsChartStartDate, _savingsChartEndDate, (start, end) => setState(() {
+            _savingsChartStartDate = start;
+            _savingsChartEndDate = end;
+          })),
+          onSelectEndDate: () => _pickDateRange(context, _savingsChartStartDate, _savingsChartEndDate, (start, end) => setState(() {
+            _savingsChartStartDate = start;
+            _savingsChartEndDate = end;
+          })),
+          onClearDateFilter: () => setState(() {
+            _savingsChartStartDate = null;
+            _savingsChartEndDate = null;
+          }),
           isWide: card.isWide,
           onToggleWidth: () => setState(() => card.isWide = !card.isWide),
           onHide: () => setState(() => card.isVisible = false),
@@ -1550,57 +1623,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return rows;
   }
 
-  Widget _buildCardRowList(List<CardConfig> sectionCards, double screenWidth) {
+  Widget _buildCardTabContent(List<CardConfig> sectionCards, double screenWidth) {
     final rows = _chunkCardsIntoRows(sectionCards, screenWidth);
-    if (rows.isEmpty) return const SizedBox.shrink();
+    if (rows.isEmpty) {
+      return const Center(
+        child: Text('No active cards in this tab', style: TextStyle(color: Colors.grey)),
+      );
+    }
 
-    // 2 pixels padding on the side as requested
     const double sidePadding = 4.0; 
     final double netWidth = screenWidth - sidePadding;
 
-    return Column(
-      children: rows.map((rowCards) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: rowCards.map((card) {
-              double cardWidth;
-              if (card.isWide) {
-                cardWidth = netWidth;
-              } else {
-                if (screenWidth >= 1200) {
-                  cardWidth = (netWidth - 40) / 3;
-                } else if (screenWidth >= 768) {
-                  cardWidth = (netWidth - 20) / 2;
-                } else {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(2, 12, 2, 140), // Added top padding to prevent sitting flat against the top
+      child: Column(
+        children: rows.map((rowCards) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: rowCards.map((card) {
+                double cardWidth;
+                if (card.isWide) {
                   cardWidth = netWidth;
+                } else {
+                  if (screenWidth >= 1200) {
+                    cardWidth = (netWidth - 40) / 3;
+                  } else if (screenWidth >= 768) {
+                    cardWidth = (netWidth - 20) / 2;
+                  } else {
+                    cardWidth = netWidth;
+                  }
                 }
-              }
 
-              return Expanded(
-                key: card.key,
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: rowCards.last == card ? 0 : 16,
-                  ),
-                  child: SizedBox(
-                    width: cardWidth,
-                    child: RepaintBoundary(
-                      child: _buildCardWidget(card),
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: rowCards.last == card ? 0 : 16,
+                    ),
+                    child: SizedBox(
+                      key: card.key,
+                      width: cardWidth,
+                      child: RepaintBoundary(
+                        child: _buildCardWidget(card),
+                      ),
                     ),
                   ),
-                ),
-              );
-            }).toList(),
-          ),
-        );
-      }).toList(),
+                );
+              }).toList(),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: _isLoading
@@ -1610,131 +1691,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SafeArea(
-                      bottom: false,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                ClipOval(
-                                  child: Image.asset(
-                                    'assets/ZaznamityLogoFULL.jpg',
-                                    width: 30,
-                                    height: 30,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                const Text(
-                                  '  VIEW ZAZNAMITY OF :  ',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF582F95),
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                                DropdownButton<String?>(
-                                  value: _globalSelectedOwner,
-                                  isDense: true,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF582F95),
-                                  ),
-                                  dropdownColor: Colors.white,
-                                  items: [
-                                    const DropdownMenuItem<String?>(
-                                      value: null,
-                                      child: Text('All Owners'),
-                                    ),
-                                    ..._owners.map(
-                                      (owner) => DropdownMenuItem<String?>(
-                                        value: owner,
-                                        child: Text(owner),
-                                      ),
-                                    ),
-                                  ],
-                                  onChanged: (val) {
-                                    setState(() {
-                                      _globalSelectedOwner = val;
-                                      calculateMetrics();
-                                    });
-                                  },
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final screenWidth = constraints.maxWidth;
 
-                          final overviewCards = _cards.where((c) => c.isVisible && ['metrics', 'savings_goals', 'future_metrics'].contains(c.id)).toList();
+                          final overviewCards = _cards.where((c) => c.isVisible && ['metrics', 'future_metrics', 'savings_goals'].contains(c.id)).toList();
                           final analyticsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
                           final analysisCards = _cards.where((c) => c.isVisible && ['budget', 'label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
                           final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
 
-                          return ListView(
-                            controller: _scrollController,
-                            cacheExtent: 1000,
-                            padding: const EdgeInsets.fromLTRB(2, 8, 2, 100),
+                          return TabBarView(
+                            controller: _tabController,
                             children: [
-                              if (overviewCards.isNotEmpty)
-                                DashboardSection(
-                                  key: _overviewSectionKey,
-                                  title: 'Financial Overview & Metrics',
-                                  icon: Icons.dashboard_rounded,
-                                  isExpanded: _sectionOverviewExpanded,
-                                  onExpansionChanged: (val) {
-                                    setState(() => _sectionOverviewExpanded = val);
-                                    _saveSectionPreference('section_overview_expanded', val);
-                                  },
-                                  children: [_buildCardRowList(overviewCards, screenWidth)],
-                                ),
-                              if (analyticsCards.isNotEmpty)
-                                DashboardSection(
-                                  key: _analyticsSectionKey,
-                                  title: 'Analytics & Trends',
-                                  icon: Icons.trending_up_rounded,
-                                  isExpanded: _sectionAnalyticsExpanded,
-                                  onExpansionChanged: (val) {
-                                    setState(() => _sectionAnalyticsExpanded = val);
-                                    _saveSectionPreference('section_analytics_expanded', val);
-                                  },
-                                  children: [_buildCardRowList(analyticsCards, screenWidth)],
-                                ),
-                              if (analysisCards.isNotEmpty)
-                                DashboardSection(
-                                  key: _analysisSectionKey,
-                                  title: 'Analysis & Budgets',
-                                  icon: Icons.pie_chart_rounded,
-                                  isExpanded: _sectionAnalysisExpanded,
-                                  onExpansionChanged: (val) {
-                                    setState(() => _sectionAnalysisExpanded = val);
-                                    _saveSectionPreference('section_analysis_expanded', val);
-                                  },
-                                  children: [_buildCardRowList(analysisCards, screenWidth)],
-                                ),
-                              if (actionsCards.isNotEmpty)
-                                DashboardSection(
-                                  key: _actionsSectionKey,
-                                  title: 'Quick Actions & History',
-                                  icon: Icons.receipt_long_rounded,
-                                  isExpanded: _sectionActionsExpanded,
-                                  onExpansionChanged: (val) {
-                                    setState(() => _sectionActionsExpanded = val);
-                                    _saveSectionPreference('section_actions_expanded', val);
-                                  },
-                                  children: [_buildCardRowList(actionsCards, screenWidth)],
-                                ),
+                              _buildCardTabContent(overviewCards, screenWidth),
+                              _buildCardTabContent(analyticsCards, screenWidth),
+                              _buildCardTabContent(analysisCards, screenWidth),
+                              _buildCardTabContent(actionsCards, screenWidth),
                             ],
                           );
                         },
@@ -1742,24 +1715,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ],
                 ),
+
+                // Docked Bottom/Side Control Bar
+                // Docked Bottom/Side Control Bar
                 Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 24,
+                  left: isLandscape ? 0 : 0,
+                  right: isLandscape ? null : 0,
+                  bottom: 0,
+                  top: isLandscape ? 0 : null,
                   child: Align(
-                    alignment: Alignment.center,
+                    alignment: isLandscape ? Alignment.centerRight : Alignment.bottomCenter,
                     child: BottomCardNavBar(
                       cards: _cards,
                       leftItems: _leftNavItems,
                       rightItems: _rightNavItems,
+                      isLandscape: isLandscape,
+                      currentTabIndex: _tabController.index,
+                      onTabSelected: (index) {
+                        _tabController.animateTo(
+                          index,
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeInOut,
+                        );
+                      },
                       onOpenManager: () => showCardStackManager(
                         context,
                         _cards,
                         (card) => setState(() => card.isVisible = !card.isVisible),
-                        (key) => _scrollToCard(key),
                       ),
-                      onQuickAdd: () => _scrollToCardById('new_entry'),
-                      onOpenSettings: () => _scrollToCardById('settings'),
+                      onQuickAdd: () => _navigateToCard('new_entry'),
+                      onSelectOwner: _showOwnerSelectionDialog,
+                      onNavigateToCard: (cardId) => _navigateToCard(cardId),
                       onToggleVisibility: (card) {
                         setState(() {
                           card.isVisible = true;

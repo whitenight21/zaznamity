@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
@@ -68,6 +70,24 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
       return;
     }
 
+    // Calculate initial balance from transactions before startDate
+    double initialBalance = 0;
+    if (widget.startDate != null) {
+      final startClean = DateTime(widget.startDate!.year, widget.startDate!.month, widget.startDate!.day);
+      for (var tx in widget.transactions) {
+        if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty) {
+          if (tx.owner != widget.selectedOwner) continue;
+        }
+        final txDate = DateTime.tryParse(tx.createdAt);
+        if (txDate != null && txDate.isBefore(startClean)) {
+          final isPoolIncluded = widget.liquidNetPools[tx.pool] == true;
+          if (tx.isConfirmed == 1 && isPoolIncluded) {
+            initialBalance += (tx.type == 'income' ? tx.amount : -tx.amount);
+          }
+        }
+      }
+    }
+
     final filteredTx = widget.transactions.where((tx) {
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty) {
         if (tx.owner != widget.selectedOwner) return false;
@@ -95,7 +115,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
     List<LineChartBarData> lineBars = [];
     final now = DateTime.now();
 
-    double currentBalance = 0;
+    double currentBalance = initialBalance;
     List<FlSpot> currentSegmentSpots = [];
     Color? currentSegmentColor;
     bool currentIsDashed = false;
@@ -260,13 +280,11 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
     if (lowestPoint == double.infinity) lowestPoint = 0;
     if (highestPoint == -double.infinity) highestPoint = 0;
 
-    double minY = lowestPoint - 250;
-    double maxY = highestPoint;
-    if (maxY < 0) maxY = 0;
-
-    final double yRange = maxY - minY;
+    final double yRange = highestPoint - lowestPoint;
     final double yPadding = yRange == 0 ? 50 : yRange * 0.15;
-    maxY += yPadding;
+    
+    double minY = lowestPoint - yPadding;
+    double maxY = highestPoint + yPadding;
 
     _cachedSortedTx = sortedTx;
     _cachedLineBars = lineBars;
