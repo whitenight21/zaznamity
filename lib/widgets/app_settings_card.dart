@@ -84,8 +84,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   
   bool _isDarkMode = false;
   bool _notificationsEnabled = true;
-  int _notifyDaysBefore = 1;
-  int _notifyHoursBefore = 9;
+  final int _notifyDaysBefore = 1;
+  final int _notifyHoursBefore = 9;
   
   bool _biometricsEnabled = false;
   String _biometricType = 'PIN';
@@ -110,7 +110,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     _rightNavItems = [
       widget.initialRightNavItems.isNotEmpty ? widget.initialRightNavItems[0] : 'history',
       widget.initialRightNavItems.length > 1 ? widget.initialRightNavItems[1] : 'calendar',
-      'manager',
+      'snapshot',
     ];
     
     _loadPrefs();
@@ -139,7 +139,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       }
       final rightSaved = prefs.getStringList('rightNavItems');
       if (rightSaved != null && rightSaved.length >= 3) {
-        _rightNavItems = [rightSaved[0], rightSaved[1], 'manager'];
+        _rightNavItems = [rightSaved[0], rightSaved[1], 'snapshot'];
       }
     });
   }
@@ -147,7 +147,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   Future<void> _saveNavPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     _leftNavItems[0] = 'owner';
-    _rightNavItems[2] = 'manager';
+    _rightNavItems[2] = 'snapshot';
 
     await prefs.setStringList('leftNavItems', _leftNavItems);
     await prefs.setStringList('rightNavItems', _rightNavItems);
@@ -303,7 +303,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 Navigator.pop(ctx);
                 
                 try {
-                  // Build Professional PDF Layout
                   final pdfDoc = pw.Document();
                   final logoImage = pw.MemoryImage(
                     (await rootBundle.load('assets/ZaznamityLogo_onlyZwhite.png'))
@@ -902,9 +901,9 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         ),
                         child: const Row(
                           children: [
-                            Icon(Icons.layers_outlined, size: 18, color: Color(0xFF475569)),
+                            Icon(Icons.grid_view_rounded, size: 18, color: Color(0xFF475569)),
                             SizedBox(width: 8),
-                            Text('Cards Stack Manager (Fixed)', style: TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
+                            Text('Zoom-Out Snapshot View (Fixed)', style: TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
                           ],
                         ),
                       ),
@@ -1179,14 +1178,14 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             DropdownButton<int>(
                               value: _notifyDaysBefore,
                               items: [0, 1, 2, 3, 5, 7].map((d) => DropdownMenuItem(value: d, child: Text('$d day(s)'))).toList(),
-                              onChanged: (val) => setState(() => _notifyDaysBefore = val ?? 1),
+                              onChanged: (val) {},
                             ),
                             const SizedBox(width: 20),
                             const Text('Hours: ', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
                             DropdownButton<int>(
                               value: _notifyHoursBefore,
                               items: [8, 9, 10, 12, 18, 20].map((h) => DropdownMenuItem(value: h, child: Text('$h:00'))).toList(),
-                              onChanged: (val) => setState(() => _notifyHoursBefore = val ?? 9),
+                              onChanged: (val) {},
                             ),
                           ],
                         ),

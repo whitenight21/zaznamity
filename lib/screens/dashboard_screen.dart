@@ -101,7 +101,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   String? _monthlyTrendSelectedOwner;
 
   List<String> _leftNavItems = ['owner', 'metrics', 'budget'];
-  List<String> _rightNavItems = ['history', 'calendar', 'manager'];
+  List<String> _rightNavItems = ['history', 'calendar', 'snapshot'];
 
   Map<String, bool> _pools = {
     'checking': true,
@@ -1596,6 +1596,170 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     }
   }
 
+  void _showZoomOutSnapshotModal() {
+    final overviewCards = _cards.where((c) => c.isVisible && ['metrics', 'future_metrics', 'savings_goals'].contains(c.id)).toList();
+    final analyticsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
+    final analysisCards = _cards.where((c) => c.isVisible && ['budget', 'label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
+    final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF1E1333),
+        // Positioned higher up to prevent bottom navigation bar overlap
+        alignment: Alignment.topCenter,
+        insetPadding: const EdgeInsets.fromLTRB(12, 32, 12, 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.96,
+          height: MediaQuery.of(context).size.height * 0.78, // Reduced overall height
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.grid_view_rounded, color: Color(0xFFA855F7), size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Zaznamity Dashboard Snapshot',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTabSnapshotColumn('Overview', overviewCards, 0),
+                      const SizedBox(width: 12),
+                      _buildTabSnapshotColumn('Analytics', analyticsCards, 1),
+                      const SizedBox(width: 12),
+                      _buildTabSnapshotColumn('Analysis', analysisCards, 2),
+                      const SizedBox(width: 12),
+                      _buildTabSnapshotColumn('Actions', actionsCards, 3),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabSnapshotColumn(String title, List<CardConfig> cards, int tabIndex) {
+    return Container(
+      width: 110,
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2D1B4E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () {
+              Navigator.pop(context);
+              _tabController.animateTo(tabIndex, duration: const Duration(milliseconds: 180), curve: Curves.easeInOut);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFA855F7))),
+                  const Icon(Icons.open_in_new, size: 10, color: Colors.white54),
+                ],
+              ),
+            ),
+          ),
+          const Divider(color: Colors.white12, height: 6),
+          Expanded(
+            child: cards.isEmpty
+                ? const Center(child: Text('No visible cards', style: TextStyle(fontSize: 9, color: Colors.white38)))
+                : ListView.builder(
+                    itemCount: cards.length,
+                    itemBuilder: (context, index) {
+                      final card = cards[index];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.pop(context);
+                              _navigateToCard(card.id);
+                            },
+                            borderRadius: BorderRadius.circular(8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                  color: const Color(0xFFF1F5F9),
+                                  child: Text(
+                                    card.title,
+                                    style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF582F95)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                // IgnorePointer disables child widget touch/button interactions entirely
+                                IgnorePointer(
+                                  child: SizedBox(
+                                    height: 144,
+                                    width: double.infinity,
+                                    child: ClipRect(
+                                      child: OverflowBox(
+                                        alignment: Alignment.topLeft,
+                                        maxWidth: MediaQuery.of(context).size.width,
+                                        maxHeight: MediaQuery.of(context).size.height,
+                                        child: Transform.scale(
+                                          scale: 0.25,
+                                          alignment: Alignment.topLeft,
+                                          child: SizedBox(
+                                            width: MediaQuery.of(context).size.width - 40,
+                                            child: _buildCardWidget(card),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<List<CardConfig>> _chunkCardsIntoRows(List<CardConfig> sectionCards, double screenWidth) {
     List<List<CardConfig>> rows = [];
     List<CardConfig> currentRow = [];
@@ -1745,7 +1909,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                       ),
                       onQuickAdd: () => _navigateToCard('new_entry'),
                       onSelectOwner: _showOwnerSelectionDialog,
-                      onNavigateToCard: (cardId) => _navigateToCard(cardId),
+                      onNavigateToCard: (cardId) {
+                        if (cardId == 'snapshot') {
+                          _showZoomOutSnapshotModal();
+                        } else {
+                          _navigateToCard(cardId);
+                        }
+                      },
                       onToggleVisibility: (card) {
                         setState(() {
                           card.isVisible = true;

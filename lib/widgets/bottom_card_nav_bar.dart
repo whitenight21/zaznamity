@@ -25,7 +25,7 @@ class BottomCardNavBar extends StatefulWidget {
     required this.onToggleVisibility,
     required this.onNavigateToCard,
     this.leftItems = const ['owner', 'metrics', 'budget'],
-    this.rightItems = const ['history', 'calendar', 'manager'],
+    this.rightItems = const ['history', 'calendar', 'snapshot'],
     this.isLandscape = false,
     this.currentTabIndex = 0,
     required this.onTabSelected,
@@ -42,14 +42,14 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
   Widget build(BuildContext context) {
     final effectiveLeft = [
       'owner',
-      if (widget.leftItems.length > 1 && widget.leftItems[1] != 'owner' && widget.leftItems[1] != 'manager') widget.leftItems[1] else 'metrics',
-      if (widget.leftItems.length > 2 && widget.leftItems[2] != 'owner' && widget.leftItems[2] != 'manager') widget.leftItems[2] else 'budget',
+      if (widget.leftItems.length > 1 && widget.leftItems[1] != 'owner' && widget.leftItems[1] != 'snapshot') widget.leftItems[1] else 'metrics',
+      if (widget.leftItems.length > 2 && widget.leftItems[2] != 'owner' && widget.leftItems[2] != 'snapshot') widget.leftItems[2] else 'budget',
     ];
 
     final effectiveRight = [
-      if (widget.rightItems.isNotEmpty && widget.rightItems[0] != 'manager' && widget.rightItems[0] != 'owner') widget.rightItems[0] else 'history',
-      if (widget.rightItems.length > 1 && widget.rightItems[1] != 'manager' && widget.rightItems[1] != 'owner') widget.rightItems[1] else 'calendar',
-      'manager',
+      if (widget.rightItems.isNotEmpty && widget.rightItems[0] != 'snapshot' && widget.rightItems[0] != 'owner') widget.rightItems[0] else 'history',
+      if (widget.rightItems.length > 1 && widget.rightItems[1] != 'snapshot' && widget.rightItems[1] != 'owner') widget.rightItems[1] else 'calendar',
+      'snapshot',
     ];
 
     final allNavItems = [
@@ -164,7 +164,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
                 _buildHorizontalTabItem(0, 'Metrics'),
                 _buildHorizontalTabItem(1, 'Trends'),
                 _buildHorizontalTabItem(2, 'Analytics'),
-                _buildHorizontalTabItem(3, 'Actions'),
+                _buildTabWithManagerAction(3, 'Actions'),
               ],
             ),
           ),
@@ -241,7 +241,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
                 _buildPortraitTabItem(0, 'Metrics'),
                 _buildPortraitTabItem(1, 'Trends'),
                 _buildPortraitTabItem(2, 'Analytics'),
-                _buildPortraitTabItem(3, 'Actions'),
+                _buildTabWithManagerAction(3, 'Actions'),
               ],
             ),
           ],
@@ -272,6 +272,41 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
     );
   }
 
+  Widget _buildTabWithManagerAction(int index, String label) {
+    final isSelected = widget.currentTabIndex == index;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: () => widget.onTabSelected(index),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+            decoration: BoxDecoration(
+              color: isSelected ? const Color(0xFFA855F7).withValues(alpha: 0.3) : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? const Color(0xFFA855F7) : Colors.white70,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        IconButton(
+          constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.layers_outlined, color: Colors.white70, size: 16),
+          onPressed: widget.onOpenManager,
+          tooltip: 'Cards Stack Manager',
+        ),
+      ],
+    );
+  }
+
   Widget _buildHorizontalTabItem(int index, String label) {
     final isSelected = widget.currentTabIndex == index;
     return InkWell(
@@ -296,13 +331,13 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
   }
 
   Widget _buildNavItem(BuildContext context, String itemKey) {
-    if (itemKey == 'manager') {
+    if (itemKey == 'snapshot') {
       return IconButton(
         constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
         padding: EdgeInsets.zero,
-        icon: const Icon(Icons.layers_outlined, color: Colors.white70, size: 20),
-        onPressed: widget.onOpenManager,
-        tooltip: 'Cards Stack Manager',
+        icon: const Icon(Icons.grid_view_rounded, color: Colors.white70, size: 20),
+        onPressed: () => widget.onNavigateToCard('snapshot'),
+        tooltip: 'Zoom-Out Snapshot',
       );
     }
     if (itemKey == 'owner') {
@@ -321,7 +356,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
     );
 
     IconData iconData;
-    Color iconColor = Colors.white70;
+    const Color iconColor = Colors.white70;
     String tooltip = cardConfig.id.toUpperCase();
 
     switch (cardConfig.id) {

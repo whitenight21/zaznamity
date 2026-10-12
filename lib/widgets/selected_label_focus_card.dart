@@ -464,7 +464,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
               if (recentTransactions.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 const Text(
-                  'RECENT ACTIVITY',
+                  'LAST 5 ZAZNAMS',
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
                 ),
                 const SizedBox(height: 4),
@@ -485,7 +485,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
                       final isIncome = tx.type == 'income';
                       
                       return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
