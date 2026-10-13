@@ -141,7 +141,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: const Text(
-                        'POOLS ANALYTICS',
+                        'POOLS TRENDS',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

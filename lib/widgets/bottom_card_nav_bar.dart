@@ -36,10 +36,61 @@ class BottomCardNavBar extends StatefulWidget {
 }
 
 class _BottomCardNavBarState extends State<BottomCardNavBar> {
+  String? _pressedItemKey;
   bool _isHidden = false;
+
+  void _triggerPressEffect(String key) {
+    setState(() {
+      _pressedItemKey = key;
+    });
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted && _pressedItemKey == key) {
+        setState(() {
+          _pressedItemKey = null;
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    // If hidden in portrait mode, show only the long purple tab at the bottom
+    if (_isHidden && !widget.isLandscape) {
+      return Align(
+        alignment: Alignment.bottomCenter,
+        child: GestureDetector(
+          onTap: () {
+            setState(() {
+              _isHidden = false;
+            });
+          },
+          child: Container(
+            width: 120,
+            height: 24,
+            margin: const EdgeInsets.only(bottom: 0),
+            decoration: const BoxDecoration(
+              color: Color(0xFFA855F7),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black45,
+                  blurRadius: 4,
+                  offset: Offset(0, -2),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.keyboard_arrow_up_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final effectiveLeft = [
       'owner',
       if (widget.leftItems.length > 1 && widget.leftItems[1] != 'owner' && widget.leftItems[1] != 'snapshot') widget.leftItems[1] else 'metrics',
@@ -62,126 +113,103 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
       effectiveRight[2],
     ];
 
-    if (_isHidden) {
-      return GestureDetector(
-        onTap: () => setState(() => _isHidden = false),
-        child: widget.isLandscape
-            ? Container(
-                width: 12,
-                height: double.infinity,
-                color: const Color(0xFF1E1333).withValues(alpha: 0.85),
-                alignment: Alignment.center,
-                child: Container(
-                  width: 4,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: Colors.white54,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              )
-            : Container(
-                height: 12,
-                width: double.infinity,
-                color: const Color(0xFF1E1333).withValues(alpha: 0.85),
-                alignment: Alignment.center,
-                child: Container(
-                  width: 60,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white54,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-      );
-    }
-
     if (widget.isLandscape) {
-      return GestureDetector(
-        onPanUpdate: (details) {
-          if (details.delta.dx < -10) {
-            setState(() => _isHidden = true);
-          }
-        },
-        child: Container(
-          margin: const EdgeInsets.only(right: 0, top: 8, bottom: 8),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1333).withValues(alpha: 0.95),
-            borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.4),
-                blurRadius: 16,
-                offset: const Offset(4, 0),
-              ),
-            ],
-            border: Border.all(color: Colors.white10),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ...allNavItems.map((itemKey) {
-                  if (itemKey == 'logo') {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: GestureDetector(
-                        onTap: widget.onQuickAdd,
-                        child: Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.4),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: ClipOval(
-                            child: Image.asset(
-                              'assets/ZaznamityLogoFULL.jpg',
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }
+      return Container(
+        margin: const EdgeInsets.only(right: 0, top: 4, bottom: 4),
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1333).withValues(alpha: 0.95),
+          borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 16,
+              offset: const Offset(4, 0),
+            ),
+          ],
+          border: Border.all(color: Colors.white10),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...allNavItems.map((itemKey) {
+                if (itemKey == 'logo') {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: _buildNavItem(context, itemKey),
+                    child: GestureDetector(
+                      onTap: () {
+                        _triggerPressEffect('logo');
+                        widget.onQuickAdd();
+                      },
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          if (_pressedItemKey == 'logo')
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFA855F7),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.4),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: ClipOval(
+                              child: Image.asset(
+                                'assets/ZaznamityLogoFULL.jpg',
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   );
-                }),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 6),
-                  child: Divider(color: Colors.white12, height: 1, indent: 4, endIndent: 4),
-                ),
-                _buildHorizontalTabItem(0, 'Metrics'),
-                _buildHorizontalTabItem(1, 'Trends'),
-                _buildHorizontalTabItem(2, 'Analytics'),
-                _buildTabWithManagerAction(3, 'Actions'),
-              ],
-            ),
+                }
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: _buildNavItem(context, itemKey),
+                );
+              }),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: Divider(color: Colors.white12, height: 1, indent: 4, endIndent: 4),
+              ),
+              _buildHorizontalTabItem(0, 'Metrics'),
+              _buildHorizontalTabItem(1, 'Trends'),
+              _buildHorizontalTabItem(2, 'Analytics'),
+              _buildTabWithManagerAction(3, 'Actions'),
+            ],
           ),
         ),
       );
     }
 
-    // Portrait / Docked Bottom Standard View
+    // Portrait / Docked Bottom Standard View with instant swipe-down-to-hide support
     return GestureDetector(
-      onPanUpdate: (details) {
-        if (details.delta.dy > 10) {
-          setState(() => _isHidden = true);
+      onVerticalDragUpdate: (details) {
+        if (details.delta.dy > 6) {
+          setState(() {
+            _isHidden = true;
+          });
         }
       },
       child: Container(
         margin: EdgeInsets.zero,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        padding: const EdgeInsets.fromLTRB(16, 1, 16, 1),
         decoration: BoxDecoration(
           color: const Color(0xFF1E1333).withValues(alpha: 0.95),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -204,28 +232,45 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
                 _buildNavItem(context, effectiveLeft[1]),
                 _buildNavItem(context, effectiveLeft[2]),
 
-                // Center Logo Quick-Add Button
+                // Center Logo Quick-Add Button with 0.5s Purple Circle Press Effect
                 GestureDetector(
-                  onTap: widget.onQuickAdd,
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.4),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
+                  onTap: () {
+                    _triggerPressEffect('logo');
+                    widget.onQuickAdd();
+                  },
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      if (_pressedItemKey == 'logo')
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFA855F7),
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/ZaznamityLogoFULL.jpg',
-                        fit: BoxFit.cover,
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.4),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: Image.asset(
+                            'assets/ZaznamityLogoFULL.jpg',
+                            fit: BoxFit.cover,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
 
@@ -234,7 +279,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
                 _buildNavItem(context, effectiveRight[2]),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 0),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -255,7 +300,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
     return InkWell(
       onTap: () => widget.onTabSelected(index),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFFA855F7).withValues(alpha: 0.3) : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
@@ -265,7 +310,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.bold,
-            color: isSelected ? const Color(0xFFA855F7) : Colors.white70,
+            color: isSelected ? Colors.white : Colors.white70,
           ),
         ),
       ),
@@ -280,7 +325,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
         InkWell(
           onTap: () => widget.onTabSelected(index),
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
               color: isSelected ? const Color(0xFFA855F7).withValues(alpha: 0.3) : Colors.transparent,
               borderRadius: BorderRadius.circular(6),
@@ -290,7 +335,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
-                color: isSelected ? const Color(0xFFA855F7) : Colors.white70,
+                color: isSelected ? Colors.white : Colors.white70,
               ),
             ),
           ),
@@ -312,8 +357,8 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
     return InkWell(
       onTap: () => widget.onTabSelected(index),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-        margin: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        margin: const EdgeInsets.symmetric(vertical: 1),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFFA855F7).withValues(alpha: 0.3) : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
@@ -323,7 +368,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
           style: TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.bold,
-            color: isSelected ? const Color(0xFFA855F7) : Colors.white70,
+            color: isSelected ? Colors.white : Colors.white70,
           ),
         ),
       ),
@@ -332,21 +377,55 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
 
   Widget _buildNavItem(BuildContext context, String itemKey) {
     if (itemKey == 'snapshot') {
-      return IconButton(
-        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-        padding: EdgeInsets.zero,
-        icon: const Icon(Icons.grid_view_rounded, color: Colors.white70, size: 20),
-        onPressed: () => widget.onNavigateToCard('snapshot'),
-        tooltip: 'Zoom-Out Snapshot',
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          if (_pressedItemKey == 'snapshot')
+            Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                color: Color.fromARGB(255, 82, 35, 126),
+                shape: BoxShape.circle,
+              ),
+            ),
+          IconButton(
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.grid_view_rounded, color: Colors.white70, size: 20),
+            onPressed: () {
+              _triggerPressEffect('snapshot');
+              widget.onNavigateToCard('snapshot');
+            },
+            tooltip: 'Zoom-Out Snapshot',
+          ),
+        ],
       );
     }
     if (itemKey == 'owner') {
-      return IconButton(
-        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-        padding: EdgeInsets.zero,
-        icon: const Icon(Icons.person_outline, color: Colors.white70, size: 20),
-        onPressed: widget.onSelectOwner,
-        tooltip: 'Select Owner',
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          if (_pressedItemKey == 'owner')
+            Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                color: Color.fromARGB(255, 82, 35, 126),
+                shape: BoxShape.circle,
+              ),
+            ),
+          IconButton(
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.person_outline, color: Colors.white70, size: 20),
+            onPressed: () {
+              _triggerPressEffect('owner');
+              widget.onSelectOwner();
+            },
+            tooltip: 'Select Owner',
+          ),
+        ],
       );
     }
 
@@ -356,7 +435,6 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
     );
 
     IconData iconData;
-    const Color iconColor = Colors.white70;
     String tooltip = cardConfig.id.toUpperCase();
 
     switch (cardConfig.id) {
@@ -401,12 +479,29 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
         break;
     }
 
-    return IconButton(
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-      padding: EdgeInsets.zero,
-      icon: Icon(iconData, color: iconColor, size: 20),
-      onPressed: () => widget.onNavigateToCard(cardConfig.id),
-      tooltip: tooltip,
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        if (_pressedItemKey == cardConfig.id)
+          Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(
+              color: Color.fromARGB(255, 82, 35, 126),
+              shape: BoxShape.circle,
+            ),
+          ),
+        IconButton(
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          padding: EdgeInsets.zero,
+          icon: Icon(iconData, color: Colors.white70, size: 20),
+          onPressed: () {
+            _triggerPressEffect(cardConfig.id);
+            widget.onNavigateToCard(cardConfig.id);
+          },
+          tooltip: tooltip,
+        ),
+      ],
     );
   }
 }

@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -95,6 +97,10 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final double fullWidth = availableWidth - 48;
+        final double boxWidth = (fullWidth - 12) / 2;
+
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
@@ -123,7 +129,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 88, 47, 149),
+                          color: Color(0xFF582F95),
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -178,200 +184,288 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+
+              // Date & Time Selectors
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('DATE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        const SizedBox(height: 4),
-                        InkWell(
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: _selectedDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2035),
-                            );
-                            if (picked != null) setState(() => _selectedDate = picked);
-                          },
-                          child: InputDecorator(
-                            decoration: InputDecoration(
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                              suffixIcon: const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
-                            ),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(DateFormat('MM/dd/yyyy').format(_selectedDate), style: const TextStyle(fontSize: 13)),
-                            ),
-                          ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: InkWell(
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: _selectedDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2035),
+                        );
+                        if (picked != null) setState(() => _selectedDate = picked);
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
                         ),
-                      ],
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF582F95)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                DateFormat('MM/dd/yyyy').format(_selectedDate),
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('TIME', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        const SizedBox(height: 4),
-                        InkWell(
-                          onTap: () async {
-                            final picked = await showTimePicker(
-                              context: context,
-                              initialTime: _selectedTime,
-                            );
-                            if (picked != null) setState(() => _selectedTime = picked);
-                          },
-                          child: InputDecorator(
-                            decoration: InputDecoration(
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                              suffixIcon: const Icon(Icons.access_time, size: 14, color: Colors.grey),
-                            ),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(_selectedTime.format(context), style: const TextStyle(fontSize: 13)),
-                            ),
-                          ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: InkWell(
+                      onTap: () async {
+                        final picked = await showTimePicker(
+                          context: context,
+                          initialTime: _selectedTime,
+                        );
+                        if (picked != null) setState(() => _selectedTime = picked);
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
                         ),
-                      ],
+                        child: Row(
+                          children: [
+                            const Icon(Icons.access_time_rounded, size: 16, color: Color(0xFF582F95)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _selectedTime.format(context),
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
+
+              // Headers for From & To Owners
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('FROM OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        const SizedBox(height: 4),
-                        DropdownButtonFormField<String>(
-                          initialValue: _fromOwner,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          ),
-                          items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 13)))).toList(),
-                          onChanged: (val) => setState(() => _fromOwner = val ?? widget.owners.first),
-                        ),
-                      ],
+                  SizedBox(
+                    width: boxWidth,
+                    child: const Text(
+                      'FROM:',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('TO OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        const SizedBox(height: 4),
-                        DropdownButtonFormField<String>(
-                          initialValue: _toOwner,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          ),
-                          items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 13)))).toList(),
-                          onChanged: (val) => setState(() => _toOwner = val ?? widget.owners.first),
-                        ),
-                      ],
+                  SizedBox(
+                    width: boxWidth,
+                    child: const Text(
+                      'TO:',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 4),
+
+              // From Owner & To Owner Dropdowns
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('FROM POOL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        const SizedBox(height: 4),
-                        DropdownButtonFormField<String>(
-                          initialValue: _fromPool,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _fromOwner,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+                                onChanged: (val) => setState(() => _fromOwner = val ?? widget.owners.first),
+                              ),
+                            ),
                           ),
-                          items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase(), style: const TextStyle(fontSize: 13)))).toList(),
-                          onChanged: (val) => setState(() => _fromPool = val ?? widget.pools.first),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('TO POOL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        const SizedBox(height: 4),
-                        DropdownButtonFormField<String>(
-                          initialValue: _toPool,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _toOwner,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+                                onChanged: (val) => setState(() => _toOwner = val ?? widget.owners.first),
+                              ),
+                            ),
                           ),
-                          items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase(), style: const TextStyle(fontSize: 13)))).toList(),
-                          onChanged: (val) => setState(() => _toPool = val ?? widget.pools.first),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: _amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: 'Amount (0.00)',
-                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                ),
+              const SizedBox(height: 12),
+
+              // From Pool & To Pool Dropdowns
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.layers_outlined, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _fromPool,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))).toList(),
+                                onChanged: (val) => setState(() => _fromPool = val ?? widget.pools.first),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.layers_outlined, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _toPool,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))).toList(),
+                                onChanged: (val) => setState(() => _toPool = val ?? widget.pools.first),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: _descController,
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: 'Description (Optional)',
-                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                ),
+              const SizedBox(height: 12),
+
+              // Row 4: Amount Input (25%) & Description Input (75%) Side-by-Side
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: fullWidth * 0.25,
+                    child: TextField(
+                      controller: _amountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'Amount',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: fullWidth * 0.73, // Leaves small spacing gap
+                    child: TextField(
+                      controller: _descController,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'Description (Optional)',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+
+              // Action Button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(

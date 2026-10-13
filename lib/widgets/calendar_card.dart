@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:zaznamity/models/transaction_model.dart';
@@ -72,15 +74,17 @@ class _CalendarCardState extends State<CalendarCard> {
       return true;
     }).toList();
 
-    // Group confirmed transactions by date for daily totals calculation
+    // Group transactions by local date key to avoid timezone shifts
     final Map<String, double> incomeByDate = {};
     final Map<String, double> expenseByDate = {};
     final Map<String, List<TransactionModel>> txByDate = {};
 
     for (var tx in filteredTransactions) {
-      final date = DateTime.tryParse(tx.createdAt);
-      if (date != null && tx.isConfirmed == 1) {
-        final key = DateFormat('yyyy-MM-dd').format(date);
+      final parsed = DateTime.tryParse(tx.createdAt);
+      if (parsed != null && (tx.isConfirmed == 1 || tx.isConfirmed == 0)) {
+        final localDate = parsed.toLocal();
+        final key = '${localDate.year}-${localDate.month.toString().padLeft(2, '0')}-${localDate.day.toString().padLeft(2, '0')}';
+        
         txByDate.putIfAbsent(key, () => []).add(tx);
 
         if (tx.type == 'income') {
@@ -129,7 +133,8 @@ class _CalendarCardState extends State<CalendarCard> {
 
     for (int day = 1; day <= totalDays; day++) {
       final currentDate = DateTime(_displayedMonth.year, _displayedMonth.month, day);
-      final dateKey = DateFormat('yyyy-MM-dd').format(currentDate);
+      final dateKey = '${currentDate.year}-${currentDate.month.toString().padLeft(2, '0')}-${currentDate.day.toString().padLeft(2, '0')}';
+      
       final hasTx = txByDate.containsKey(dateKey);
 
       final isToday = currentDate.year == now.year &&
@@ -146,7 +151,7 @@ class _CalendarCardState extends State<CalendarCard> {
             onTap: () => _handleDateTap(currentDate),
             borderRadius: BorderRadius.circular(8),
             child: Container(
-              height: 52, // Increased height to comfortably fit totals
+              height: 52,
               decoration: BoxDecoration(
                 color: hasTx ? const Color(0xFFF8FAFC) : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
@@ -222,6 +227,10 @@ class _CalendarCardState extends State<CalendarCard> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final double fullWidth = availableWidth - 48;
+        final double boxWidth = (fullWidth - 12) / 2;
+
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
@@ -261,42 +270,6 @@ class _CalendarCardState extends State<CalendarCard> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: widget.selectedOwner ?? 'All Owners',
-                            isDense: true,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF582F95),
-                            ),
-                            items: [
-                              const DropdownMenuItem(
-                                value: 'All Owners',
-                                child: Text('All Owners'),
-                              ),
-                              ...widget.owners.map(
-                                (o) => DropdownMenuItem(
-                                  value: o,
-                                  child: Text(o),
-                                ),
-                              ),
-                            ],
-                            onChanged: (val) {
-                              if (val != null) {
-                                widget.onOwnerChanged(val == 'All Owners' ? null : val);
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
                       Padding(
                         padding: const EdgeInsets.only(right: 6.0),
                         child: SizedBox(
@@ -347,43 +320,97 @@ class _CalendarCardState extends State<CalendarCard> {
                 ],
               ),
               const SizedBox(height: 16),
+
+              // Row 1: Owners Dropdown (Left) & Month Navigation with Arrows (Right) matching Budget Card style
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        DateFormat('MMMM yyyy').format(_displayedMonth),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF334155),
-                        ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: widget.selectedOwner ?? 'All Owners',
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: [
+                                  const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
+                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    widget.onOwnerChanged(val == 'All Owners' ? null : val);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.chevron_left, size: 20),
-                        onPressed: _previousMonth,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
                       ),
-                      const SizedBox(width: 16),
-                      IconButton(
-                        icon: const Icon(Icons.chevron_right, size: 20),
-                        onPressed: _nextMonth,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF582F95)),
+                              const SizedBox(width: 6),
+                              Text(
+                                DateFormat('MMM yyyy').format(_displayedMonth),
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              InkWell(
+                                onTap: _previousMonth,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4.0),
+                                  child: Icon(Icons.chevron_left, size: 18, color: Color(0xFF64748B)),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: _nextMonth,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4.0),
+                                  child: Icon(Icons.chevron_right, size: 18, color: Color(0xFF64748B)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               Table(
                 children: [
                   TableRow(children: weekdayWidgets),

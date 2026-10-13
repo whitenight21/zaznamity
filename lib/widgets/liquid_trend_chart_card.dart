@@ -125,7 +125,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
     for (int i = 0; i < sortedTx.length; i++) {
       final t = sortedTx[i];
       final isPoolIncluded = widget.liquidNetPools[t.pool] == true;
-      if (t.isConfirmed == 1 && isPoolIncluded) {
+      if ((t.isConfirmed == 1 || t.isConfirmed == 0) && isPoolIncluded) {
         currentBalance += (t.type == 'income' ? t.amount : -t.amount);
       }
       

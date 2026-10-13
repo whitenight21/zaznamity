@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,6 +53,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   bool _isLoading = true;
 
   String? _globalSelectedOwner;
+  String? _highlightedCardId; // Tracks card highlight animation
 
   double _totalLiquidNet = 0;
   Map<String, double> _totalPoolTotals = {};
@@ -271,17 +274,27 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     setState(() {
       cardConfig.isVisible = true;
+      _highlightedCardId = cardId;
+    });
+
+    // Clear highlight after 0.2 seconds
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted && _highlightedCardId == cardId) {
+        setState(() {
+          _highlightedCardId = null;
+        });
+      }
     });
 
     int targetTab = 0;
-    if (['metrics', 'savings_goals', 'future_metrics'].contains(cardId)) {
-      targetTab = 0; // Overview Tab
+    if (['metrics', 'savings_goals', 'future_metrics', 'budget'].contains(cardId)) {
+      targetTab = 0; // Overview Tab (Metrics)
     } else if (['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(cardId)) {
       targetTab = 1; // Analytics Tab
-    } else if (['budget', 'label_focus', 'income_expenses_labels', 'calendar'].contains(cardId)) {
+    } else if (['label_focus', 'income_expenses_labels', 'calendar'].contains(cardId)) {
       targetTab = 2; // Analysis Tab
     } else {
-      targetTab = 3; // Actions & History Tab
+      targetTab = 3; // Actions Tab
     }
 
     _tabController.animateTo(
@@ -296,6 +309,46 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         if (context != null) {
           Scrollable.ensureVisible(
             context,
+            alignment: 0.08, // Uniform top position
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        }
+      });
+    });
+  }
+
+  void _jumpToHistoryForDate(DateTime date) {
+    setState(() {
+      _historyStartDate = date;
+      _historyEndDate = date;
+      final historyCard = _cards.firstWhere((c) => c.id == 'history');
+      historyCard.isVisible = true;
+      _highlightedCardId = 'history';
+    });
+
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (mounted && _highlightedCardId == 'history') {
+        setState(() {
+          _highlightedCardId = null;
+        });
+      }
+    });
+
+    _tabController.animateTo(
+      3, // Actions Tab
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeInOut,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final historyCard = _cards.firstWhere((c) => c.id == 'history');
+        final context = historyCard.key.currentContext;
+        if (context != null) {
+          Scrollable.ensureVisible(
+            context,
+            alignment: 0.08, // Uniform top position
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
           );
@@ -305,18 +358,23 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   void showCardStackManager(
-    BuildContext context,
-    List<CardConfig> cards,
-    Function(CardConfig) onToggleVisibility,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (modalContext) => StatefulBuilder(
+  BuildContext context,
+  List<CardConfig> cards,
+  Function(CardConfig) onToggleVisibility,
+) {
+  showDialog(
+    context: context,
+    barrierColor: Colors.black54, // Dims everything including navbar
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.white,
+      alignment: Alignment.center,
+      insetPadding: const EdgeInsets.all(20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: StatefulBuilder(
         builder: (stateContext, setModalState) {
-          final overviewCards = cards.where((c) => ['metrics', 'savings_goals', 'future_metrics'].contains(c.id)).toList();
-          final analyticsCards = cards.where((c) => ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
-          final analysisCards = cards.where((c) => ['budget', 'label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
+          final metricsCards = cards.where((c) => ['metrics', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
+          final trendsCards = cards.where((c) => ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
+          final analyticsCards = cards.where((c) => ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
           final actionsCards = cards.where((c) => ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
 
           Widget buildCategorySection(String title, List<CardConfig> catCards) {
@@ -327,83 +385,95 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   child: Text(
                     title,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF582F95)),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF582F95)),
                   ),
                 ),
-                ...catCards.map((card) => ListTile(
+                ReorderableListView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  onReorder: (oldIndex, newIndex) {
+                    setModalState(() {
+                      if (newIndex > oldIndex) {
+                        newIndex -= 1;
+                      }
+                      final card = catCards.removeAt(oldIndex);
+                      catCards.insert(newIndex, card);
+
+                      for (var c in catCards) {
+                        cards.remove(c);
+                      }
+                      int insertPos = cards.indexWhere((c) => c.id == catCards.first.id);
+                      if (insertPos == -1) insertPos = cards.length;
+                      cards.insertAll(insertPos, catCards);
+                    });
+                    setState(() {});
+                  },
+                  children: catCards.map((card) {
+                    return ListTile(
                       key: ValueKey(card.id),
-                      title: Text(card.title),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      leading: const Icon(Icons.drag_handle, color: Colors.grey),
+                      title: Row(
                         children: [
-                          IconButton(
-                            icon: Icon(
-                              card.isVisible ? Icons.visibility : Icons.visibility_off,
-                              color: card.isVisible ? const Color(0xFF582F95) : Colors.grey,
+                          Expanded(
+                            child: Text(
+                              card.title,
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            onPressed: () {
-                              setModalState(() {
-                                onToggleVisibility(card);
-                              });
-                              setState(() {});
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.arrow_upward, size: 18),
-                            onPressed: () {
-                              int index = cards.indexOf(card);
-                              if (index > 0) {
-                                setModalState(() {
-                                  cards.removeAt(index);
-                                  cards.insert(index - 1, card);
-                                });
-                                setState(() {});
-                              }
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.arrow_downward, size: 18),
-                            onPressed: () {
-                              int index = cards.indexOf(card);
-                              if (index < cards.length - 1) {
-                                setModalState(() {
-                                  cards.removeAt(index);
-                                  cards.insert(index + 1, card);
-                                });
-                                setState(() {});
-                              }
-                            },
                           ),
                         ],
                       ),
+                      trailing: IconButton(
+                        icon: Icon(
+                          card.isVisible ? Icons.visibility : Icons.visibility_off,
+                          color: card.isVisible ? const Color(0xFF582F95) : Colors.grey,
+                        ),
+                        onPressed: () {
+                          setModalState(() {
+                            onToggleVisibility(card);
+                          });
+                          setState(() {});
+                        },
+                      ),
                       onTap: () {
-                        Navigator.pop(modalContext);
+                        Navigator.pop(ctx);
                         _navigateToCard(card.id);
                       },
-                    )),
-                const Divider(),
+                    );
+                  }).toList(),
+                ),
+                const Divider(color: Colors.black12),
               ],
             );
           }
 
           return Container(
-            padding: const EdgeInsets.all(20),
+            width: MediaQuery.of(context).size.width * 0.9,
             height: MediaQuery.of(context).size.height * 0.75,
+            padding: const EdgeInsets.all(16),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Cards Stack Manager',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Cards Stack Manager',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.black54),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Expanded(
                   child: ListView(
                     children: [
-                      buildCategorySection('Overview', overviewCards),
+                      buildCategorySection('Metrics', metricsCards),
+                      buildCategorySection('Trends', trendsCards),
                       buildCategorySection('Analytics', analyticsCards),
-                      buildCategorySection('Analysis', analysisCards),
                       buildCategorySection('Actions', actionsCards),
                     ],
                   ),
@@ -413,8 +483,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           );
         },
       ),
-    );
-  }
+    ),
+  );
+}
 
   Future<void> loadData({bool showLoading = false}) async {
     if (showLoading) {
@@ -554,7 +625,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     for (var t in _transactions) {
       if (_globalSelectedOwner != null && t.owner != _globalSelectedOwner) continue;
-      if (t.isConfirmed != 1) continue;
+      if (t.isConfirmed == -1) continue;
 
       final txDate = DateTime.tryParse(t.createdAt) ?? now;
       final isFuture = txDate.isAfter(now);
@@ -1454,7 +1525,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           owners: _owners,
           selectedOwner: _globalSelectedOwner,
           onOwnerChanged: (owner) => setState(() => _globalSelectedOwner = owner),
-          startDate: _savingsChartStartDate, // or create dedicated pool analytics date state if preferred
+          startDate: _savingsChartStartDate,
           endDate: _savingsChartEndDate,
           onSelectStartDate: () => _pickDateRange(context, _savingsChartStartDate, _savingsChartEndDate, (start, end) => setState(() {
             _savingsChartStartDate = start;
@@ -1483,10 +1554,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           onHide: () => setState(() => card.isVisible = false),
           historyKey: _cards.firstWhere((c) => c.id == 'history').key,
           onDateSelected: (selectedDate) {
-            setState(() {
-              _historyStartDate = selectedDate;
-              _historyEndDate = selectedDate;
-            });
+            _jumpToHistoryForDate(selectedDate);
           },
         );
       case 'sankey_flow':
@@ -1597,22 +1665,21 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   void _showZoomOutSnapshotModal() {
-    final overviewCards = _cards.where((c) => c.isVisible && ['metrics', 'future_metrics', 'savings_goals'].contains(c.id)).toList();
-    final analyticsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
-    final analysisCards = _cards.where((c) => c.isVisible && ['budget', 'label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
+    final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
+    final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
+    final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
     final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
 
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
         backgroundColor: const Color(0xFF1E1333),
-        // Positioned higher up to prevent bottom navigation bar overlap
         alignment: Alignment.topCenter,
         insetPadding: const EdgeInsets.fromLTRB(12, 32, 12, 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
           width: MediaQuery.of(context).size.width * 0.96,
-          height: MediaQuery.of(context).size.height * 0.78, // Reduced overall height
+          height: MediaQuery.of(context).size.height * 0.78,
           padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1643,11 +1710,11 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildTabSnapshotColumn('Overview', overviewCards, 0),
+                      _buildTabSnapshotColumn('Metrics', metricsCards, 0),
                       const SizedBox(width: 12),
-                      _buildTabSnapshotColumn('Analytics', analyticsCards, 1),
+                      _buildTabSnapshotColumn('Trends', trendsCards, 1),
                       const SizedBox(width: 12),
-                      _buildTabSnapshotColumn('Analysis', analysisCards, 2),
+                      _buildTabSnapshotColumn('Analytics', analyticsCards, 2),
                       const SizedBox(width: 12),
                       _buildTabSnapshotColumn('Actions', actionsCards, 3),
                     ],
@@ -1725,7 +1792,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                // IgnorePointer disables child widget touch/button interactions entirely
                                 IgnorePointer(
                                   child: SizedBox(
                                     height: 144,
@@ -1799,7 +1865,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final double netWidth = screenWidth - sidePadding;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(2, 12, 2, 140), // Added top padding to prevent sitting flat against the top
+      padding: const EdgeInsets.fromLTRB(2, 50, 2, 140),
       child: Column(
         children: rows.map((rowCards) {
           return Padding(
@@ -1820,6 +1886,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   }
                 }
 
+                final bool isHighlighted = _highlightedCardId == card.id;
+
                 return Expanded(
                   child: Padding(
                     padding: EdgeInsets.only(
@@ -1829,7 +1897,17 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                       key: card.key,
                       width: cardWidth,
                       child: RepaintBoundary(
-                        child: _buildCardWidget(card),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isHighlighted ? const Color(0xFFA855F7) : Colors.transparent,
+                              width: 3,
+                            ),
+                          ),
+                          child: _buildCardWidget(card),
+                        ),
                       ),
                     ),
                   ),
@@ -1860,17 +1938,17 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                         builder: (context, constraints) {
                           final screenWidth = constraints.maxWidth;
 
-                          final overviewCards = _cards.where((c) => c.isVisible && ['metrics', 'future_metrics', 'savings_goals'].contains(c.id)).toList();
-                          final analyticsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
-                          final analysisCards = _cards.where((c) => c.isVisible && ['budget', 'label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
+                          final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
+                          final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
+                          final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
                           final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
 
                           return TabBarView(
                             controller: _tabController,
                             children: [
-                              _buildCardTabContent(overviewCards, screenWidth),
+                              _buildCardTabContent(metricsCards, screenWidth),
+                              _buildCardTabContent(trendsCards, screenWidth),
                               _buildCardTabContent(analyticsCards, screenWidth),
-                              _buildCardTabContent(analysisCards, screenWidth),
                               _buildCardTabContent(actionsCards, screenWidth),
                             ],
                           );
@@ -1880,8 +1958,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   ],
                 ),
 
-                // Docked Bottom/Side Control Bar
-                // Docked Bottom/Side Control Bar
                 Positioned(
                   left: isLandscape ? 0 : 0,
                   right: isLandscape ? null : 0,
