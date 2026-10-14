@@ -1,3 +1,6 @@
+// ignore_for_file: deprecated_member_use
+
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -42,12 +45,13 @@ class IncomeExpensesByLabelsCard extends StatefulWidget {
 
 class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard> {
   String chartDisplayMode = 'Show Expenses';
-  String chartType = 'Bar'; // 'Bar' or 'Donut'
+  String chartType = 'Bar'; // 'Bar', 'Donut', or '3D Donut'
   int? touchedPieIndex;
   
   final Set<int> selectedIncomeLabels = {};
   final Set<int> selectedExpenseLabels = {};
   bool _initializedLabels = false;
+  String? _localOwner;
 
   // --- Memoization Cache Fields ---
   double _cachedTotalIncome = 0;
@@ -57,7 +61,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   double _cachedMaxTopAmount = 1.0;
   double _cachedMaxChartAmount = 1.0;
 
-  // Track dependency changes to invalidate cache
   int? _lastTxLength;
   String? _lastOwner;
   DateTime? _lastStartDate;
@@ -66,22 +69,39 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   String _lastIncomeLabelsKey = '';
   String _lastExpenseLabelsKey = '';
 
+  @override
+  void initState() {
+    super.initState();
+    _localOwner = widget.selectedOwner;
+  }
+
+  @override
+  void didUpdateWidget(covariant IncomeExpensesByLabelsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedOwner != oldWidget.selectedOwner) {
+      setState(() {
+        _localOwner = widget.selectedOwner;
+      });
+    }
+  }
+
   void _computeDataIfNeeded() {
+    final activeOwner = widget.selectedOwner ?? _localOwner;
     final incomeLabelsKey = selectedIncomeLabels.join(',');
     final expenseLabelsKey = selectedExpenseLabels.join(',');
 
     if (_lastTxLength == widget.transactions.length &&
-        _lastOwner == widget.selectedOwner &&
+        _lastOwner == activeOwner &&
         _lastStartDate == widget.startDate &&
         _lastEndDate == widget.endDate &&
         _lastDisplayMode == chartDisplayMode &&
         _lastIncomeLabelsKey == incomeLabelsKey &&
         _lastExpenseLabelsKey == expenseLabelsKey) {
-      return; // Cache is valid
+      return;
     }
 
     final filteredTransactions = widget.transactions.where((tx) {
-      if (widget.selectedOwner != null && tx.owner != widget.selectedOwner) {
+      if (activeOwner != null && tx.owner != activeOwner) {
         return false;
       }
       final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
@@ -135,7 +155,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     _cachedMaxChartAmount = sortedEntries.isNotEmpty ? sortedEntries.first.value : 1.0;
 
     _lastTxLength = widget.transactions.length;
-    _lastOwner = widget.selectedOwner;
+    _lastOwner = activeOwner;
     _lastStartDate = widget.startDate;
     _lastEndDate = widget.endDate;
     _lastDisplayMode = chartDisplayMode;
@@ -156,16 +176,17 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     _computeDataIfNeeded();
 
     final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+    final activeOwner = widget.selectedOwner ?? _localOwner;
     
     final paletteColors = [
-      const Color(0xFFEF4444),
-      const Color(0xFFF97316),
-      const Color(0xFFEAB308),
-      const Color(0xFF84CC16),
-      const Color(0xFF10B981),
-      const Color(0xFF06B6D4),
       const Color(0xFF3B82F6),
-      const Color(0xFF6366F1),
+      const Color(0xFFA855F7),
+      const Color(0xFF10B981),
+      const Color(0xFFF59E0B),
+      const Color(0xFFEC4899),
+      const Color(0xFF06B6D4),
+      const Color(0xFF8B5CF6),
+      const Color(0xFFEF4444),
     ];
 
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
@@ -280,23 +301,26 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: widget.selectedOwner,
+                              child: DropdownButton<String?>(
+                                value: activeOwner,
                                 isDense: true,
                                 isExpanded: true,
                                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                                 hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
                                 items: [
-                                  const DropdownMenuItem<String>(
+                                  const DropdownMenuItem<String?>(
                                     value: null,
                                     child: Text('All Owners'),
                                   ),
-                                  ...widget.owners.map((owner) => DropdownMenuItem<String>(
+                                  ...widget.owners.map((owner) => DropdownMenuItem<String?>(
                                         value: owner,
                                         child: Text(owner),
                                       )),
                                 ],
-                                onChanged: widget.onOwnerChanged,
+                                onChanged: (val) {
+                                  setState(() => _localOwner = val);
+                                  widget.onOwnerChanged(val);
+                                },
                               ),
                             ),
                           ),
@@ -467,29 +491,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 16),
 
+              // Labels Picker (Left) & Type Dropdown (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: ToggleButtons(
-                      isSelected: [chartDisplayMode == 'Show Expenses', chartDisplayMode == 'Show Income'],
-                      onPressed: (index) {
-                        setState(() {
-                          chartDisplayMode = index == 0 ? 'Show Expenses' : 'Show Income';
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(8),
-                      constraints: BoxConstraints(minHeight: 44, minWidth: (boxWidth - 2) / 2),
-                      selectedColor: Colors.white,
-                      fillColor: const Color(0xFF582F95),
-                      color: const Color(0xFF475569),
-                      children: const [
-                        Text('Expenses', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                        Text('Income', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
                   SizedBox(
                     width: boxWidth,
                     child: InkWell(
@@ -523,15 +528,23 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Expanded(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  (chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length) == widget.labels.length
-                                      ? 'All Labels'
-                                      : '${chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length} selected',
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        (chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length) == widget.labels.length
+                                            ? 'All Labels'
+                                            : '${chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length} selected',
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
@@ -540,9 +553,121 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       ),
                     ),
                   ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.swap_vert_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: chartDisplayMode,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: const [
+                                  DropdownMenuItem(value: 'Show Expenses', child: Text('Expense')),
+                                  DropdownMenuItem(value: 'Show Income', child: Text('Income')),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    setState(() {
+                                      chartDisplayMode = val;
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
+
+              // Chart Type Selector moved right below labels/type row, above the graph
+              Container(
+                height: 38,
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => chartType = 'Bar'),
+                        child: Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: chartType == 'Bar' ? const Color(0xFFF8FAFC) : Colors.white,
+                            borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
+                          ),
+                          child: Text(
+                            'Bar',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: chartType == 'Bar' ? Colors.black : const Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => chartType = 'Donut'),
+                        child: Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: chartType == 'Donut' ? const Color(0xFFF8FAFC) : Colors.white,
+                          ),
+                          child: Text(
+                            'Donut',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: chartType == 'Donut' ? Colors.black : const Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => chartType = '3D Donut'),
+                        child: Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: chartType == '3D Donut' ? const Color(0xFFF8FAFC) : Colors.white,
+                            borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
+                          ),
+                          child: Text(
+                            '3D Donut',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: chartType == '3D Donut' ? Colors.black : const Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
 
               _cachedSortedEntries.isEmpty
                   ? const SizedBox(
@@ -659,153 +784,152 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             ),
                           ],
                         )
-                      : Column(
-                          children: [
-                            SizedBox(
-                              height: 220,
-                              child: PieChart(
-                                PieChartData(
-                                  pieTouchData: PieTouchData(
-                                    touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                                      setState(() {
-                                        if (!event.isInterestedForInteractions ||
-                                            pieTouchResponse == null ||
-                                            pieTouchResponse.touchedSection == null) {
-                                          touchedPieIndex = null;
-                                          return;
-                                        }
-                                        touchedPieIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
-                                      });
-                                    },
+                      : chartType == '3D Donut'
+                          ? Column(
+                              children: [
+                                SizedBox(
+                                  height: 240,
+                                  width: double.infinity,
+                                  child: CustomPaint(
+                                    painter: _3DGlassDonutChartPainter(
+                                      entries: _cachedSortedEntries,
+                                      totalSum: _cachedActiveModeTotalSum,
+                                      paletteColors: paletteColors,
+                                    ),
                                   ),
-                                  borderData: FlBorderData(show: false),
-                                  sectionsSpace: 2,
-                                  centerSpaceRadius: 45,
-                                  sections: List.generate(_cachedSortedEntries.length, (index) {
+                                ),
+                                const SizedBox(height: 20),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 8,
+                                  alignment: WrapAlignment.center,
+                                  children: List.generate(_cachedSortedEntries.length, (index) {
                                     final entry = _cachedSortedEntries[index];
-                                    final isTouched = index == touchedPieIndex;
-                                    final radius = isTouched ? 65.0 : 55.0;
                                     final color = paletteColors[index % paletteColors.length];
                                     final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
 
-                                    return PieChartSectionData(
-                                      color: color,
-                                      value: entry.value,
-                                      title: '${percentage.toStringAsFixed(1)}%',
-                                      radius: radius,
-                                      titleStyle: TextStyle(
-                                        fontSize: isTouched ? 13 : 11,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF8FAFC),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: color,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '${entry.key}: ',
+                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                          ),
+                                          Text(
+                                            '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%)',
+                                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                          ),
+                                        ],
                                       ),
                                     );
                                   }),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 8,
-                              alignment: WrapAlignment.center,
-                              children: List.generate(_cachedSortedEntries.length, (index) {
-                                final entry = _cachedSortedEntries[index];
-                                final color = paletteColors[index % paletteColors.length];
-                                final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
+                              ],
+                            )
+                          : Column(
+                              children: [
+                                SizedBox(
+                                  height: 220,
+                                  child: PieChart(
+                                    PieChartData(
+                                      pieTouchData: PieTouchData(
+                                        touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                                          setState(() {
+                                            if (!event.isInterestedForInteractions ||
+                                                pieTouchResponse == null ||
+                                                pieTouchResponse.touchedSection == null) {
+                                              touchedPieIndex = null;
+                                              return;
+                                            }
+                                            touchedPieIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                                          });
+                                        },
+                                      ),
+                                      borderData: FlBorderData(show: false),
+                                      sectionsSpace: 2,
+                                      centerSpaceRadius: 45,
+                                      sections: List.generate(_cachedSortedEntries.length, (index) {
+                                        final entry = _cachedSortedEntries[index];
+                                        final isTouched = index == touchedPieIndex;
+                                        final radius = isTouched ? 65.0 : 55.0;
+                                        final color = paletteColors[index % paletteColors.length];
+                                        final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
 
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF8FAFC),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 10,
-                                        height: 10,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
+                                        return PieChartSectionData(
                                           color: color,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '${entry.key}: ',
-                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                      ),
-                                      Text(
-                                        '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%)',
-                                        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                                      ),
-                                    ],
+                                          value: entry.value,
+                                          title: '${percentage.toStringAsFixed(1)}%',
+                                          radius: radius,
+                                          titleStyle: TextStyle(
+                                            fontSize: isTouched ? 13 : 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        );
+                                      }),
+                                    ),
                                   ),
-                                );
-                              }),
-                            ),
-                          ],
-                        ),
-              const SizedBox(height: 20),
+                                ),
+                                const SizedBox(height: 20),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 8,
+                                  alignment: WrapAlignment.center,
+                                  children: List.generate(_cachedSortedEntries.length, (index) {
+                                    final entry = _cachedSortedEntries[index];
+                                    final color = paletteColors[index % paletteColors.length];
+                                    final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
 
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 4),
-                  Container(
-                    height: 38,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => setState(() => chartType = 'Bar'),
-                            child: Container(
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: chartType == 'Bar' ? const Color(0xFF582F95) : Colors.transparent,
-                                borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
-                              ),
-                              child: Text(
-                                'Bar',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: chartType == 'Bar' ? Colors.white : const Color(0xFF64748B),
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF8FAFC),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: color,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '${entry.key}: ',
+                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                          ),
+                                          Text(
+                                            '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%)',
+                                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }),
                                 ),
-                              ),
+                              ],
                             ),
-                          ),
-                        ),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => setState(() => chartType = 'Donut'),
-                            child: Container(
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: chartType == 'Donut' ? const Color(0xFF582F95) : Colors.transparent,
-                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
-                              ),
-                              child: Text(
-                                'Donut',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: chartType == 'Donut' ? Colors.white : const Color(0xFF64748B),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         );
@@ -885,5 +1009,141 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
         );
       },
     );
+  }
+}
+
+/// Custom 3D Glassmorphic Extruded Donut Chart Painter
+class _3DGlassDonutChartPainter extends CustomPainter {
+  final List<MapEntry<String, double>> entries;
+  final double totalSum;
+  final List<Color> paletteColors;
+
+  _3DGlassDonutChartPainter({
+    required this.entries,
+    required this.totalSum,
+    required this.paletteColors,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (totalSum <= 0 || entries.isEmpty) return;
+
+    final center = Offset(size.width / 2, size.height / 2 - 10);
+    final maxVal = entries.first.value;
+
+    double startAngle = -math.pi / 2;
+
+    // Draw Drop Shadows first
+    for (int i = 0; i < entries.length; i++) {
+      final entry = entries[i];
+      final sweepAngle = (entry.value / totalSum) * 2 * math.pi;
+      final valRatio = (entry.value / maxVal).clamp(0.4, 1.0);
+      final heightExtent = 25.0 * valRatio;
+
+      final outerR = 85.0;
+
+      final shadowPath = Path()
+        ..addOval(Rect.fromCircle(center: center.translate(0, heightExtent + 10), radius: outerR));
+
+      final shadowPaint = Paint()
+        ..color = Colors.black.withValues(alpha: 0.08)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+
+      canvas.drawPath(shadowPath, shadowPaint);
+    }
+
+    // Draw 3D Extruded Blocks and Arc Top Faces
+    for (int i = 0; i < entries.length; i++) {
+      final entry = entries[i];
+      final sweepAngle = (entry.value / totalSum) * 2 * math.pi;
+      final color = paletteColors[i % paletteColors.length];
+
+      final valRatio = (entry.value / maxVal).clamp(0.4, 1.0);
+      final heightExtent = 35.0 * valRatio;
+
+      final outerR = 85.0;
+      final innerR = 48.0;
+
+      // Outer Arc Wall
+      final outerWallPath = Path();
+      outerWallPath.addArc(Rect.fromCircle(center: center, radius: outerR), startAngle, sweepAngle);
+      outerWallPath.lineTo(
+        center.dx + outerR * math.cos(startAngle + sweepAngle),
+        center.dy + heightExtent + outerR * math.sin(startAngle + sweepAngle),
+      );
+      outerWallPath.addArc(Rect.fromCircle(center: center.translate(0, heightExtent), radius: outerR), startAngle + sweepAngle, -sweepAngle);
+      outerWallPath.close();
+
+      final outerWallGradient = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          color.withValues(alpha: 0.85),
+          color.withValues(alpha: 0.45),
+        ],
+      );
+
+      final outerPaint = Paint()..shader = outerWallGradient.createShader(outerWallPath.getBounds());
+      canvas.drawPath(outerWallPath, outerPaint);
+
+      // Inner Wall Glass Highlight
+      final innerWallPath = Path();
+      innerWallPath.addArc(Rect.fromCircle(center: center, radius: innerR), startAngle, sweepAngle);
+      innerWallPath.lineTo(
+        center.dx + innerR * math.cos(startAngle + sweepAngle),
+        center.dy + heightExtent + innerR * math.sin(startAngle + sweepAngle),
+      );
+      innerWallPath.addArc(Rect.fromCircle(center: center.translate(0, heightExtent), radius: innerR), startAngle + sweepAngle, -sweepAngle);
+      innerWallPath.close();
+
+      final innerWallGradient = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          color.withValues(alpha: 0.70),
+          color.withValues(alpha: 0.30),
+        ],
+      );
+
+      final innerPaint = Paint()..shader = innerWallGradient.createShader(innerWallPath.getBounds());
+      canvas.drawPath(innerWallPath, innerPaint);
+
+      // Top Face Arc Ring
+      final topFacePath = Path();
+      topFacePath.addArc(Rect.fromCircle(center: center, radius: outerR), startAngle, sweepAngle);
+      topFacePath.lineTo(
+        center.dx + innerR * math.cos(startAngle + sweepAngle),
+        center.dy + innerR * math.sin(startAngle + sweepAngle),
+      );
+      topFacePath.addArc(Rect.fromCircle(center: center, radius: innerR), startAngle + sweepAngle, -sweepAngle);
+      topFacePath.close();
+
+      final topGradient = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          color.withValues(alpha: 0.95),
+          color.withValues(alpha: 0.75),
+        ],
+      );
+
+      final topPaint = Paint()..shader = topGradient.createShader(topFacePath.getBounds());
+      canvas.drawPath(topFacePath, topPaint);
+
+      // Glass Edge Highlights
+      final glassBorderPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = Colors.white.withValues(alpha: 0.6);
+
+      canvas.drawPath(topFacePath, glassBorderPaint);
+
+      startAngle += sweepAngle;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _3DGlassDonutChartPainter oldDelegate) {
+    return oldDelegate.entries != entries || oldDelegate.totalSum != totalSum;
   }
 }

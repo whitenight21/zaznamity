@@ -101,6 +101,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   String? _secondaryCurrency2;
   String? _secondaryCurrency3;
 
+  String _calendarStartDay = 'Monday'; // 'Monday' or 'Sunday'
+
   List<File> _savedReportsList = [];
 
   final List<Map<String, String>> _availableCurrencies = [
@@ -164,6 +166,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       _secondaryCurrency2 = prefs.getString('secondaryCurrency2');
       _secondaryCurrency3 = prefs.getString('secondaryCurrency3');
 
+      _calendarStartDay = prefs.getString('calendarStartDay') ?? 'Monday';
+
       final leftSaved = prefs.getStringList('leftNavItems');
       if (leftSaved != null && leftSaved.length >= 3) {
         _leftNavItems = ['owner', leftSaved[1], leftSaved[2]];
@@ -216,6 +220,24 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error opening report: $e')),
+      );
+    }
+  }
+
+  Future<void> _deleteReportFile(File file) async {
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await _loadSavedReports();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Report log deleted successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error deleting report file: $e')),
       );
     }
   }
@@ -1145,6 +1167,30 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 subtitle: 'Labels, owners, pools, currencies, and metric configurations',
                 children: [
                   _buildSubSectionCard(
+                    title: 'Calendar First Day of the Week',
+                    subtitle: 'Choose whether calendar weeks start on Monday or Sunday',
+                    children: [
+                      const Text('Start Day', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                      const SizedBox(height: 4),
+                      DropdownButtonFormField<String>(
+                        initialValue: _calendarStartDay,
+                        isExpanded: true,
+                        decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
+                        items: const [
+                          DropdownMenuItem(value: 'Monday', child: Text('Monday (Start of week)')),
+                          DropdownMenuItem(value: 'Sunday', child: Text('Sunday (Start of week)')),
+                        ],
+                        onChanged: (val) async {
+                          if (val != null) {
+                            setState(() => _calendarStartDay = val);
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setString('calendarStartDay', val);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  _buildSubSectionCard(
                     title: 'Currency Preferences (Max 4 Total)',
                     subtitle: 'Set 1 primary currency and up to 3 secondary currencies for multi-currency tracking',
                     children: [
@@ -1534,15 +1580,15 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 subtitle: 'Reports, logs, CSV imports, and zone actions',
                 children: [
                   _buildSubSectionCard(
-                    title: 'Zaznamity Reports & Created Log',
-                    subtitle: 'Generate PDF reports and manage previous logs',
+                    title: 'Zaznamity Reports',
+                    subtitle: 'Generate PDF reports and manage previous reports',
                     children: [
                       const Text(
                         'Generate flexible customized PDF reports with custom date ranges, drill-down filters (owners, pools, labels, currencies), custom card metrics, checkmark chart selections, and full transaction history lists.\n\n'
-                        'Previously generated reports are logged below and can be opened directly from within the app.',
+                        'Previously generated reports are logged below and can be opened or deleted directly.',
                         style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
@@ -1554,12 +1600,12 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           ),
                           onPressed: _showReportConfigModal,
                           icon: const Icon(Icons.picture_as_pdf, size: 18),
-                          label: const Text('Configure & Generate Report', style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: const Text('Configure Zaznamity Report', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      const Text('Created Reports Log', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 12),
+                      const Text('Created Zaznamity Reports', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                      const SizedBox(height: 4),
                       _savedReportsList.isEmpty
                           ? const Padding(
                               padding: EdgeInsets.symmetric(vertical: 8.0),
@@ -1578,10 +1624,23 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                     dense: true,
                                     leading: const Icon(Icons.description, size: 16, color: Color(0xFF582F95)),
                                     title: Text(fileName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)), overflow: TextOverflow.ellipsis),
-                                    trailing: TextButton(
-                                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 24)),
-                                      onPressed: () => _openReportFile(file),
-                                      child: const Text('Open', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        TextButton(
+                                          style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 24)),
+                                          onPressed: () => _openReportFile(file),
+                                          child: const Text('Open', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          constraints: const BoxConstraints(),
+                                          padding: EdgeInsets.zero,
+                                          icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFDC2626)),
+                                          tooltip: 'Delete report',
+                                          onPressed: () => _deleteReportFile(file),
+                                        ),
+                                      ],
                                     ),
                                   );
                                 },

@@ -239,7 +239,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
               ),
               const SizedBox(height: 16),
 
-              // Row 1: Date & Time Selectors (Full width, equal sizes, zero middle gap)
+              // Row 1: Date & Time Selectors
               Row(
                 children: [
                   Expanded(
@@ -278,7 +278,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12), // Optional small gap between date and time fields, or set to 0 for touching
+                  const SizedBox(width: 12),
                   Expanded(
                     child: InkWell(
                       onTap: () async {
@@ -541,12 +541,11 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 5: Amount (25% width) & Description (75% width)
+              // Row 5: Description (60%) & Amount (40%)
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  SizedBox(
-                    width: fullWidth * 0.25,
+                  Expanded(
+                    flex: 4,
                     child: TextField(
                       controller: _amountController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -563,8 +562,8 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  SizedBox(
-                    width: fullWidth * 0.75 - 8,
+                  Expanded(
+                    flex: 6,
                     child: TextField(
                       controller: _descController,
                       decoration: InputDecoration(

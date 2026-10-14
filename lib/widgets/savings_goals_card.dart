@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/savings_goal_model.dart';
@@ -8,6 +10,7 @@ class SavingsGoalsCard extends StatefulWidget {
   final List<LabelModel> labels;
   final List<String> owners;
   final List<String> pools;
+  final List<String> availableCurrencies;
   final String? selectedOwner;
   final Function(SavingsGoalModel) onSaveGoal;
   final Function(int goalId, double amountToAdd, String owner, String fromPool, String goalName) onAddFundsToGoal;
@@ -23,6 +26,7 @@ class SavingsGoalsCard extends StatefulWidget {
     required this.labels,
     required this.owners,
     required this.pools,
+    this.availableCurrencies = const ['USD'],
     this.selectedOwner,
     required this.onSaveGoal,
     required this.onAddFundsToGoal,
@@ -40,6 +44,15 @@ class SavingsGoalsCard extends StatefulWidget {
 class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
   late String _selectedOwner;
   final NumberFormat _currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': return '¥';
+      default: return '\$';
+    }
+  }
 
   @override
   void initState() {
@@ -147,72 +160,111 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
   void _showCreateGoalDialog() {
     final TextEditingController nameController = TextEditingController();
     final TextEditingController targetController = TextEditingController();
+    String selectedCurrency = widget.availableCurrencies.isNotEmpty ? widget.availableCurrencies.first : 'USD';
 
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Create New Savings Goal', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: nameController,
-                  autofocus: true,
-                  decoration: const InputDecoration(labelText: 'Goal Name (e.g. New Car)', border: OutlineInputBorder()),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Create New Savings Goal', style: TextStyle(color: Color.fromARGB(255, 88, 47, 149), fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Goal Name (e.g. New Car)',
+                  labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                 ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: targetController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Target Amount (\$)', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextField(
+                      controller: targetController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'Target Amount',
+                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
-                      onPressed: () {
-                        final name = nameController.text.trim();
-                        final target = double.tryParse(targetController.text);
-                        if (name.isNotEmpty && target != null && target > 0) {
-                          final newGoal = SavingsGoalModel(
-                            name: name,
-                            targetAmount: target,
-                            currentAmount: 0.0,
-                          );
-                          widget.onSaveGoal(newGoal);
-                          Navigator.pop(context);
-                        }
-                      },
-                      child: const Text('Create Goal'),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      height: 42,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: selectedCurrency,
+                          isDense: true,
+                          isExpanded: true,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                          items: widget.availableCurrencies.map((c) {
+                            return DropdownMenuItem(
+                              value: c,
+                              child: Text('$c (${_getCurrencySymbol(c)})', style: const TextStyle(fontSize: 11)),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => selectedCurrency = val);
+                          },
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        );
-      },
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+              onPressed: () {
+                final name = nameController.text.trim();
+                final target = double.tryParse(targetController.text);
+                if (name.isNotEmpty && target != null && target > 0) {
+                  final newGoal = SavingsGoalModel(
+                    name: name,
+                    targetAmount: target,
+                    currentAmount: 0.0,
+                  );
+                  widget.onSaveGoal(newGoal);
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Create Goal'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -241,7 +293,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Top Row: Title & Action Buttons (Wide / Hide) matching Future Metrics
+              // Top Row: Title & Action Buttons (Wide / Hide)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -304,7 +356,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Second Row: Owners Dropdown (Left) & New Goal Button (Right) matching Future Metrics sizing
+              // Second Row: Owners Dropdown (Left) & New Goal Button (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -349,8 +401,8 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                       height: 44,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF582F95),
-                          foregroundColor: Colors.white,
+                          backgroundColor: const Color(0xFFF1F5F9),
+                          foregroundColor: const Color(0xFF334155),
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
@@ -385,6 +437,8 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                         final double progress = goal.targetAmount > 0 
                             ? (goal.currentAmount / goal.targetAmount).clamp(0.0, 1.0) 
                             : 0.0;
+                        
+                        final bool isCompleted = goal.currentAmount >= goal.targetAmount;
 
                         return Container(
                           padding: const EdgeInsets.all(16),
@@ -402,28 +456,29 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                   Expanded(
                                     child: Row(
                                       children: [
-                                        // Complete Checkmark placed directly before Goal Name on the left
-                                        SizedBox(
-                                          height: 26,
-                                          width: 26,
-                                          child: IconButton(
-                                            style: IconButton.styleFrom(
-                                              backgroundColor: Colors.green.shade600,
-                                              foregroundColor: Colors.white,
-                                              padding: EdgeInsets.zero,
+                                        // Conditional Complete Checkmark shown when goal is completed
+                                        if (isCompleted) ...[
+                                          InkWell(
+                                            onTap: () => widget.onCompleteGoal(goal.id!),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green.shade600,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(Icons.check, size: 12, color: Colors.white),
                                             ),
-                                            icon: const Icon(Icons.check, size: 14),
-                                            tooltip: 'Complete Goal',
-                                            onPressed: () => widget.onCompleteGoal(goal.id!),
                                           ),
-                                        ),
-                                        const SizedBox(width: 8),
+                                          const SizedBox(width: 6),
+                                        ],
+                                        const Icon(Icons.attach_money_rounded, size: 18, color: Color(0xFF582F95)),
+                                        const SizedBox(width: 4),
                                         Expanded(
                                           child: Text(
                                             goal.name,
                                             style: const TextStyle(
                                               fontWeight: FontWeight.bold,
-                                              fontSize: 14,
+                                              fontSize: 16, // Two fonts larger
                                               color: Color(0xFF1E293B),
                                             ),
                                             overflow: TextOverflow.ellipsis,
@@ -443,6 +498,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                         ),
                                       ),
                                       const SizedBox(width: 8),
+                                      // Purple "+" button positioned on the end
                                       SizedBox(
                                         height: 28,
                                         width: 28,
@@ -458,6 +514,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                         ),
                                       ),
                                       const SizedBox(width: 6),
+                                      // Feint delete X
                                       InkWell(
                                         onTap: () => widget.onDeleteGoal(goal.id!),
                                         child: const Icon(Icons.close, color: Color(0xFF94A3B8), size: 16),
@@ -488,6 +545,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                       color: Color(0xFF059669),
                                     ),
                                   ),
+                                  // Percent trailing behind the amount
                                   Text(
                                     '${(progress * 100).toStringAsFixed(1)}%',
                                     style: const TextStyle(

@@ -322,7 +322,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                     child: SizedBox(
                       height: 40,
                       child: FilterChip(
-                        label: const Text('Net Trend', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                        label: const Text('Net Trend Line', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                         selected: _showNetTrendLine,
                         selectedColor: const Color(0xFF582F95).withValues(alpha: 0.2),
                         checkmarkColor: const Color(0xFF582F95),

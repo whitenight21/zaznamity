@@ -460,16 +460,17 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                   ),
                   SizedBox(
                     width: boxWidth,
-                    child: ElevatedButton(
+                    child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFF1F5F9),
-                        foregroundColor: const Color(0xFF64748B),
+                        foregroundColor: const Color(0xFF334155),
                         elevation: 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       onPressed: () => _showAddBudgetDialog(context),
-                      child: const Text('Add new Budget', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('New Budget', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],

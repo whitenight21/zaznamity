@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zaznamity/models/transaction_model.dart';
 
 class CalendarCard extends StatefulWidget {
@@ -34,11 +35,20 @@ class CalendarCard extends StatefulWidget {
 
 class _CalendarCardState extends State<CalendarCard> {
   late DateTime _displayedMonth;
+  String _calendarStartDay = 'Monday';
 
   @override
   void initState() {
     super.initState();
     _displayedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+    _loadCalendarPrefs();
+  }
+
+  Future<void> _loadCalendarPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _calendarStartDay = prefs.getString('calendarStartDay') ?? 'Monday';
+    });
   }
 
   void _previousMonth() {
@@ -98,11 +108,20 @@ class _CalendarCardState extends State<CalendarCard> {
     final firstDayOfMonth = DateTime(_displayedMonth.year, _displayedMonth.month, 1);
     final lastDayOfMonth = DateTime(_displayedMonth.year, _displayedMonth.month + 1, 0);
     
-    int startingWeekday = firstDayOfMonth.weekday;
-    int totalDays = lastDayOfMonth.day;
+    // Calculate starting offset based on whether week starts on Monday or Sunday
+    int rawWeekday = firstDayOfMonth.weekday; // 1 = Mon, 7 = Sun
+    int startingWeekday;
+    List<String> weekdays;
+
+    if (_calendarStartDay == 'Sunday') {
+      weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      startingWeekday = rawWeekday == 7 ? 1 : rawWeekday + 1;
+    } else {
+      weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      startingWeekday = rawWeekday;
+    }
 
     final List<Widget> weekdayWidgets = [];
-    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     for (var day in weekdays) {
       weekdayWidgets.add(
         Center(
@@ -131,7 +150,7 @@ class _CalendarCardState extends State<CalendarCard> {
 
     final now = DateTime.now();
 
-    for (int day = 1; day <= totalDays; day++) {
+    for (int day = 1; day <= lastDayOfMonth.day; day++) {
       final currentDate = DateTime(_displayedMonth.year, _displayedMonth.month, day);
       final dateKey = '${currentDate.year}-${currentDate.month.toString().padLeft(2, '0')}-${currentDate.day.toString().padLeft(2, '0')}';
       
@@ -140,6 +159,9 @@ class _CalendarCardState extends State<CalendarCard> {
       final isToday = currentDate.year == now.year &&
           currentDate.month == now.month &&
           currentDate.day == now.day;
+
+      // Check if day is Saturday (6) or Sunday (7)
+      final isWeekend = currentDate.weekday == DateTime.saturday || currentDate.weekday == DateTime.sunday;
 
       final double dayIncome = incomeByDate[dateKey] ?? 0.0;
       final double dayExpense = expenseByDate[dateKey] ?? 0.0;
@@ -153,7 +175,14 @@ class _CalendarCardState extends State<CalendarCard> {
             child: Container(
               height: 52,
               decoration: BoxDecoration(
-                color: hasTx ? const Color(0xFFF8FAFC) : Colors.transparent,
+                gradient: isWeekend
+                    ? const LinearGradient(
+                        colors: [Color(0xFFF3E8FF), Color(0xFFFAF5FF)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : null,
+                color: isWeekend ? null : (hasTx ? const Color(0xFFF8FAFC) : Colors.transparent),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: isToday
@@ -321,7 +350,6 @@ class _CalendarCardState extends State<CalendarCard> {
               ),
               const SizedBox(height: 16),
 
-              // Row 1: Owners Dropdown (Left) & Month Navigation with Arrows (Right) matching Budget Card style
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

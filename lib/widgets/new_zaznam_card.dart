@@ -263,7 +263,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 16),
 
-              // Date & Time Selectors
+              // Row 1: Date & Time Selectors
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -348,11 +348,87 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: 25% Amount Input, 75% Description Input
+              // Row 2: All Owners & Select Label
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String?>(
+                                value: widget.owners.contains(_owner) ? _owner : (widget.owners.isNotEmpty ? widget.owners.first : null),
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: widget.owners.map((o) => DropdownMenuItem<String?>(
+                                  value: o,
+                                  child: Text(o),
+                                )).toList(),
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    setState(() => _owner = val);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<int?>(
+                                value: _selectedLabelId,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                hint: const Text('Select Label', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                items: widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))).toList(),
+                                onChanged: (val) => setState(() => _selectedLabelId = val),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Row 3: Description & Amount
               Row(
                 children: [
                   SizedBox(
-                    width: fullWidth * 0.25,
+                    width: boxWidth,
                     child: TextField(
                       controller: _amountController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -370,7 +446,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                   ),
                   const SizedBox(width: 8),
                   SizedBox(
-                    width: fullWidth * 0.75 - 8,
+                    width: boxWidth,
                     child: TextField(
                       controller: _descController,
                       decoration: InputDecoration(
@@ -389,7 +465,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 3: Currency Selector & Expense/Income Picker
+              // Row 4: Currency & Expense/Income
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -467,35 +543,39 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 12),
 
-              // Label & Pool Dropdowns
+              // Row 5: Recurring & Checking (Pool)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   SizedBox(
                     width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                    height: 44,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isRecurring 
+                            ? const Color(0xFF582F95) 
+                            : const Color(0xFFF1F5F9),
+                        foregroundColor: _isRecurring 
+                            ? Colors.white 
+                            : const Color(0xFF334155),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 0,
                       ),
+                      onPressed: () => setState(() => _isRecurring = !_isRecurring),
                       child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(
+                            _isRecurring ? Icons.check_circle_rounded : Icons.repeat_rounded, 
+                            size: 16,
+                          ),
                           const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<int?>(
-                                value: _selectedLabelId,
-                                isDense: true,
-                                isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('Select Label', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
-                                items: widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))).toList(),
-                                onChanged: (val) => setState(() => _selectedLabelId = val),
-                              ),
+                          const Flexible(
+                            child: Text(
+                              'Recurring',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
@@ -527,86 +607,6 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                                 items: widget.pools.map((p) => DropdownMenuItem<String?>(value: p, child: Text(p.toUpperCase()))).toList(),
                                 onChanged: (val) => setState(() => _selectedPool = val ?? widget.pools.first),
                               ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Wallet Owner & Recurring Button
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String?>(
-                                value: widget.owners.contains(_owner) ? _owner : (widget.owners.isNotEmpty ? widget.owners.first : null),
-                                isDense: true,
-                                isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: widget.owners.map((o) => DropdownMenuItem<String?>(
-                                  value: o,
-                                  child: Text(o),
-                                )).toList(),
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    setState(() => _owner = val);
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    height: 44,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isRecurring 
-                            ? const Color(0xFF582F95) 
-                            : const Color(0xFFF1F5F9),
-                        foregroundColor: _isRecurring 
-                            ? Colors.white 
-                            : const Color(0xFF334155),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
-                      ),
-                      onPressed: () => setState(() => _isRecurring = !_isRecurring),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            _isRecurring ? Icons.check_circle_rounded : Icons.repeat_rounded, 
-                            size: 16,
-                          ),
-                          const SizedBox(width: 6),
-                          const Flexible(
-                            child: Text(
-                              'Recurring',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
@@ -811,7 +811,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ],
               const SizedBox(height: 16),
 
-              // Submit Action Button
+              // Row 6: Save Zaznam Action Button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(

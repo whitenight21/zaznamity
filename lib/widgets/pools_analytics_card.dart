@@ -152,7 +152,6 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Row with Title and Controls
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -220,7 +219,6 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
               ),
               const SizedBox(height: 16),
 
-              // Row 1: Owners Dropdown & Date Picker
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -344,7 +342,6 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: "Show Pools" Selector Button
               InkWell(
                 onTap: () => _showPoolsFilterMenu(context),
                 borderRadius: BorderRadius.circular(10),
@@ -375,7 +372,6 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
               const Divider(color: Color(0xFFE2E8F0)),
               const SizedBox(height: 12),
 
-              // Pool Charts List[cite: 5]
               widget.pools.keys.isEmpty
                   ? const Text('No pools available.', style: TextStyle(color: Color(0xFF64748B), fontSize: 13))
                   : ListView.builder(
@@ -413,25 +409,51 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
       return true;
     }).toList();
 
-    double poolBalance = 0;
-    for (var tx in poolTxs) {
-      if (tx.isConfirmed == 1) {
-        double normalizedAmount = tx.amount;
-        poolBalance += (tx.type == 'income' ? normalizedAmount : -normalizedAmount);
+    double initialBalance = 0;
+    if (widget.startDate != null) {
+      final startClean = DateTime(widget.startDate!.year, widget.startDate!.month, widget.startDate!.day);
+      for (var tx in widget.transactions) {
+        if (tx.pool.toLowerCase() != poolKey.toLowerCase()) continue;
+        if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && tx.owner != widget.selectedOwner) continue;
+        final txDate = DateTime.tryParse(tx.createdAt);
+        if (txDate != null && txDate.isBefore(startClean)) {
+          if (tx.isConfirmed == 1) {
+            initialBalance += (tx.type == 'income' ? tx.amount : -tx.amount);
+          }
+        }
       }
     }
 
     final sortedTxs = List<TransactionModel>.from(poolTxs)
-      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    double runningTotal = 0;
+      ..sort((a, b) {
+        final dateA = DateTime.tryParse(a.createdAt) ?? DateTime.now();
+        final dateB = DateTime.tryParse(b.createdAt) ?? DateTime.now();
+        return dateA.compareTo(dateB);
+      });
+
+    double runningTotal = initialBalance;
     List<FlSpot> spots = [];
+    List<DateTime> spotDates = [];
+
     for (int i = 0; i < sortedTxs.length; i++) {
-      runningTotal += (sortedTxs[i].type == 'income' ? sortedTxs[i].amount : -sortedTxs[i].amount);
+      final t = sortedTxs[i];
+      if (t.isConfirmed == 1) {
+        runningTotal += (t.type == 'income' ? t.amount : -t.amount);
+      }
+      final txDate = DateTime.tryParse(t.createdAt) ?? DateTime.now();
       spots.add(FlSpot(i.toDouble(), runningTotal));
+      spotDates.add(txDate);
     }
+
     if (spots.length == 1) {
-      spots.insert(0, FlSpot(0, spots[0].y));
+      spots.insert(0, FlSpot(0, spots[0].y - (sortedTxs[0].type == 'income' ? sortedTxs[0].amount : -sortedTxs[0].amount)));
+      spotDates.insert(0, spotDates[0].subtract(const Duration(days: 1)));
+    } else if (spots.isEmpty) {
+      spots.add(const FlSpot(0, 0));
+      spotDates.add(DateTime.now());
     }
+
+    double poolBalance = runningTotal;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -463,29 +485,46 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
           ),
           const SizedBox(height: 10),
           SizedBox(
-            height: 40,
-            child: spots.isEmpty
-                ? const Center(child: Text('No entries for this pool', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))))
-                : LineChart(
-                    LineChartData(
-                      gridData: const FlGridData(show: false),
-                      titlesData: const FlTitlesData(show: false),
-                      borderData: FlBorderData(show: false),
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: spots,
-                          isCurved: true,
-                          color: const Color(0xFF582F95),
-                          barWidth: 2,
-                          dotData: const FlDotData(show: false),
-                          belowBarData: BarAreaData(
-                            show: true,
-                            color: const Color(0xFF582F95).withValues(alpha: 0.1),
-                          ),
-                        ),
-                      ],
+            height: 60,
+            child: LineChart(
+              LineChartData(
+                gridData: const FlGridData(show: false),
+                titlesData: const FlTitlesData(show: false),
+                borderData: FlBorderData(show: false),
+                lineTouchData: LineTouchData(
+                  enabled: true,
+                  handleBuiltInTouches: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipItems: (touchedSpots) {
+                      return touchedSpots.map((spot) {
+                        final spotIndex = spot.x.toInt();
+                        String dateStr = '';
+                        if (spotIndex >= 0 && spotIndex < spotDates.length) {
+                          dateStr = '${DateFormat('MMM d, yyyy').format(spotDates[spotIndex])}\n';
+                        }
+                        return LineTooltipItem(
+                          '${dateStr}\$${spot.y.toStringAsFixed(2)}',
+                          const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                        );
+                      }).toList();
+                    },
+                  ),
+                ),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    isCurved: true,
+                    color: const Color(0xFF582F95),
+                    barWidth: 2,
+                    dotData: const FlDotData(show: false),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: const Color(0xFF582F95).withValues(alpha: 0.1),
                     ),
                   ),
+                ],
+              ),
+            ),
           ),
         ],
       ),

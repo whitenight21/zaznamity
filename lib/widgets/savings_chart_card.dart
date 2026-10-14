@@ -51,6 +51,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
   List<LineChartBarData> _cachedLineBars = [];
   double _cachedMinY = 0;
   double _cachedMaxY = 100;
+  List<DateTime> _cachedSpotDates = [];
 
   int? _lastTxLength;
   int? _lastLabelsLength;
@@ -77,7 +78,6 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
       }
     }
 
-    // Calculate initial savings balance from transactions before startDate
     double initialSavingsBalance = 0;
     if (widget.startDate != null) {
       final startClean = DateTime(widget.startDate!.year, widget.startDate!.month, widget.startDate!.day);
@@ -128,6 +128,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
 
     double currentBalance = initialSavingsBalance;
     List<FlSpot> currentSegmentSpots = [];
+    List<DateTime> spotDates = [];
     Color? currentSegmentColor;
     bool currentIsDashed = false;
 
@@ -158,15 +159,18 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
 
       if (i == 0) {
         currentSegmentSpots.add(FlSpot(i.toDouble(), currentBalance));
+        spotDates.add(txDate);
         currentSegmentColor = targetColor;
         currentIsDashed = targetDashed;
         if (sortedTx.length == 1) {
           currentSegmentSpots.insert(0, FlSpot(0, currentBalance - (t.type == 'income' ? t.amount : -t.amount)));
+          spotDates.insert(0, txDate.subtract(const Duration(days: 1)));
         }
       } else {
         if (currentSegmentColor != targetColor || currentIsDashed != targetDashed) {
           final prevSpot = currentSegmentSpots.last;
           currentSegmentSpots.add(FlSpot(i.toDouble(), currentBalance));
+          spotDates.add(txDate);
 
           lineBars.add(
             LineChartBarData(
@@ -186,6 +190,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
           currentIsDashed = targetDashed;
         } else {
           currentSegmentSpots.add(FlSpot(i.toDouble(), currentBalance));
+          spotDates.add(txDate);
         }
       }
     }
@@ -193,6 +198,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
     if (currentSegmentSpots.isNotEmpty && lineBars.isEmpty) {
       if (currentSegmentSpots.length == 1) {
         currentSegmentSpots.insert(0, FlSpot(0, currentSegmentSpots[0].y));
+        spotDates.insert(0, spotDates[0].subtract(const Duration(days: 1)));
       }
       lineBars.add(
         LineChartBarData(
@@ -273,6 +279,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
           dotData: const FlDotData(show: false),
         ),
       );
+      spotDates = [now, now];
     }
 
     double lowestPoint = double.infinity;
@@ -296,6 +303,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
     _cachedLineBars = lineBars;
     _cachedMinY = minY;
     _cachedMaxY = maxY;
+    _cachedSpotDates = spotDates;
 
     _lastTxLength = widget.transactions.length;
     _lastLabelsLength = widget.labels.length;
@@ -638,8 +646,13 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                       touchTooltipData: LineTouchTooltipData(
                         getTooltipItems: (touchedSpots) {
                           return touchedSpots.map((spot) {
+                            final spotIndex = spot.x.toInt();
+                            String dateStr = '';
+                            if (spotIndex >= 0 && spotIndex < _cachedSpotDates.length) {
+                              dateStr = '${DateFormat('MMM d, yyyy').format(_cachedSpotDates[spotIndex])}\n';
+                            }
                             return LineTooltipItem(
-                              '\$${spot.y.toStringAsFixed(2)}',
+                              '${dateStr}\$${spot.y.toStringAsFixed(2)}',
                               const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
                             );
                           }).toList();
