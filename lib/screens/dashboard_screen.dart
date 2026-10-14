@@ -106,6 +106,20 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   List<String> _leftNavItems = ['owner', 'metrics', 'budget'];
   List<String> _rightNavItems = ['history', 'calendar', 'snapshot'];
 
+  List<String> _availableCurrencies = ['USD'];
+  final Map<String, String> _currencyFlags = {
+    'USD': '🇺🇸',
+    'EUR': '🇪🇺',
+    'JPY': '🇯🇵',
+    'GBP': '🇬🇧',
+    'CNY': '🇨🇳',
+    'AUD': '🇦🇺',
+    'CAD': '🇨🇦',
+    'CHF': '🇨🇭',
+    'HKD': '🇭🇰',
+    'SGD': '🇸🇬',
+  };
+
   Map<String, bool> _pools = {
     'checking': true,
     'cash': true,
@@ -180,7 +194,18 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+    final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    final sec1 = prefs.getString('secondaryCurrency1');
+    final sec2 = prefs.getString('secondaryCurrency2');
+    final sec3 = prefs.getString('secondaryCurrency3');
+
+    List<String> currencies = [primary];
+    if (sec1 != null) currencies.add(sec1);
+    if (sec2 != null) currencies.add(sec2);
+    if (sec3 != null) currencies.add(sec3);
+
     setState(() {
+      _availableCurrencies = currencies;
       final leftSaved = prefs.getStringList('leftNavItems');
       if (leftSaved != null) _leftNavItems = leftSaved;
       final rightSaved = prefs.getStringList('rightNavItems');
@@ -277,7 +302,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       _highlightedCardId = cardId;
     });
 
-    // Clear highlight after 0.2 seconds
     Future.delayed(const Duration(milliseconds: 1500), () {
       if (mounted && _highlightedCardId == cardId) {
         setState(() {
@@ -288,13 +312,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     int targetTab = 0;
     if (['metrics', 'savings_goals', 'future_metrics', 'budget'].contains(cardId)) {
-      targetTab = 0; // Overview Tab (Metrics)
+      targetTab = 0;
     } else if (['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(cardId)) {
-      targetTab = 1; // Analytics Tab
+      targetTab = 1;
     } else if (['label_focus', 'income_expenses_labels', 'calendar'].contains(cardId)) {
-      targetTab = 2; // Analysis Tab
+      targetTab = 2;
     } else {
-      targetTab = 3; // Actions Tab
+      targetTab = 3;
     }
 
     _tabController.animateTo(
@@ -309,7 +333,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         if (context != null) {
           Scrollable.ensureVisible(
             context,
-            alignment: 0.08, // Uniform top position
+            alignment: 0.08,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
           );
@@ -336,7 +360,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     });
 
     _tabController.animateTo(
-      3, // Actions Tab
+      3,
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeInOut,
     );
@@ -348,7 +372,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         if (context != null) {
           Scrollable.ensureVisible(
             context,
-            alignment: 0.08, // Uniform top position
+            alignment: 0.08,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
           );
@@ -358,134 +382,134 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   void showCardStackManager(
-  BuildContext context,
-  List<CardConfig> cards,
-  Function(CardConfig) onToggleVisibility,
-) {
-  showDialog(
-    context: context,
-    barrierColor: Colors.black54, // Dims everything including navbar
-    builder: (ctx) => Dialog(
-      backgroundColor: Colors.white,
-      alignment: Alignment.center,
-      insetPadding: const EdgeInsets.all(20),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: StatefulBuilder(
-        builder: (stateContext, setModalState) {
-          final metricsCards = cards.where((c) => ['metrics', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
-          final trendsCards = cards.where((c) => ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
-          final analyticsCards = cards.where((c) => ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
-          final actionsCards = cards.where((c) => ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
+    BuildContext context,
+    List<CardConfig> cards,
+    Function(CardConfig) onToggleVisibility,
+  ) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.white,
+        alignment: Alignment.center,
+        insetPadding: const EdgeInsets.all(20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: StatefulBuilder(
+          builder: (stateContext, setModalState) {
+            final metricsCards = cards.where((c) => ['metrics', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
+            final trendsCards = cards.where((c) => ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
+            final analyticsCards = cards.where((c) => ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
+            final actionsCards = cards.where((c) => ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
 
-          Widget buildCategorySection(String title, List<CardConfig> catCards) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                  child: Text(
-                    title,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF582F95)),
+            Widget buildCategorySection(String title, List<CardConfig> catCards) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                    child: Text(
+                      title,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF582F95)),
+                    ),
                   ),
-                ),
-                ReorderableListView(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  onReorder: (oldIndex, newIndex) {
-                    setModalState(() {
-                      if (newIndex > oldIndex) {
-                        newIndex -= 1;
-                      }
-                      final card = catCards.removeAt(oldIndex);
-                      catCards.insert(newIndex, card);
+                  ReorderableListView(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    onReorder: (oldIndex, newIndex) {
+                      setModalState(() {
+                        if (newIndex > oldIndex) {
+                          newIndex -= 1;
+                        }
+                        final card = catCards.removeAt(oldIndex);
+                        catCards.insert(newIndex, card);
 
-                      for (var c in catCards) {
-                        cards.remove(c);
-                      }
-                      int insertPos = cards.indexWhere((c) => c.id == catCards.first.id);
-                      if (insertPos == -1) insertPos = cards.length;
-                      cards.insertAll(insertPos, catCards);
-                    });
-                    setState(() {});
-                  },
-                  children: catCards.map((card) {
-                    return ListTile(
-                      key: ValueKey(card.id),
-                      leading: const Icon(Icons.drag_handle, color: Colors.grey),
-                      title: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              card.title,
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-                              overflow: TextOverflow.ellipsis,
+                        for (var c in catCards) {
+                          cards.remove(c);
+                        }
+                        int insertPos = cards.indexWhere((c) => c.id == catCards.first.id);
+                        if (insertPos == -1) insertPos = cards.length;
+                        cards.insertAll(insertPos, catCards);
+                      });
+                      setState(() {});
+                    },
+                    children: catCards.map((card) {
+                      return ListTile(
+                        key: ValueKey(card.id),
+                        leading: const Icon(Icons.drag_handle, color: Colors.grey),
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                card.title,
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      trailing: IconButton(
-                        icon: Icon(
-                          card.isVisible ? Icons.visibility : Icons.visibility_off,
-                          color: card.isVisible ? const Color(0xFF582F95) : Colors.grey,
+                          ],
                         ),
-                        onPressed: () {
-                          setModalState(() {
-                            onToggleVisibility(card);
-                          });
-                          setState(() {});
+                        trailing: IconButton(
+                          icon: Icon(
+                            card.isVisible ? Icons.visibility : Icons.visibility_off,
+                            color: card.isVisible ? const Color(0xFF582F95) : Colors.grey,
+                          ),
+                          onPressed: () {
+                            setModalState(() {
+                              onToggleVisibility(card);
+                            });
+                            setState(() {});
+                          },
+                        ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _navigateToCard(card.id);
                         },
-                      ),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _navigateToCard(card.id);
-                      },
-                    );
-                  }).toList(),
-                ),
-                const Divider(color: Colors.black12),
-              ],
-            );
-          }
+                      );
+                    }).toList(),
+                  ),
+                  const Divider(color: Colors.black12),
+                ],
+              );
+            }
 
-          return Container(
-            width: MediaQuery.of(context).size.width * 0.9,
-            height: MediaQuery.of(context).size.height * 0.75,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Cards Stack Manager',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.black54),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: ListView(
+            return Container(
+              width: MediaQuery.of(context).size.width * 0.9,
+              height: MediaQuery.of(context).size.height * 0.75,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      buildCategorySection('Metrics', metricsCards),
-                      buildCategorySection('Trends', trendsCards),
-                      buildCategorySection('Analytics', analyticsCards),
-                      buildCategorySection('Actions', actionsCards),
+                      const Text(
+                        'Cards Stack Manager',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.black54),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
                     ],
                   ),
-                ),
-              ],
-            ),
-          );
-        },
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        buildCategorySection('Metrics', metricsCards),
+                        buildCategorySection('Trends', trendsCards),
+                        buildCategorySection('Analytics', analyticsCards),
+                        buildCategorySection('Actions', actionsCards),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Future<void> loadData({bool showLoading = false}) async {
     if (showLoading) {
@@ -897,6 +921,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       pool: tx.pool,
       isConfirmed: 1,
       isSavings: tx.isSavings,
+      currencyCode: tx.currencyCode,
     );
     await DatabaseHelper.instance.updateTransaction(confirmedTx);
     await loadData();
@@ -918,6 +943,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     required List<int> excludedMonths,
     required DateTime? repeatUntilDate,
     required DateTime date,
+    required String currencyCode,
   }) async {
     if (amount <= 0) return;
 
@@ -974,6 +1000,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         pool: pool,
         isConfirmed: 1,
         isSavings: pool == 'savings' ? 1 : 0,
+        currencyCode: currencyCode,
       );
       await DatabaseHelper.instance.insertTransaction(newTx);
     }
@@ -999,6 +1026,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     required double amount,
     required String description,
     required DateTime date,
+    required String fromCurrency,
+    required String toCurrency,
+    required double exchangeRate,
   }) async {
     if (amount <= 0) return;
 
@@ -1020,18 +1050,21 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       pool: fromPool,
       isConfirmed: 1,
       isSavings: 0,
+      currencyCode: fromCurrency,
     );
 
+    final convertedAmount = amount * exchangeRate;
     final inbound = TransactionModel(
       createdAt: date.toIso8601String(),
       description: description.isNotEmpty ? 'Transfer in: $description' : 'Transfer in from $fromPool',
-      amount: amount,
+      amount: convertedAmount,
       type: 'income',
       labelId: transferLabelId,
       owner: toOwner,
       pool: toPool,
       isConfirmed: 1,
       isSavings: 0,
+      currencyCode: toCurrency,
     );
 
     await DatabaseHelper.instance.insertTransaction(outbound);
@@ -1039,7 +1072,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transfer executed successfully!')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Multi-currency transfer executed successfully!')));
   }
 
   Future<void> _addLabel(String name) async {
@@ -1070,101 +1103,211 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     String owner = tx.owner;
     String pool = tx.pool;
     int? selectedLabelId = tx.labelId;
+    String editCurrency = tx.currencyCode.isNotEmpty ? tx.currencyCode : (_availableCurrencies.firstOrNull ?? 'USD');
+    
     DateTime selectedDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+    TimeOfDay selectedTime = TimeOfDay.fromDateTime(selectedDate);
 
     await showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (stateContext, setDialogState) => AlertDialog(
-          title: const Text('Edit Transaction'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: stateContext,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2030),
-                    );
-                    if (picked != null) {
-                      setDialogState(() => selectedDate = picked);
-                    }
-                  },
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: 'Date',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
-                    ),
-                    child: Text(DateFormat('MM/dd/yyyy').format(selectedDate)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Edit Transaction', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('DATE & TIME', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final pickedDate = await showDatePicker(
+                              context: stateContext,
+                              initialDate: selectedDate,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2035),
+                            );
+                            if (pickedDate != null) {
+                              setDialogState(() => selectedDate = pickedDate);
+                            }
+                          },
+                          child: Container(
+                            height: 42,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.calendar_today_rounded, size: 14, color: Color(0xFF582F95)),
+                                const SizedBox(width: 6),
+                                Text(DateFormat('MM/dd/yyyy').format(selectedDate), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final pickedTime = await showTimePicker(
+                              context: stateContext,
+                              initialTime: selectedTime,
+                            );
+                            if (pickedTime != null) {
+                              setDialogState(() => selectedTime = pickedTime);
+                            }
+                          },
+                          child: Container(
+                            height: 42,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.access_time_rounded, size: 14, color: Color(0xFF582F95)),
+                                const SizedBox(width: 6),
+                                Text(selectedTime.format(stateContext), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(controller: descController, decoration: const InputDecoration(labelText: 'Description')),
-                const SizedBox(height: 12),
-                TextField(controller: amountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Amount')),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: type,
-                  items: const [
-                    DropdownMenuItem(value: 'income', child: Text('Income (+)')),
-                    DropdownMenuItem(value: 'expense', child: Text('Expense (-)'))
-                  ],
-                  onChanged: (val) => type = val ?? type,
-                  decoration: const InputDecoration(labelText: 'Type'),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: owner,
-                  items: _owners.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
-                  onChanged: (val) => owner = val ?? owner,
-                  decoration: const InputDecoration(labelText: 'Owner'),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _pools.containsKey(pool) ? pool : _pools.keys.first,
-                  items: _pools.keys.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))).toList(),
-                  onChanged: (val) => pool = val ?? pool,
-                  decoration: const InputDecoration(labelText: 'Pool'),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  initialValue: selectedLabelId,
-                  isExpanded: true,
-                  items: [
-                    const DropdownMenuItem<int>(
-                      value: null,
-                      child: Text('General'),
-                    ),
-                    ..._labels.map((l) => DropdownMenuItem<int>(
-                          value: l.id,
-                          child: Text(l.name),
-                        )),
-                  ],
-                  onChanged: (val) {
-                    setDialogState(() {
-                      selectedLabelId = val;
-                    });
-                  },
-                  decoration: const InputDecoration(labelText: 'Label'),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  const Text('CURRENCY & AMOUNT', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 120,
+                        child: Container(
+                          height: 42,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: editCurrency,
+                              isDense: true,
+                              isExpanded: true,
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                              items: _availableCurrencies.map((c) => DropdownMenuItem(
+                                value: c,
+                                child: Row(
+                                  children: [
+                                    Text(_currencyFlags[c] ?? '💵', style: const TextStyle(fontSize: 12)),
+                                    const SizedBox(width: 6),
+                                    Text(c),
+                                  ],
+                                ),
+                              )).toList(),
+                              onChanged: (val) {
+                                if (val != null) setDialogState(() => editCurrency = val);
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: amountController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: type,
+                    items: const [
+                      DropdownMenuItem(value: 'income', child: Text('Income (+)')),
+                      DropdownMenuItem(value: 'expense', child: Text('Expense (-)'))
+                    ],
+                    onChanged: (val) => type = val ?? type,
+                    decoration: const InputDecoration(labelText: 'Type'),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: owner,
+                    items: _owners.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+                    onChanged: (val) => owner = val ?? owner,
+                    decoration: const InputDecoration(labelText: 'Owner'),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: _pools.containsKey(pool) ? pool : _pools.keys.first,
+                    items: _pools.keys.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))).toList(),
+                    onChanged: (val) => pool = val ?? pool,
+                    decoration: const InputDecoration(labelText: 'Pool'),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    initialValue: selectedLabelId,
+                    isExpanded: true,
+                    items: [
+                      const DropdownMenuItem<int>(
+                        value: null,
+                        child: Text('General'),
+                      ),
+                      ..._labels.map((l) => DropdownMenuItem<int>(
+                            value: l.id,
+                            child: Text(l.name),
+                          )),
+                    ],
+                    onChanged: (val) {
+                      setDialogState(() {
+                        selectedLabelId = val;
+                      });
+                    },
+                    decoration: const InputDecoration(labelText: 'Label'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(controller: descController, decoration: const InputDecoration(labelText: 'Description')),
+                ],
+              ),
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+            ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
               onPressed: () async {
                 final amount = double.tryParse(amountController.text) ?? tx.amount;
-                final originalTime = DateTime.tryParse(tx.createdAt);
                 final combinedDateTime = DateTime(
                   selectedDate.year,
                   selectedDate.month,
                   selectedDate.day,
-                  originalTime?.hour ?? DateTime.now().hour,
-                  originalTime?.minute ?? DateTime.now().minute,
+                  selectedTime.hour,
+                  selectedTime.minute,
                 );
 
                 final updatedTx = TransactionModel(
@@ -1178,6 +1321,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   pool: pool,
                   isConfirmed: tx.isConfirmed,
                   isSavings: pool == 'savings' ? 1 : 0,
+                  currencyCode: editCurrency,
                 );
                 await DatabaseHelper.instance.updateTransaction(updatedTx);
                 if (!dialogContext.mounted) return;
@@ -1198,7 +1342,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     BuildContext context,
     DateTime? currentStart,
     DateTime? currentEnd,
-    Function(DateTime?, DateTime?) onRangeSelected,
+    void Function(DateTime?, DateTime?) onRangeSelected,
   ) async {
     final picked = await showDateRangePicker(
       context: context,
@@ -1401,7 +1545,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           isWide: card.isWide,
           onToggleWidth: () => setState(() => card.isWide = !card.isWide),
           onHide: () => setState(() => card.isVisible = false),
-          onSubmit: (description, amount, type, labelId, owner, pool, isRecurring, frequency, dayOfMonth, excludedWeekdays, excludedMonths, repeatUntilDate, date) {
+          onSubmit: (description, amount, type, labelId, owner, pool, isRecurring, frequency, dayOfMonth, excludedWeekdays, excludedMonths, repeatUntilDate, date, currencyCode) {
             _handleNewZaznamSubmit(
               description: description,
               amount: amount,
@@ -1416,6 +1560,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               excludedMonths: excludedMonths,
               repeatUntilDate: repeatUntilDate,
               date: date,
+              currencyCode: currencyCode,
             );
           },
         );
@@ -1427,7 +1572,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           isWide: card.isWide,
           onToggleWidth: () => setState(() => card.isWide = !card.isWide),
           onHide: () => setState(() => card.isVisible = false),
-          onTransfer: (fromPool, toPool, fromOwner, toOwner, amount, description, date) {
+          onTransfer: (fromPool, toPool, fromOwner, toOwner, amount, description, date, fromCurrency, toCurrency, exchangeRate) {
             _handleTransferFunds(
               fromPool: fromPool,
               toPool: toPool,
@@ -1436,6 +1581,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               amount: amount,
               description: description,
               date: date,
+              fromCurrency: fromCurrency,
+              toCurrency: toCurrency,
+              exchangeRate: exchangeRate,
             );
           },
         );

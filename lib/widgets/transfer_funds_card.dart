@@ -2,11 +2,12 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class TransferFundsCard extends StatefulWidget {
   final List<String> pools;
   final List<String> owners;
-  final String? selectedGlobalOwner; // Master filter owner
+  final String? selectedGlobalOwner;
   final Function(
     String fromPool,
     String toPool,
@@ -15,6 +16,9 @@ class TransferFundsCard extends StatefulWidget {
     double amount,
     String description,
     DateTime date,
+    String fromCurrency,
+    String toCurrency,
+    double exchangeRate,
   ) onTransfer;
   final VoidCallback? onHide;
   final VoidCallback? onToggleWidth;
@@ -40,10 +44,30 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
   late String _toPool;
   late String _fromOwner;
   late String _toOwner;
+  
+  String _fromCurrency = 'USD';
+  String _toCurrency = 'USD';
+  List<String> _availableCurrencies = ['USD'];
+  
   final _amountController = TextEditingController();
+  final _rateController = TextEditingController(text: '1.0');
   final _descController = TextEditingController();
+  
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
+
+  final Map<String, String> _currencyFlags = {
+    'USD': '🇺🇸',
+    'EUR': '🇪🇺',
+    'JPY': '🇯🇵',
+    'GBP': '🇬🇧',
+    'CNY': '🇨🇳',
+    'AUD': '🇦🇺',
+    'CAD': '🇨🇦',
+    'CHF': '🇨🇭',
+    'HKD': '🇭🇰',
+    'SGD': '🇸🇬',
+  };
 
   @override
   void initState() {
@@ -54,6 +78,26 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
     final initialOwner = _resolveOwner();
     _fromOwner = initialOwner;
     _toOwner = initialOwner;
+    _loadCurrencyPrefs();
+  }
+
+  Future<void> _loadCurrencyPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    final sec1 = prefs.getString('secondaryCurrency1');
+    final sec2 = prefs.getString('secondaryCurrency2');
+    final sec3 = prefs.getString('secondaryCurrency3');
+
+    List<String> currencies = [primary];
+    if (sec1 != null) currencies.add(sec1);
+    if (sec2 != null) currencies.add(sec2);
+    if (sec3 != null) currencies.add(sec3);
+
+    setState(() {
+      _availableCurrencies = currencies;
+      _fromCurrency = primary;
+      _toCurrency = primary;
+    });
   }
 
   String _resolveOwner() {
@@ -61,6 +105,15 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
       return widget.selectedGlobalOwner!;
     }
     return widget.owners.isNotEmpty ? widget.owners.first : 'Mathias';
+  }
+
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': return '¥';
+      default: return '\$';
+    }
   }
 
   @override
@@ -71,7 +124,6 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
       if (!widget.pools.contains(_toPool)) _toPool = widget.pools.first;
     }
 
-    // Sync input owners when master/global filter changes externally
     if (widget.selectedGlobalOwner != oldWidget.selectedGlobalOwner || widget.owners != oldWidget.owners) {
       setState(() {
         final syncedOwner = _resolveOwner();
@@ -89,6 +141,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
   @override
   void dispose() {
     _amountController.dispose();
+    _rateController.dispose();
     _descController.dispose();
     super.dispose();
   }
@@ -99,7 +152,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
         final double fullWidth = availableWidth - 48;
-        final double boxWidth = (fullWidth - 12) / 2;
+        final double boxWidth = (fullWidth - 36) / 2;
 
         return Container(
           padding: const EdgeInsets.all(24),
@@ -186,12 +239,10 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
               ),
               const SizedBox(height: 16),
 
-              // Date & Time Selectors
+              // Row 1: Date & Time Selectors (Full width, equal sizes, zero middle gap)
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  SizedBox(
-                    width: boxWidth,
+                  Expanded(
                     child: InkWell(
                       onTap: () async {
                         final picked = await showDatePicker(
@@ -227,8 +278,8 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       ),
                     ),
                   ),
-                  SizedBox(
-                    width: boxWidth,
+                  const SizedBox(width: 12), // Optional small gap between date and time fields, or set to 0 for touching
+                  Expanded(
                     child: InkWell(
                       onTap: () async {
                         final picked = await showTimePicker(
@@ -266,29 +317,24 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Headers for From & To Owners
+              // Headers for Owners
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   SizedBox(
                     width: boxWidth,
-                    child: const Text(
-                      'FROM:',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                    ),
+                    child: const Text('FROM OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   ),
+                  const SizedBox(width: 36),
                   SizedBox(
                     width: boxWidth,
-                    child: const Text(
-                      'TO:',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                    ),
+                    child: const Text('TO OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                   ),
                 ],
               ),
               const SizedBox(height: 4),
 
-              // From Owner & To Owner Dropdowns
+              // Row 2: Owners with single arrow icon in center
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -322,6 +368,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 36, child: Center(child: Icon(Icons.arrow_forward_rounded, size: 18, color: Color(0xFF582F95)))),
                   SizedBox(
                     width: boxWidth,
                     child: Container(
@@ -356,7 +403,76 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
               ),
               const SizedBox(height: 12),
 
-              // From Pool & To Pool Dropdowns
+              // Row 3: Currencies placed directly under Owners
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(_currencyFlags[_fromCurrency] ?? '💵', style: const TextStyle(fontSize: 16)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _fromCurrency,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: _availableCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                                onChanged: (val) => setState(() => _fromCurrency = val ?? _fromCurrency),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 36, child: Center(child: Icon(Icons.currency_exchange, size: 18, color: Color(0xFF582F95)))),
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(_currencyFlags[_toCurrency] ?? '💵', style: const TextStyle(fontSize: 16)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _toCurrency,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: _availableCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                                onChanged: (val) => setState(() => _toCurrency = val ?? _toCurrency),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Row 4: Pools with single arrow icon in center
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -390,6 +506,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 36, child: Center(child: Icon(Icons.arrow_forward_rounded, size: 18, color: Color(0xFF582F95)))),
                   SizedBox(
                     width: boxWidth,
                     child: Container(
@@ -424,7 +541,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 4: Amount Input (25%) & Description Input (75%) Side-by-Side
+              // Row 5: Amount (25% width) & Description (75% width)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -435,9 +552,9 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         isDense: true,
-                        hintText: 'Amount',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        hintText: '0.00 (${_getCurrencySymbol(_fromCurrency)})',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                         filled: true,
@@ -445,13 +562,14 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
                   SizedBox(
-                    width: fullWidth * 0.73, // Leaves small spacing gap
+                    width: fullWidth * 0.75 - 8,
                     child: TextField(
                       controller: _descController,
                       decoration: InputDecoration(
                         isDense: true,
-                        hintText: 'Description (Optional)',
+                        hintText: 'Description',
                         hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
@@ -478,7 +596,9 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                   ),
                   onPressed: () {
                     final amount = double.tryParse(_amountController.text) ?? 0.0;
+                    final rate = double.tryParse(_rateController.text) ?? 1.0;
                     if (amount <= 0) return;
+                    
                     final fullDate = DateTime(
                       _selectedDate.year,
                       _selectedDate.month,
@@ -486,6 +606,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       _selectedTime.hour,
                       _selectedTime.minute,
                     );
+                    
                     widget.onTransfer(
                       _fromPool,
                       _toPool,
@@ -494,7 +615,11 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       amount,
                       _descController.text,
                       fullDate,
+                      _fromCurrency,
+                      _toCurrency,
+                      rate,
                     );
+                    
                     _amountController.clear();
                     _descController.clear();
                   },

@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
 
@@ -40,37 +41,73 @@ class TransactionSearchCard extends StatefulWidget {
 
 class _TransactionSearchCardState extends State<TransactionSearchCard> {
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _minAmountController = TextEditingController();
+  final TextEditingController _maxAmountController = TextEditingController();
   Timer? _debounceTimer;
 
   int? _selectedLabelId;
   String? _selectedOwner;
   String? _selectedType;
   String? _selectedPool;
+  String? _selectedCurrency; // null means 'All Currencies'
+  List<String> _availableCurrencies = ['USD'];
+
   DateTime? _startDate;
   DateTime? _endDate;
   String _selectedLimit = '50';
   String _debouncedQuery = '';
-  
-  RangeValues _amountRange = const RangeValues(0, 1000);
-  double _maxSliderValue = 10000;
+
+  final Map<String, String> _currencyFlags = {
+    'USD': '🇺🇸',
+    'EUR': '🇪🇺',
+    'JPY': '🇯🇵',
+    'GBP': '🇬🇧',
+    'CNY': '🇨🇳',
+    'AUD': '🇦🇺',
+    'CAD': '🇨🇦',
+    'CHF': '🇨🇭',
+    'HKD': '🇭🇰',
+    'SGD': '🇸🇬',
+  };
+
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': return '¥';
+      default: return '\$';
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    double highestAmount = 1000;
-    for (var tx in widget.transactions) {
-      if (tx.amount > highestAmount) {
-        highestAmount = tx.amount;
-      }
-    }
-    _maxSliderValue = (highestAmount * 1.2).ceilToDouble();
-    _amountRange = RangeValues(0, _maxSliderValue);
+    _loadCurrencyPrefs();
+  }
+
+  Future<void> _loadCurrencyPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    final sec1 = prefs.getString('secondaryCurrency1');
+    final sec2 = prefs.getString('secondaryCurrency2');
+    final sec3 = prefs.getString('secondaryCurrency3');
+
+    List<String> currencies = [primary];
+    if (sec1 != null) currencies.add(sec1);
+    if (sec2 != null) currencies.add(sec2);
+    if (sec3 != null) currencies.add(sec3);
+
+    setState(() {
+      _availableCurrencies = currencies;
+    });
   }
 
   @override
   void dispose() {
     _debounceTimer?.cancel();
     _searchController.dispose();
+    _minAmountController.dispose();
+    _maxAmountController.dispose();
     super.dispose();
   }
 
@@ -93,15 +130,19 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
         final double fullWidth = availableWidth - 48;
         final double boxWidth = (fullWidth - 12) / 2;
 
+        final double? minAmount = double.tryParse(_minAmountController.text);
+        final double? maxAmount = double.tryParse(_maxAmountController.text);
+
         final bool hasActiveFilter = _debouncedQuery.isNotEmpty ||
             _selectedLabelId != null ||
             _selectedOwner != null ||
             _selectedType != null ||
             _selectedPool != null ||
+            _selectedCurrency != null ||
             _startDate != null ||
             _endDate != null ||
-            _amountRange.start > 0 ||
-            _amountRange.end < _maxSliderValue;
+            minAmount != null ||
+            maxAmount != null;
 
         final filteredTransactions = !hasActiveFilter
             ? <TransactionModel>[]
@@ -114,6 +155,13 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                 if (_selectedOwner != null && tx.owner != _selectedOwner) return false;
                 if (_selectedType != null && tx.type != _selectedType) return false;
                 if (_selectedPool != null && tx.pool != _selectedPool) return false;
+                
+                if (_selectedCurrency != null && tx.currencyCode != _selectedCurrency) {
+                  return false;
+                }
+
+                if (minAmount != null && tx.amount < minAmount) return false;
+                if (maxAmount != null && tx.amount > maxAmount) return false;
 
                 final txDate = DateTime.tryParse(tx.createdAt);
                 if (txDate != null) {
@@ -126,8 +174,6 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                     if (txDate.isAfter(endClean)) return false;
                   }
                 }
-
-                if (tx.amount < _amountRange.start || tx.amount > _amountRange.end) return false;
 
                 return true;
               }).toList();
@@ -376,7 +422,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 3: Amount Range & Date Range
+              // Row 3: Currency Dropdown & Date Range Picker
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -390,44 +436,43 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: const Color(0xFFCBD5E1)),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          value: _selectedCurrency,
+                          isDense: true,
+                          isExpanded: true,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                          hint: const Row(
                             children: [
-                              const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
-                              const SizedBox(width: 4),
-                              Text(
-                                '\$${_amountRange.start.toStringAsFixed(0)} - \$${_amountRange.end.toStringAsFixed(0)}',
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                              ),
+                              Icon(Icons.public, size: 14, color: Color(0xFF582F95)),
+                              SizedBox(width: 6),
+                              Text('All Currencies', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
                             ],
                           ),
-                          SizedBox(
-                            width: boxWidth * 0.45,
-                            child: SliderTheme(
-                              data: SliderTheme.of(context).copyWith(
-                                activeTrackColor: const Color(0xFF582F95),
-                                inactiveTrackColor: const Color(0xFFE2E8F0),
-                                thumbColor: const Color(0xFF582F95),
-                                overlayColor: const Color(0xFF582F95).withValues(alpha: 0.2),
-                                rangeThumbShape: const RoundRangeSliderThumbShape(enabledThumbRadius: 6),
-                                trackHeight: 3,
-                              ),
-                              child: RangeSlider(
-                                values: _amountRange,
-                                min: 0,
-                                max: _maxSliderValue,
-                                divisions: 50,
-                                onChanged: (values) {
-                                  setState(() {
-                                    _amountRange = values;
-                                  });
-                                },
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null, 
+                              child: Row(
+                                children: [
+                                  Icon(Icons.public, size: 14, color: Color(0xFF582F95)),
+                                  SizedBox(width: 6),
+                                  Text('All Currencies'),
+                                ],
                               ),
                             ),
-                          ),
-                        ],
+                            ..._availableCurrencies.map((c) => DropdownMenuItem<String?>(
+                              value: c, 
+                              child: Row(
+                                children: [
+                                  Text(_currencyFlags[c] ?? '💵', style: const TextStyle(fontSize: 14)),
+                                  const SizedBox(width: 6),
+                                  Text(c),
+                                ],
+                              ),
+                            )),
+                          ],
+                          onChanged: (val) => setState(() => _selectedCurrency = val),
+                        ),
                       ),
                     ),
                   ),
@@ -533,7 +578,53 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 4: Search Description
+              // Row 4: Min Amount & Max Amount Text Fields
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: TextField(
+                      controller: _minAmountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (val) => setState(() {}),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
+                        hintText: 'Min Amount',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: TextField(
+                      controller: _maxAmountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (val) => setState(() {}),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
+                        hintText: 'Max Amount',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Row 5: Search Description Bar
               TextField(
                 controller: _searchController,
                 onChanged: _onSearchChanged,
@@ -551,7 +642,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 5: Results Count & Pagination Limit Header
+              // Results Count & Pagination Limit Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -617,8 +708,12 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                 orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
                               );
 
+                              final currencyCode = tx.currencyCode.isNotEmpty ? tx.currencyCode : 'USD';
+                              final flag = _currencyFlags[currencyCode] ?? '🇺🇸';
+                              final symbol = _getCurrencySymbol(currencyCode);
+
                               final isIncome = tx.type == 'income';
-                              final amountString = '${isIncome ? '+' : '-'}\$${tx.amount.toStringAsFixed(2)}';
+                              final amountString = '${isIncome ? '+' : '-'}$symbol${tx.amount.toStringAsFixed(2)}';
                               final isConfirmed = tx.isConfirmed == 1;
                               final isFuture = txDate.isAfter(DateTime.now());
 
@@ -663,6 +758,8 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                                   style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFFD97706)),
                                                 ),
                                               ),
+                                              const Text('•', style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8))),
+                                              Text('$flag $currencyCode', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
                                             ],
                                           ),
                                         ],

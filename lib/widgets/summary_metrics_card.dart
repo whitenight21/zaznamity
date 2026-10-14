@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SummaryMetricsCard extends StatefulWidget {
   final List<String> owners;
@@ -33,11 +34,40 @@ class SummaryMetricsCard extends StatefulWidget {
 
 class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   late String _selectedOwner;
+  
+  String _primaryCurrency = 'USD';
+  String? _secondaryCurrency1;
+  String? _secondaryCurrency2;
+  String? _secondaryCurrency3;
+  
+  final Map<String, String> _currencyFlags = {
+    'USD': '🇺🇸',
+    'EUR': '🇪🇺',
+    'JPY': '🇯🇵',
+    'GBP': '🇬🇧',
+    'CNY': '🇨🇳',
+    'AUD': '🇦🇺',
+    'CAD': '🇨🇦',
+    'CHF': '🇨🇭',
+    'HKD': '🇭🇰',
+    'SGD': '🇸🇬',
+  };
 
   @override
   void initState() {
     super.initState();
     _selectedOwner = widget.selectedOwner ?? 'All Owners';
+    _loadCurrencyPrefs();
+  }
+
+  Future<void> _loadCurrencyPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
+      _secondaryCurrency1 = prefs.getString('secondaryCurrency1');
+      _secondaryCurrency2 = prefs.getString('secondaryCurrency2');
+      _secondaryCurrency3 = prefs.getString('secondaryCurrency3');
+    });
   }
 
   @override
@@ -50,8 +80,13 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     }
   }
 
-  String _formatCurrency(double amount) {
-    final format = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+  String _formatCurrency(double amount, String currencyCode) {
+    String symbol = '\$';
+    if (currencyCode == 'EUR') symbol = '€';
+    else if (currencyCode == 'GBP') symbol = '£';
+    else if (currencyCode == 'JPY') symbol = '¥';
+    
+    final format = NumberFormat.currency(symbol: symbol, decimalDigits: currencyCode == 'JPY' ? 0 : 2);
     return format.format(amount);
   }
 
@@ -71,6 +106,190 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     }
   }
 
+  Widget _buildCurrencySection(String currencyCode, double availableWidth, double boxWidth, double fullWidth) {
+    final flag = _currencyFlags[currencyCode] ?? '';
+    
+    Map<String, double> currentPools;
+    double currentLiquidNet;
+    List<Widget> wrapSubtitles = [];
+
+    // Filter pools to only include those with non-zero asset allocations for this currency context
+    if (_selectedOwner == 'All Owners') {
+      currentPools = Map.fromEntries(
+        widget.totalPoolTotals.entries.where((e) => e.value != 0.0)
+      );
+      currentLiquidNet = widget.totalLiquidNet;
+      
+      wrapSubtitles = widget.ownerBreakdownForLiquidNet.entries.map((e) {
+        final val = e.value['liquidNet'] ?? 0;
+        return Text(
+          '${e.key}: ${_formatCurrency(val, currencyCode)}',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey.shade700,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+      }).toList();
+    } else {
+      final ownerPools = widget.poolTotalsByOwner[_selectedOwner] ?? {};
+      currentPools = Map.fromEntries(
+        ownerPools.entries.where((e) => e.value != 0.0)
+      );
+      currentLiquidNet = widget.liquidNetByOwner[_selectedOwner] ?? 0.0;
+    }
+
+    final poolEntries = currentPools.entries.toList();
+    List<List<MapEntry<String, double>>> poolRows = [];
+    for (int i = 0; i < poolEntries.length; i += 2) {
+      poolRows.add(
+        poolEntries.sublist(
+          i,
+          i + 2 > poolEntries.length ? poolEntries.length : i + 2,
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1st row: Owner Dropdown (Left) & Center-aligned Currency Header with Flag (Right) with 1.5x Sizing
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            SizedBox(
+              width: boxWidth,
+              child: Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.person_outline_rounded, size: 20, color: Color(0xFF582F95)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedOwner,
+                          isDense: true,
+                          isExpanded: true,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                          items: [
+                            const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
+                            ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) setState(() => _selectedOwner = val);
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(
+              width: boxWidth,
+              child: Container(
+                height: 48,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(
+                  '$flag  $currencyCode',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF582F95),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        // 2nd row: Liquid net (centered) - unboxed
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'LIQUID NET ($currencyCode)',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.grey.shade600,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                _formatCurrency(currentLiquidNet, currencyCode),
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF582F95),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // 3rd row: All owners liquid nets
+        if (_selectedOwner != 'All Owners') ...[
+          Center(
+            child: Text(
+              _selectedOwner.toUpperCase(),
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ] else if (wrapSubtitles.isNotEmpty) ...[
+          Center(
+            child: Wrap(
+              spacing: 14.0,
+              runSpacing: 4.0,
+              alignment: WrapAlignment.center,
+              children: wrapSubtitles,
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
+
+        // 4th to 6th rows (Pools Breakdown rows displaying only active pool assets)
+        ...poolRows.map((rowEntries) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: rowEntries.map((entry) {
+                final bool isSingle = rowEntries.length == 1;
+                return SizedBox(
+                  width: isSingle ? fullWidth : boxWidth,
+                  child: _buildMetricBox(
+                    title: entry.key.toUpperCase(),
+                    amount: entry.value,
+                    amountColor: _getPoolColor(entry.key),
+                    width: isSingle ? fullWidth : boxWidth,
+                    currencyCode: currencyCode,
+                  ),
+                );
+              }).toList(),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -79,43 +298,10 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         final double fullWidth = availableWidth - 32;
         final double boxWidth = (fullWidth - 12) / 2;
 
-        Map<String, double> currentPools;
-        double currentLiquidNet;
-        String displayTitle = 'LIQUID NET';
-        String? singleSubtitle;
-        List<Widget> wrapSubtitles = [];
-
-        if (_selectedOwner == 'All Owners') {
-          currentPools = widget.totalPoolTotals;
-          currentLiquidNet = widget.totalLiquidNet;
-          
-          wrapSubtitles = widget.ownerBreakdownForLiquidNet.entries.map((e) {
-            final val = e.value['liquidNet'] ?? 0;
-            return Text(
-              '${e.key}: ${_formatCurrency(val)}',
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey.shade700,
-                fontWeight: FontWeight.w700,
-              ),
-            );
-          }).toList();
-        } else {
-          currentPools = widget.poolTotalsByOwner[_selectedOwner] ?? {};
-          currentLiquidNet = widget.liquidNetByOwner[_selectedOwner] ?? 0.0;
-          singleSubtitle = _selectedOwner.toUpperCase();
-        }
-
-        final poolEntries = currentPools.entries.toList();
-        List<List<MapEntry<String, double>>> poolRows = [];
-        for (int i = 0; i < poolEntries.length; i += 2) {
-          poolRows.add(
-            poolEntries.sublist(
-              i,
-              i + 2 > poolEntries.length ? poolEntries.length : i + 2,
-            ),
-          );
-        }
+        List<String> activeCurrencies = [_primaryCurrency];
+        if (_secondaryCurrency1 != null) activeCurrencies.add(_secondaryCurrency1!);
+        if (_secondaryCurrency2 != null) activeCurrencies.add(_secondaryCurrency2!);
+        if (_secondaryCurrency3 != null) activeCurrencies.add(_secondaryCurrency3!);
 
         return Container(
           padding: const EdgeInsets.all(16),
@@ -134,7 +320,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Top Row: Title & Action Buttons matching Future Metrics style
+              // Top Row: Title & Action Buttons
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -197,133 +383,16 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Second Row: Owner Dropdown (Left) & Liquid Net Box (Right) matching Future Metrics layout
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Owner Dropdown Box
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedOwner,
-                                isDense: true,
-                                isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: [
-                                  const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
-                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
-                                ],
-                                onChanged: (val) {
-                                  if (val != null) setState(() => _selectedOwner = val);
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // Liquid Net Display Box
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            displayTitle,
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.grey.shade600,
-                              letterSpacing: 0.6,
-                            ),
-                          ),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              _formatCurrency(currentLiquidNet),
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFF582F95),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+              // Render active currencies with purple dividing lines between them
+              for (int i = 0; i < activeCurrencies.length; i++) ...[
+                if (i > 0) ...[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16.0),
+                    child: Divider(color: Color(0xFF582F95), thickness: 1.5),
                   ),
                 ],
-              ),
-
-              // Subtitle/Owner breakdown row rendered directly below if needed
-              if (singleSubtitle != null || (wrapSubtitles.isNotEmpty)) ...[
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                  child: singleSubtitle != null
-                      ? Text(
-                          singleSubtitle,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade700,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        )
-                      : Wrap(
-                          spacing: 12.0,
-                          runSpacing: 4.0,
-                          children: wrapSubtitles,
-                        ),
-                ),
+                _buildCurrencySection(activeCurrencies[i], availableWidth, boxWidth, fullWidth),
               ],
-              const SizedBox(height: 16),
-
-              // Rest of Pool Boxes
-              ...poolRows.map((rowEntries) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: rowEntries.map((entry) {
-                      final bool isSingle = rowEntries.length == 1;
-                      return SizedBox(
-                        width: isSingle ? fullWidth : boxWidth,
-                        child: _buildMetricBox(
-                          title: entry.key.toUpperCase(),
-                          amount: entry.value,
-                          amountColor: _getPoolColor(entry.key),
-                          width: isSingle ? fullWidth : boxWidth,
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                );
-              }),
             ],
           ),
         );
@@ -336,6 +405,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     required double amount,
     required Color amountColor,
     required double width,
+    required String currencyCode,
   }) {
     return SizedBox(
       width: width,
@@ -345,7 +415,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
           Text(
             title,
             style: TextStyle(
-              fontSize: 9,
+              fontSize: 10,
               fontWeight: FontWeight.w900,
               color: Colors.grey.shade600,
               letterSpacing: 0.6,
@@ -356,9 +426,9 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
-              _formatCurrency(amount),
+              _formatCurrency(amount, currencyCode),
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: FontWeight.w900,
                 color: amountColor,
               ),

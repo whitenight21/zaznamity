@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 
 class PoolManagementModal extends StatefulWidget {
@@ -15,13 +17,37 @@ class PoolManagementModal extends StatefulWidget {
 }
 
 class _PoolManagementModalState extends State<PoolManagementModal> {
+  // Storing pool key -> currency code mapping locally inside the modal state
+  // (e.g., {'checking': 'USD', 'savings': 'EUR'})
   late Map<String, bool> _pools;
+  final Map<String, String> _poolCurrencies = {};
+  
   final TextEditingController _poolController = TextEditingController();
+  String _selectedCurrencyForNewPool = 'USD';
+
+  // Top 10 popular currencies list with flag emojis
+  final List<Map<String, String>> _availableCurrencies = [
+    {'code': 'USD', 'name': '🇺🇸 USD (\$)'},
+    {'code': 'EUR', 'name': '🇪🇺 EUR (€)'},
+    {'code': 'JPY', 'name': '🇯🇵 JPY (¥)'},
+    {'code': 'GBP', 'name': '🇬🇧 GBP (£)'},
+    {'code': 'CNY', 'name': '🇨🇳 CNY (¥)'},
+    {'code': 'AUD', 'name': '🇦🇺 AUD (A\$)'},
+    {'code': 'CAD', 'name': '🇨🇦 CAD (C\$)'},
+    {'code': 'CHF', 'name': '🇨🇭 CHF (CHF)'},
+    {'code': 'HKD', 'name': '🇭🇰 HKD (HK\$)'},
+    {'code': 'SGD', 'name': '🇸🇬 SGD (S\$)'},
+  ];
 
   @override
   void initState() {
     super.initState();
     _pools = Map.from(widget.initialPools);
+    
+    // Initialize default currency bindings for existing pools (defaulting to USD if unassigned)
+    for (var key in _pools.keys) {
+      _poolCurrencies[key] = 'USD';
+    }
   }
 
   @override
@@ -35,6 +61,7 @@ class _PoolManagementModalState extends State<PoolManagementModal> {
     if (poolName.isNotEmpty && !_pools.containsKey(poolName)) {
       setState(() {
         _pools[poolName] = true;
+        _poolCurrencies[poolName] = _selectedCurrencyForNewPool;
         _poolController.clear();
       });
       widget.onSavePools(_pools);
@@ -50,6 +77,7 @@ class _PoolManagementModalState extends State<PoolManagementModal> {
     }
     setState(() {
       _pools.remove(key);
+      _poolCurrencies.remove(key);
     });
     widget.onSavePools(_pools);
   }
@@ -72,13 +100,16 @@ class _PoolManagementModalState extends State<PoolManagementModal> {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Add or remove custom transaction pools (e.g., crypto, wallet).',
+            'Add custom transaction pools and bind specific currencies to them.',
             style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
           ),
           const SizedBox(height: 16),
+          
+          // Row to add new pool & select its currency
           Row(
             children: [
               Expanded(
+                flex: 3,
                 child: TextField(
                   controller: _poolController,
                   decoration: const InputDecoration(
@@ -88,11 +119,33 @@ class _PoolManagementModalState extends State<PoolManagementModal> {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 110,
+                child: DropdownButtonFormField<String>(
+                  initialValue: _selectedCurrencyForNewPool,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                  ),
+                  items: _availableCurrencies.map((c) {
+                    return DropdownMenuItem<String>(
+                      value: c['code'],
+                      child: Text(c['code']!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) setState(() => _selectedCurrencyForNewPool = val);
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color.fromARGB(255, 88, 47, 149),
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 ),
                 onPressed: _addPool,
                 child: const Text('Add'),
@@ -100,6 +153,8 @@ class _PoolManagementModalState extends State<PoolManagementModal> {
             ],
           ),
           const SizedBox(height: 16),
+          
+          // List of existing pools with currency dropdown selector
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 250),
             child: ListView.builder(
@@ -107,15 +162,50 @@ class _PoolManagementModalState extends State<PoolManagementModal> {
               itemCount: _pools.keys.length,
               itemBuilder: (context, index) {
                 String poolKey = _pools.keys.elementAt(index);
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    poolKey.toUpperCase(),
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1E293B)),
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete, size: 18, color: Color(0xFFDC2626)),
-                    onPressed: () => _deletePool(poolKey),
+                String currentCurrency = _poolCurrencies[poolKey] ?? 'USD';
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          poolKey.toUpperCase(),
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1E293B)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 130,
+                        child: DropdownButtonFormField<String>(
+                          initialValue: currentCurrency,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                          ),
+                          items: _availableCurrencies.map((c) {
+                            return DropdownMenuItem<String>(
+                              value: c['code'],
+                              child: Text(c['name']!, style: const TextStyle(fontSize: 11)),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() {
+                                _poolCurrencies[poolKey] = val;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.delete, size: 18, color: Color(0xFFDC2626)),
+                        onPressed: () => _deletePool(poolKey),
+                        tooltip: 'Delete Pool',
+                      ),
+                    ],
                   ),
                 );
               },

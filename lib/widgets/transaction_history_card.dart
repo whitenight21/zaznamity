@@ -52,6 +52,28 @@ class TransactionHistoryCard extends StatefulWidget {
 class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
   String _selectedLimit = '25'; // Default to 25 transactions
 
+  final Map<String, String> _currencyFlags = {
+    'USD': '🇺🇸',
+    'EUR': '🇪🇺',
+    'JPY': '🇯🇵',
+    'GBP': '🇬🇧',
+    'CNY': '🇨🇳',
+    'AUD': '🇦🇺',
+    'CAD': '🇨🇦',
+    'CHF': '🇨🇭',
+    'HKD': '🇭🇰',
+    'SGD': '🇸🇬',
+  };
+
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': return '¥';
+      default: return '\$';
+    }
+  }
+
   void _showDeleteConfirmation(BuildContext context, int transactionId) {
     showDialog(
       context: context,
@@ -82,7 +104,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
     final int totalCount = widget.transactions.length;
 
-    // Apply strict rendering cap to avoid layout lag over large lists
     int displayLimit = totalCount;
     if (_selectedLimit != 'All') {
       displayLimit = int.tryParse(_selectedLimit) ?? 25;
@@ -181,7 +202,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 20),
 
-              // Labels Multi-Select / Picker Row
+              // Labels Picker Row
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -207,11 +228,10 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 16),
 
-              // Owners (Left) & Date Range Picker with Separate Clear Button (Right)
+              // Owners (Left) & Date Range Picker (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Owner Dropdown Box
                   SizedBox(
                     width: boxWidth,
                     child: Container(
@@ -246,7 +266,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                       ),
                     ),
                   ),
-                  // Date Range Picker Box with Separate Clear Button
                   SizedBox(
                     width: boxWidth,
                     child: Row(
@@ -333,7 +352,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 14),
 
-              // Showing X of Y Zaznams + Limit Selector Area
+              // Showing X of Y Zaznams + Limit Selector
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
@@ -360,7 +379,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                             value: _selectedLimit,
                             isDense: true,
                             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95)),
-                            dropdownColor: Color(0xFFF8FAFC),
+                            dropdownColor: const Color(0xFFF8FAFC),
                             items: ['10', '25', '50', '100', 'All']
                                 .map((lim) => DropdownMenuItem(value: lim, child: Text(lim)))
                                 .toList(),
@@ -378,7 +397,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               const SizedBox(height: 12),
               const Divider(color: Color(0xFFE2E8F0)),
               
-              // Optimized Lazy ListView.builder with cacheExtent
+              // Transactions ListView
               displayedTransactions.isEmpty
                   ? const Padding(
                       padding: EdgeInsets.symmetric(vertical: 32),
@@ -402,8 +421,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                           orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
                         );
 
+                        // Fallback currency tagging if property exists on model, defaulting to USD
+                        final currencyCode = 'USD'; // Replace with tx.currencyCode if stored on TransactionModel
+                        final flag = _currencyFlags[currencyCode] ?? '🇺🇸';
+                        final symbol = _getCurrencySymbol(currencyCode);
+
                         final isIncome = tx.type == 'income';
-                        final amountString = '${isIncome ? '+' : '-'}\$${tx.amount.toStringAsFixed(2)}';
+                        final amountString = '${isIncome ? '+' : '-'}$symbol${tx.amount.toStringAsFixed(2)}';
                         final isConfirmed = tx.isConfirmed == 1;
                         final isFuture = txDate.isAfter(DateTime.now());
 
@@ -448,6 +472,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                             style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFFD97706)),
                                           ),
                                         ),
+                                        const Text('•', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                                        Text('$flag $currencyCode', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
                                       ],
                                     ),
                                   ],

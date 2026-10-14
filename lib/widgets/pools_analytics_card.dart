@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 
 class PoolsAnalyticsCard extends StatefulWidget {
@@ -43,6 +44,7 @@ class PoolsAnalyticsCard extends StatefulWidget {
 
 class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
   late Map<String, bool> _visiblePools;
+  String _primaryCurrency = 'USD';
 
   @override
   void initState() {
@@ -50,6 +52,14 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
     _visiblePools = {
       for (var key in widget.pools.keys) key: true,
     };
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
+    });
   }
 
   @override
@@ -60,6 +70,16 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
         _visiblePools[key] = true;
       }
     }
+  }
+
+  String _formatCurrency(double amount, String currencyCode) {
+    String symbol = '\$';
+    if (currencyCode == 'EUR') symbol = '€';
+    else if (currencyCode == 'GBP') symbol = '£';
+    else if (currencyCode == 'JPY') symbol = '¥';
+    
+    final format = NumberFormat.currency(symbol: symbol, decimalDigits: currencyCode == 'JPY' ? 0 : 2);
+    return format.format(amount);
   }
 
   void _showPoolsFilterMenu(BuildContext context) {
@@ -84,7 +104,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                     setStateModal(() {
                       _visiblePools[poolKey] = val ?? true;
                     });
-                    setState(() {}); // Update main card state
+                    setState(() {});
                   },
                 );
               }).toList(),
@@ -324,7 +344,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: "Show Pools" Selector Button opening popup dialog with reactive checkmarks
+              // Row 2: "Show Pools" Selector Button
               InkWell(
                 onTap: () => _showPoolsFilterMenu(context),
                 borderRadius: BorderRadius.circular(10),
@@ -355,7 +375,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
               const Divider(color: Color(0xFFE2E8F0)),
               const SizedBox(height: 12),
 
-              // Pool Charts List
+              // Pool Charts List[cite: 5]
               widget.pools.keys.isEmpty
                   ? const Text('No pools available.', style: TextStyle(color: Color(0xFF64748B), fontSize: 13))
                   : ListView.builder(
@@ -396,7 +416,8 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
     double poolBalance = 0;
     for (var tx in poolTxs) {
       if (tx.isConfirmed == 1) {
-        poolBalance += (tx.type == 'income' ? tx.amount : -tx.amount);
+        double normalizedAmount = tx.amount;
+        poolBalance += (tx.type == 'income' ? normalizedAmount : -normalizedAmount);
       }
     }
 
@@ -431,7 +452,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
               ),
               Text(
-                '\$${poolBalance.toStringAsFixed(2)}',
+                _formatCurrency(poolBalance, _primaryCurrency),
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,

@@ -2,13 +2,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/label.dart';
 
 class NewZaznamCard extends StatefulWidget {
   final List<LabelModel> labels;
   final List<String> pools;
   final List<String> owners;
-  final String? selectedGlobalOwner; // Master filter owner
+  final String? selectedGlobalOwner;
   final Function(
     String description,
     double amount,
@@ -19,10 +20,11 @@ class NewZaznamCard extends StatefulWidget {
     bool isRecurring,
     String frequency,
     int dayOfMonth,
-    List<int> excludedWeekdays, // 1 = Monday ... 7 = Sunday
-    List<int> excludedMonths,   // 1 = January ... 12 = December
+    List<int> excludedWeekdays,
+    List<int> excludedMonths,
     DateTime? repeatUntilDate,
     DateTime date,
+    String currencyCode,
   ) onSubmit;
   final VoidCallback? onHide;
   final VoidCallback? onToggleWidth;
@@ -57,7 +59,22 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   int _dayOfMonth = 1;
   DateTime? _repeatUntilDate;
 
-  // Exclusions state
+  String _selectedCurrency = 'USD';
+  List<String> _availableCurrencies = ['USD'];
+
+  final Map<String, String> _currencyFlags = {
+    'USD': '🇺🇸',
+    'EUR': '🇪🇺',
+    'JPY': '🇯🇵',
+    'GBP': '🇬🇧',
+    'CNY': '🇨🇳',
+    'AUD': '🇦🇺',
+    'CAD': '🇨🇦',
+    'CHF': '🇨🇭',
+    'HKD': '🇭🇰',
+    'SGD': '🇸🇬',
+  };
+
   final List<int> _excludedWeekdays = []; 
   final List<int> _excludedMonths = [];   
 
@@ -72,6 +89,25 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
     }
     _owner = _resolveOwner();
     _dayOfMonth = _selectedDate.day;
+    _loadCurrencyPrefs();
+  }
+
+  Future<void> _loadCurrencyPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    final sec1 = prefs.getString('secondaryCurrency1');
+    final sec2 = prefs.getString('secondaryCurrency2');
+    final sec3 = prefs.getString('secondaryCurrency3');
+
+    List<String> currencies = [primary];
+    if (sec1 != null) currencies.add(sec1);
+    if (sec2 != null) currencies.add(sec2);
+    if (sec3 != null) currencies.add(sec3);
+
+    setState(() {
+      _availableCurrencies = currencies;
+      _selectedCurrency = primary;
+    });
   }
 
   String _resolveOwner() {
@@ -88,7 +124,6 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
       _selectedPool = widget.pools.first;
     }
 
-    // Sync input owner when master/global filter changes externally
     if (widget.selectedGlobalOwner != oldWidget.selectedGlobalOwner || widget.owners != oldWidget.owners) {
       setState(() {
         _owner = _resolveOwner();
@@ -124,6 +159,15 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
       _excludedWeekdays.clear();
       _excludedMonths.clear();
     });
+  }
+
+  String _getCurrencySymbol(String code) {
+    switch (code) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': return '¥';
+      default: return '\$';
+    }
   }
 
   @override
@@ -304,40 +348,85 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 12),
 
-              // Description Input
-              TextField(
-                controller: _descController,
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: 'Description',
-                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Amount Input & Type Picker Side-by-Side
+              // Row 2: 25% Amount Input, 75% Description Input
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   SizedBox(
-                    width: boxWidth,
+                    width: fullWidth * 0.25,
                     child: TextField(
                       controller: _amountController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         isDense: true,
-                        hintText: '0.00 (\$)',
+                        hintText: '0.00 (${_getCurrencySymbol(_selectedCurrency)})',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: fullWidth * 0.75 - 8,
+                    child: TextField(
+                      controller: _descController,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'Description',
                         hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                         filled: true,
                         fillColor: const Color(0xFFF8FAFC),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Row 3: Currency Selector & Expense/Income Picker
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(_currencyFlags[_selectedCurrency] ?? '💵', style: const TextStyle(fontSize: 16)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedCurrency,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: _availableCurrencies.map((c) {
+                                  return DropdownMenuItem(
+                                    value: c,
+                                    child: Text('$c (${_getCurrencySymbol(c)})', style: const TextStyle(fontSize: 11)),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _selectedCurrency = val);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -760,6 +849,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       _excludedMonths,
                       _repeatUntilDate,
                       baseDate,
+                      _selectedCurrency,
                     );
 
                     _clearForm();

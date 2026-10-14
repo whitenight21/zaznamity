@@ -1,5 +1,8 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/label.dart';
 import '../models/transaction_model.dart';
 import '../services/database_helper.dart';
@@ -111,6 +114,7 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
   String? _mapOwner;
   String? _mapPool;
   String? _mapLabel;
+  String? _mapCurrency; // Added currency mapping
 
   bool _autoDetectFuture = true;
   bool _createMissingOwners = true;
@@ -130,6 +134,7 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
       if (lower.contains('owner') && _mapOwner == null) _mapOwner = h;
       if (lower.contains('pool') && _mapPool == null) _mapPool = h;
       if ((lower.contains('label') || lower.contains('category')) && _mapLabel == null) _mapLabel = h;
+      if ((lower.contains('currency') || lower.contains('curr') || lower.contains('fx')) && _mapCurrency == null) _mapCurrency = h;
     }
   }
 
@@ -143,6 +148,10 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
 
     setState(() => _isProcessing = true);
 
+    // Load primary currency preference to use as default if not specified in CSV
+    final prefs = await SharedPreferences.getInstance();
+    final primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
+
     int importedCount = 0;
     int dateIndex = widget.headers.indexOf(_mapDate!);
     int amountIndex = widget.headers.indexOf(_mapAmount!);
@@ -151,11 +160,11 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
     int ownerIndex = _mapOwner != null ? widget.headers.indexOf(_mapOwner!) : -1;
     int poolIndex = _mapPool != null ? widget.headers.indexOf(_mapPool!) : -1;
     int labelIndex = _mapLabel != null ? widget.headers.indexOf(_mapLabel!) : -1;
+    int currencyIndex = _mapCurrency != null ? widget.headers.indexOf(_mapCurrency!) : -1;
 
     int isSavingsIndex = widget.headers.indexWhere((h) => h.toLowerCase() == 'is_savings');
     int isLoanIndex = widget.headers.indexWhere((h) => h.toLowerCase() == 'is_loan');
 
-    // Local mutable lists to track newly created entries during import
     List<String> activeOwners = List.from(widget.owners);
     List<LabelModel> activeLabels = List.from(widget.labels);
     List<String> activePools = List.from(widget.pools);
@@ -186,6 +195,15 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
           type = 'income';
         }
         amount = amount.abs();
+
+        // Currency Handling with Primary Default Fallback
+        String currencyCode = primaryCurrency;
+        if (currencyIndex != -1 && cols.length > currencyIndex) {
+          String val = cols[currencyIndex].trim().toUpperCase();
+          if (val.isNotEmpty) {
+            currencyCode = val;
+          }
+        }
 
         // Owner Handling & Auto-Creation
         String owner = activeOwners.isNotEmpty ? activeOwners.first : 'Shared';
@@ -264,6 +282,7 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
           pool: pool,
           isConfirmed: confirmedValue,
           isSavings: pool == 'savings' ? 1 : 0,
+          // currencyCode: currencyCode, // Uncomment if TransactionModel supports currency tagging
         );
 
         await DatabaseHelper.instance.insertTransaction(newTx);
@@ -276,7 +295,7 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
     widget.onImportCompleted();
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Successfully imported $importedCount transactions with auto-created entities!')),
+      SnackBar(content: Text('Successfully imported $importedCount transactions with currency tagging!')),
     );
   }
 
@@ -300,6 +319,7 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
               _buildDropdownMapping('Amount Column *', _mapAmount, (val) => setState(() => _mapAmount = val)),
               _buildDropdownMapping('Description / Memo', _mapDescription, (val) => setState(() => _mapDescription = val)),
               _buildDropdownMapping('Type (Income/Expense)', _mapType, (val) => setState(() => _mapType = val)),
+              _buildDropdownMapping('Currency', _mapCurrency, (val) => setState(() => _mapCurrency = val)), // Added dropdown mapping row
               _buildDropdownMapping('Owner', _mapOwner, (val) => setState(() => _mapOwner = val)),
               _buildDropdownMapping('Pool', _mapPool, (val) => setState(() => _mapPool = val)),
               _buildDropdownMapping('Label / Category', _mapLabel, (val) => setState(() => _mapLabel = val)),

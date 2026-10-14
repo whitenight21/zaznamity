@@ -90,6 +90,26 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   bool _biometricsEnabled = false;
   String _biometricType = 'PIN';
   String _savedPin = "1234";
+
+  // Currency Preferences State (Max 4 total: 1 primary + up to 3 secondary)
+  String _primaryCurrency = 'USD';
+  String? _secondaryCurrency1;
+  String? _secondaryCurrency2;
+  String? _secondaryCurrency3;
+
+  // Top 10 popular currencies list with flag emojis
+  final List<Map<String, String>> _availableCurrencies = [
+    {'code': 'USD', 'name': '🇺🇸 US Dollar (\$)'},
+    {'code': 'EUR', 'name': '🇪🇺 Euro (€)'},
+    {'code': 'JPY', 'name': '🇯🇵 Japanese Yen (¥)'},
+    {'code': 'GBP', 'name': '🇬🇧 British Pound (£)'},
+    {'code': 'CNY', 'name': '🇨🇳 Chinese Yuan (¥)'},
+    {'code': 'AUD', 'name': '🇦🇺 Australian Dollar (A\$)'},
+    {'code': 'CAD', 'name': '🇨🇦 Canadian Dollar (C\$)'},
+    {'code': 'CHF', 'name': '🇨🇭 Swiss Franc (CHF)'},
+    {'code': 'HKD', 'name': '🇭🇰 Hong Kong Dollar (HK\$)'},
+    {'code': 'SGD', 'name': '🇸🇬 Singapore Dollar (S\$)'},
+  ];
   
   final TextEditingController _newLabelController = TextEditingController();
   final TextEditingController _pinController = TextEditingController();
@@ -132,6 +152,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       _biometricsEnabled = prefs.getBool('biometricsEnabled') ?? false;
       _savedPin = prefs.getString('savedPin') ?? "1234";
       _pinController.text = _savedPin;
+
+      _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
+      _secondaryCurrency1 = prefs.getString('secondaryCurrency1');
+      _secondaryCurrency2 = prefs.getString('secondaryCurrency2');
+      _secondaryCurrency3 = prefs.getString('secondaryCurrency3');
 
       final leftSaved = prefs.getStringList('leftNavItems');
       if (leftSaved != null && leftSaved.length >= 3) {
@@ -917,8 +942,101 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               // ==========================================
               _buildMainCategoryGroup(
                 title: 'Organization & Structure',
-                subtitle: 'Labels, owners, pools, and metric configurations',
+                subtitle: 'Labels, owners, pools, currencies, and metric configurations',
                 children: [
+                  _buildSubSectionCard(
+                    title: 'Currency Preferences (Max 4 Total)',
+                    subtitle: 'Set 1 primary currency and up to 3 secondary currencies for multi-currency tracking',
+                    children: [
+                      const Text('Primary Currency (1 required)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                      const SizedBox(height: 4),
+                      DropdownButtonFormField<String>(
+                        initialValue: _primaryCurrency,
+                        isExpanded: true,
+                        decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
+                        items: _availableCurrencies
+                            .where((c) => c['code'] != _secondaryCurrency1 && c['code'] != _secondaryCurrency2 && c['code'] != _secondaryCurrency3)
+                            .map((c) => DropdownMenuItem(value: c['code'], child: Text(c['name']!)))
+                            .toList(),
+                        onChanged: (val) async {
+                          if (val != null) {
+                            setState(() => _primaryCurrency = val);
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setString('primaryCurrency', val);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('Second Currency', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                      const SizedBox(height: 4),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _secondaryCurrency1,
+                        isExpanded: true,
+                        decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
+                        items: [
+                          const DropdownMenuItem<String?>(value: null, child: Text('None (Disabled)')),
+                          ..._availableCurrencies
+                              .where((c) => c['code'] != _primaryCurrency && c['code'] != _secondaryCurrency2 && c['code'] != _secondaryCurrency3)
+                              .map((c) => DropdownMenuItem<String?>(value: c['code'], child: Text(c['name']!))),
+                        ],
+                        onChanged: (val) async {
+                          setState(() => _secondaryCurrency1 = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          if (val == null) {
+                            await prefs.remove('secondaryCurrency1');
+                          } else {
+                            await prefs.setString('secondaryCurrency1', val);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('Third Currency', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                      const SizedBox(height: 4),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _secondaryCurrency2,
+                        isExpanded: true,
+                        decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
+                        items: [
+                          const DropdownMenuItem<String?>(value: null, child: Text('None (Disabled)')),
+                          ..._availableCurrencies
+                              .where((c) => c['code'] != _primaryCurrency && c['code'] != _secondaryCurrency1 && c['code'] != _secondaryCurrency3)
+                              .map((c) => DropdownMenuItem<String?>(value: c['code'], child: Text(c['name']!))),
+                        ],
+                        onChanged: (val) async {
+                          setState(() => _secondaryCurrency2 = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          if (val == null) {
+                            await prefs.remove('secondaryCurrency2');
+                          } else {
+                            await prefs.setString('secondaryCurrency2', val);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('Fourth Currency', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                      const SizedBox(height: 4),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _secondaryCurrency3,
+                        isExpanded: true,
+                        decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
+                        items: [
+                          const DropdownMenuItem<String?>(value: null, child: Text('None (Disabled)')),
+                          ..._availableCurrencies
+                              .where((c) => c['code'] != _primaryCurrency && c['code'] != _secondaryCurrency1 && c['code'] != _secondaryCurrency2)
+                              .map((c) => DropdownMenuItem<String?>(value: c['code'], child: Text(c['name']!))),
+                        ],
+                        onChanged: (val) async {
+                          setState(() => _secondaryCurrency3 = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          if (val == null) {
+                            await prefs.remove('secondaryCurrency3');
+                          } else {
+                            await prefs.setString('secondaryCurrency3', val);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
                   _buildSubSectionCard(
                     title: 'Labels Management',
                     subtitle: 'Manage Zaznamity labels',

@@ -13,6 +13,7 @@ class TransactionModel {
   final int? recurringDay;
   final String? recurringEndDate;
   final int isConfirmed;
+  final String currencyCode; // Added multi-currency support
 
   // Joined fields
   final String? labelName;
@@ -33,6 +34,7 @@ class TransactionModel {
     this.recurringDay,
     this.recurringEndDate,
     this.isConfirmed = 1,
+    this.currencyCode = 'USD', // Default fallback
     this.labelName,
     this.labelColor,
   });
@@ -53,6 +55,7 @@ class TransactionModel {
       recurringDay: map['recurring_day'],
       recurringEndDate: map['recurring_end_date'],
       isConfirmed: map['is_confirmed'] ?? 1,
+      currencyCode: map['currency_code'] ?? 'USD',
       labelName: map['label_name'],
       labelColor: map['label_color'],
     );
@@ -74,6 +77,7 @@ class TransactionModel {
       'recurring_day': recurringDay,
       'recurring_end_date': recurringEndDate,
       'is_confirmed': isConfirmed,
+      'currency_code': currencyCode,
     };
   }
 }
