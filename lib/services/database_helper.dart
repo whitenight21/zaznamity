@@ -23,7 +23,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 3, // Upgraded version for savings_goals table
+      version: 4, // Upgraded to version 4 to support currency_code on transactions
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -53,7 +53,8 @@ class DatabaseHelper {
         recurring_freq TEXT,
         recurring_day INTEGER,
         recurring_end_date TEXT,
-        is_confirmed INTEGER DEFAULT 1
+        is_confirmed INTEGER DEFAULT 1,
+        currency_code TEXT DEFAULT 'EUR'
       );
     ''');
 
@@ -107,6 +108,11 @@ class DatabaseHelper {
           current_amount REAL NOT NULL DEFAULT 0.0,
           target_date TEXT
         );
+      ''');
+    }
+    if (oldVersion < 4) {
+      await db.execute('''
+        ALTER TABLE transactions ADD COLUMN currency_code TEXT DEFAULT 'EUR';
       ''');
     }
   }

@@ -7,8 +7,12 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:open_file/open_file.dart';
+import 'package:intl/intl.dart';
 import 'package:zaznamity/models/card_config.dart';
 import 'package:zaznamity/models/label.dart';
+import 'package:zaznamity/models/transaction_model.dart';
+import 'package:zaznamity/services/database_helper.dart';
 import 'package:zaznamity/services/notification_service.dart';
 import 'package:zaznamity/widgets/settings/owner_management_modal.dart';
 import 'package:zaznamity/widgets/settings/pool_management_modal.dart';
@@ -90,14 +94,15 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   bool _biometricsEnabled = false;
   String _biometricType = 'PIN';
   String _savedPin = "1234";
+  bool _isPinVisible = false;
 
-  // Currency Preferences State (Max 4 total: 1 primary + up to 3 secondary)
   String _primaryCurrency = 'USD';
   String? _secondaryCurrency1;
   String? _secondaryCurrency2;
   String? _secondaryCurrency3;
 
-  // Top 10 popular currencies list with flag emojis
+  List<File> _savedReportsList = [];
+
   final List<Map<String, String>> _availableCurrencies = [
     {'code': 'USD', 'name': '🇺🇸 US Dollar (\$)'},
     {'code': 'EUR', 'name': '🇪🇺 Euro (€)'},
@@ -134,6 +139,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     ];
     
     _loadPrefs();
+    _loadSavedReports();
   }
 
   @override
@@ -169,6 +175,51 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     });
   }
 
+  Future<void> _loadSavedReports() async {
+    try {
+      Directory? directory;
+      if (Platform.isAndroid) {
+        directory = Directory('/storage/emulated/0/Download');
+        if (!await directory.exists()) {
+          directory = await getExternalStorageDirectory();
+        }
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      if (directory != null && await directory.exists()) {
+        final files = directory.listSync();
+        final pdfFiles = files
+            .where((entity) => entity is File && entity.path.toLowerCase().endsWith('.pdf') && entity.path.contains('ZaznamityReport'))
+            .map((entity) => entity as File)
+            .toList();
+        
+        pdfFiles.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+
+        setState(() {
+          _savedReportsList = pdfFiles;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _openReportFile(File file) async {
+    try {
+      final result = await OpenFile.open(file.path);
+      if (result.type != ResultType.done) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open file: ${result.message}')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error opening report: $e')),
+      );
+    }
+  }
+
   Future<void> _saveNavPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     _leftNavItems[0] = 'owner';
@@ -197,7 +248,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit Label'),
+        title: const Text('Edit Label', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(labelText: 'Label Name'),
@@ -220,40 +271,39 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   }
 
   void _showReportConfigModal() {
-    String selectedTimeframe = 'this_month';
-    DateTime? customStartDate;
-    DateTime? customEndDate;
-    bool includeSummaryCards = true;
-    bool includeCategoryChart = true;
-    bool includeOwnerBreakdown = false;
-    bool includeTransactionTable = true;
+    DateTime customStartDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
+    DateTime customEndDate = DateTime.now();
+    
+    String selectedOwnerFilter = 'All';
+    String selectedPoolFilter = 'All';
+    String selectedLabelFilter = 'All';
+    String selectedCurrencyFilter = 'All';
+
+    bool includeSummaryCard = true;
+    bool includeFutureMetricsCard = true;
+    bool includeSavingsGoalsCard = true;
+    bool includeBudgetCard = true;
+
+    bool includeBarChart = true;
+    bool includePieChart = false;
+    bool includeLineChart = false;
+
+    bool includeTransactionTableHistory = true;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setStateModal) => AlertDialog(
-          title: const Text('Configure Zaznamity Report', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Timeframe', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                const SizedBox(height: 6),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedTimeframe,
-                  decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
-                  items: const [
-                    DropdownMenuItem(value: 'this_month', child: Text('This Month')),
-                    DropdownMenuItem(value: 'last_month', child: Text('Last Month')),
-                    DropdownMenuItem(value: 'ytd', child: Text('Year-to-Date (YTD)')),
-                    DropdownMenuItem(value: 'all_time', child: Text('All-Time Records')),
-                    DropdownMenuItem(value: 'custom', child: Text('Custom Date Range...')),
-                  ],
-                  onChanged: (val) => setStateModal(() => selectedTimeframe = val ?? 'this_month'),
-                ),
-                if (selectedTimeframe == 'custom') ...[
-                  const SizedBox(height: 12),
+          title: const Text('Configure Zaznamity Report', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+          content: SizedBox(
+            width: 480,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('1. SELECT CUSTOM DATE RANGE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Expanded(
@@ -261,14 +311,14 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           onPressed: () async {
                             final picked = await showDatePicker(
                               context: context,
-                              initialDate: customStartDate ?? DateTime.now(),
+                              initialDate: customStartDate,
                               firstDate: DateTime(2020),
                               lastDate: DateTime(2030),
                             );
                             if (picked != null) setStateModal(() => customStartDate = picked);
                           },
                           icon: const Icon(Icons.calendar_today, size: 14),
-                          label: Text(customStartDate == null ? 'Start Date' : '${customStartDate!.month}/${customStartDate!.day}/${customStartDate!.year}', style: const TextStyle(fontSize: 12)),
+                          label: Text('Start: ${DateFormat('dd/MM/yyyy').format(customStartDate)}', style: const TextStyle(fontSize: 12)),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -277,57 +327,187 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           onPressed: () async {
                             final picked = await showDatePicker(
                               context: context,
-                              initialDate: customEndDate ?? DateTime.now(),
+                              initialDate: customEndDate,
                               firstDate: DateTime(2020),
                               lastDate: DateTime(2030),
                             );
                             if (picked != null) setStateModal(() => customEndDate = picked);
                           },
                           icon: const Icon(Icons.calendar_today, size: 14),
-                          label: Text(customEndDate == null ? 'End Date' : '${customEndDate!.month}/${customEndDate!.day}/${customEndDate!.year}', style: const TextStyle(fontSize: 12)),
+                          label: Text('End: ${DateFormat('dd/MM/yyyy').format(customEndDate)}', style: const TextStyle(fontSize: 12)),
                         ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 14),
+
+                  const Text('2. FLEXIBLE DRILL-DOWN FILTERS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedOwnerFilter,
+                          decoration: const InputDecoration(labelText: 'Owner', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)))),
+                          items: [
+                            const DropdownMenuItem(value: 'All', child: Text('All Owners')),
+                            ..._owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                          ],
+                          onChanged: (val) => setStateModal(() => selectedOwnerFilter = val ?? 'All'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedPoolFilter,
+                          decoration: const InputDecoration(labelText: 'Pool', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)))),
+                          items: [
+                            const DropdownMenuItem(value: 'All', child: Text('All Pools')),
+                            ..._pools.keys.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))),
+                          ],
+                          onChanged: (val) => setStateModal(() => selectedPoolFilter = val ?? 'All'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedLabelFilter,
+                          decoration: const InputDecoration(labelText: 'Label', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)))),
+                          items: [
+                            const DropdownMenuItem(value: 'All', child: Text('All Labels')),
+                            ...widget.labels.map((l) => DropdownMenuItem(value: l.name, child: Text(l.name))),
+                          ],
+                          onChanged: (val) => setStateModal(() => selectedLabelFilter = val ?? 'All'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedCurrencyFilter,
+                          decoration: const InputDecoration(labelText: 'Currency', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)))),
+                          items: [
+                            const DropdownMenuItem<String>(value: 'All', child: Text('All Currencies')),
+                            if (_secondaryCurrency1 != null) DropdownMenuItem<String>(value: _secondaryCurrency1!, child: Text(_secondaryCurrency1!)),
+                            if (_secondaryCurrency2 != null) DropdownMenuItem<String>(value: _secondaryCurrency2!, child: Text(_secondaryCurrency2!)),
+                            if (_secondaryCurrency3 != null) DropdownMenuItem<String>(value: _secondaryCurrency3!, child: Text(_secondaryCurrency3!)),
+                            DropdownMenuItem<String>(value: _primaryCurrency, child: Text(_primaryCurrency)),
+                          ],
+                          onChanged: (val) => setStateModal(() => selectedCurrencyFilter = val ?? 'All'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  const Text('3. CARD PARAMETERS & METRICS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 4),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Include Summary Metrics Card', style: TextStyle(fontSize: 12)),
+                    value: includeSummaryCard,
+                    onChanged: (val) => setStateModal(() => includeSummaryCard = val ?? true),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Include Future Metrics Card', style: TextStyle(fontSize: 12)),
+                    value: includeFutureMetricsCard,
+                    onChanged: (val) => setStateModal(() => includeFutureMetricsCard = val ?? true),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Include Savings Goals Card', style: TextStyle(fontSize: 12)),
+                    value: includeSavingsGoalsCard,
+                    onChanged: (val) => setStateModal(() => includeSavingsGoalsCard = val ?? true),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Include Budget Progress Card', style: TextStyle(fontSize: 12)),
+                    value: includeBudgetCard,
+                    onChanged: (val) => setStateModal(() => includeBudgetCard = val ?? true),
+                  ),
+                  const SizedBox(height: 14),
+
+                  const Text('4. CHART VISUALIZATIONS (Checkmark Select)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 4),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Bar Chart (Income vs Expenses)', style: TextStyle(fontSize: 12)),
+                    value: includeBarChart,
+                    onChanged: (val) => setStateModal(() => includeBarChart = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Pie Chart (Expenses by Label)', style: TextStyle(fontSize: 12)),
+                    value: includePieChart,
+                    onChanged: (val) => setStateModal(() => includePieChart = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Liquid Trend Line Chart', style: TextStyle(fontSize: 12)),
+                    value: includeLineChart,
+                    onChanged: (val) => setStateModal(() => includeLineChart = val ?? false),
+                  ),
+                  const SizedBox(height: 14),
+
+                  const Text('5. DATA GROUPING & HISTORY TABLE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(height: 4),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('List Zaznam history as last parameter (Full transactions table)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    value: includeTransactionTableHistory,
+                    onChanged: (val) => setStateModal(() => includeTransactionTableHistory = val ?? true),
+                  ),
                 ],
-                const SizedBox(height: 16),
-                const Text('Report Sections & Charts', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                const SizedBox(height: 4),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Summary Metrics and Assets', style: TextStyle(fontSize: 13)),
-                  value: includeSummaryCards,
-                  onChanged: (val) => setStateModal(() => includeSummaryCards = val ?? true),
-                ),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Label Analytics and Charts', style: TextStyle(fontSize: 13)),
-                  value: includeCategoryChart,
-                  onChanged: (val) => setStateModal(() => includeCategoryChart = val ?? true),
-                ),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Owner Breakdown', style: TextStyle(fontSize: 13)),
-                  value: includeOwnerBreakdown,
-                  onChanged: (val) => setStateModal(() => includeOwnerBreakdown = val ?? false),
-                ),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Detailed Zaznams Table', style: TextStyle(fontSize: 13)),
-                  value: includeTransactionTable,
-                  onChanged: (val) => setStateModal(() => includeTransactionTable = val ?? true),
-                ),
-              ],
+              ),
             ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 88, 47, 149), foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
               onPressed: () async {
                 Navigator.pop(ctx);
                 
                 try {
+                  final allTxs = await DatabaseHelper.instance.getTransactions();
+                  
+                  final startOfDay = DateTime(customStartDate.year, customStartDate.month, customStartDate.day);
+                  final endOfDay = DateTime(customEndDate.year, customEndDate.month, customEndDate.day, 23, 59, 59);
+
+                  final filteredTxs = allTxs.where((tx) {
+                    final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+                    if (txDate.isBefore(startOfDay) || txDate.isAfter(endOfDay)) return false;
+
+                    if (selectedOwnerFilter != 'All' && tx.owner != selectedOwnerFilter) return false;
+                    if (selectedPoolFilter != 'All' && tx.pool != selectedPoolFilter) return false;
+                    if (selectedCurrencyFilter != 'All' && tx.currencyCode != selectedCurrencyFilter) return false;
+
+                    if (selectedLabelFilter != 'All') {
+                      final labelObj = widget.labels.firstWhere(
+                        (l) => l.name == selectedLabelFilter,
+                        orElse: () => LabelModel(id: -999, name: '', color: '582F95'),
+                      );
+                      if (tx.labelId != labelObj.id) return false;
+                    }
+
+                    return true;
+                  }).toList();
+
+                  double totalIncome = 0;
+                  double totalExpense = 0;
+                  for (var tx in filteredTxs) {
+                    if (tx.type == 'income') {
+                      totalIncome += tx.amount;
+                    } else {
+                      totalExpense += tx.amount;
+                    }
+                  }
+                  final netBalance = totalIncome - totalExpense;
+
                   final pdfDoc = pw.Document();
                   final logoImage = pw.MemoryImage(
                     (await rootBundle.load('assets/ZaznamityLogo_onlyZwhite.png'))
@@ -335,6 +515,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         .asUint8List(),
                   );
                   
+                  final formattedDateRange = '${DateFormat('dd/MM/yyyy').format(customStartDate)} - ${DateFormat('dd/MM/yyyy').format(customEndDate)}';
+
                   pdfDoc.addPage(
                     pw.MultiPage(
                       pageFormat: PdfPageFormat.a4,
@@ -348,7 +530,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             children: [
                               pw.SizedBox(height: 4),
                               pw.Text(
-                                'Net Worth Statement',
+                                'Zaznamity Financial Statement',
                                 style: pw.TextStyle(
                                   fontSize: 12,
                                   color: PdfColors.grey600,
@@ -364,13 +546,13 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           alignment: pw.Alignment.center,
                           margin: const pw.EdgeInsets.only(top: 16),
                           child: pw.Text(
-                            'Page ${context.pageNumber} of ${context.pagesCount} — Secure Financial Ledger',
+                            'Page ${context.pageNumber} of ${context.pagesCount} — Secure Local Ledger',
                             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey500),
                           ),
                         );
                       },
                       build: (pw.Context context) {
-                        return [
+                        List<pw.Widget> childrenWidgets = [
                           pw.Container(
                             padding: const pw.EdgeInsets.all(16),
                             decoration: pw.BoxDecoration(
@@ -386,8 +568,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                   children: [
                                     pw.Image(
                                       logoImage,
-                                      width: 60,
-                                      height: 60,
+                                      width: 50,
+                                      height: 50,
                                       fit: pw.BoxFit.cover,
                                     ),
                                     pw.SizedBox(width: 12),
@@ -395,117 +577,133 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                                       children: [
                                         pw.Text(
-                                          ' ZAZNAMITY FINANCIAL REPORT',
-                                          style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                                          'ZAZNAMITY REPORT',
+                                          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
                                         ),
                                         pw.SizedBox(height: 4),
                                         pw.Text(
-                                          'As of Date: ${selectedTimeframe.toUpperCase().replaceAll('_', ' ')}',
-                                          style: pw.TextStyle(fontSize: 12, color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+                                          'Timeframe: $formattedDateRange | Owner: $selectedOwnerFilter',
+                                          style: pw.TextStyle(fontSize: 10, color: PdfColors.white),
                                         ),
                                       ],
                                     ),
                                   ],
                                 ),
                                 pw.Text(
-                                  'Created: ${DateTime.now().toLocal().toString().split(' ')[0]}',
+                                  'Generated: ${DateTime.now().toLocal().toString().split(' ')[0]}',
                                   style: const pw.TextStyle(fontSize: 10, color: PdfColors.white),
                                 ),
                               ],
                             ),
                           ),
                           pw.SizedBox(height: 20),
+                        ];
 
-                          if (includeSummaryCards) ...[
-                            pw.Text('1. Summary Metrics and Assets', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
-                            pw.SizedBox(height: 8),
-                            pw.Container(
-                              padding: const pw.EdgeInsets.all(12),
-                              decoration: pw.BoxDecoration(
-                                border: pw.Border.all(color: PdfColors.grey300),
-                                borderRadius: pw.BorderRadius.circular(6),
-                              ),
-                              child: pw.Text(
-                                'This summary report compiles all tracked transactions securely stored on your local device database. No third-party servers or cloud connections were utilized.',
-                                style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey800, lineSpacing: 4),
-                              ),
+                        if (includeSummaryCard) {
+                          childrenWidgets.add(pw.Text('• Summary Metrics & Assets Overview', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
+                          childrenWidgets.add(pw.SizedBox(height: 6));
+                          childrenWidgets.add(pw.Container(
+                            padding: const pw.EdgeInsets.all(10),
+                            decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(6)),
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                pw.Text('Filters — Pool: $selectedPoolFilter | Currency: $selectedCurrencyFilter | Label: $selectedLabelFilter', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                                pw.SizedBox(height: 6),
+                                pw.Row(
+                                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    pw.Text('Total Income: \$${totalIncome.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
+                                    pw.Text('Total Expenses: \$${totalExpense.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
+                                    pw.Text('Net Balance: \$${netBalance.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF582F95))),
+                                  ],
+                                ),
+                              ],
                             ),
-                            pw.SizedBox(height: 16),
-                          ],
+                          ));
+                          childrenWidgets.add(pw.SizedBox(height: 14));
+                        }
 
-                          if (includeCategoryChart) ...[
-                            pw.Text('2. Label Analytics and Charts', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
-                            pw.SizedBox(height: 8),
-                            pw.Container(
-                              height: 60,
-                              alignment: pw.Alignment.center,
-                              decoration: pw.BoxDecoration(
-                                color: PdfColors.grey100,
-                                borderRadius: pw.BorderRadius.circular(6),
-                              ),
-                              child: pw.Text('[Label Analytics and Charts Module]', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
-                            ),
-                            pw.SizedBox(height: 16),
-                          ],
+                        if (includeFutureMetricsCard) {
+                          childrenWidgets.add(pw.Text('• Future Metrics & Scheduled Flow', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
+                          childrenWidgets.add(pw.SizedBox(height: 6));
+                          childrenWidgets.add(pw.Container(height: 25, alignment: pw.Alignment.centerLeft, child: pw.Text('[Future metrics parameters and prognosis included]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
+                          childrenWidgets.add(pw.SizedBox(height: 14));
+                        }
 
-                          if (includeOwnerBreakdown) ...[
-                            pw.Text('3. Owner Breakdown', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
-                            pw.SizedBox(height: 8),
-                            pw.Container(
-                              height: 60,
-                              alignment: pw.Alignment.center,
-                              decoration: pw.BoxDecoration(
-                                color: PdfColors.grey100,
-                                borderRadius: pw.BorderRadius.circular(6),
-                              ),
-                              child: pw.Text('[Owner Breakdown Module]', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
-                            ),
-                            pw.SizedBox(height: 16),
-                          ],
+                        if (includeSavingsGoalsCard || includeBudgetCard) {
+                          childrenWidgets.add(pw.Text('• Savings Goals & Budget Status', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
+                          childrenWidgets.add(pw.SizedBox(height: 6));
+                          childrenWidgets.add(pw.Container(height: 25, alignment: pw.Alignment.centerLeft, child: pw.Text('[Goals and budget progress parameters included]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
+                          childrenWidgets.add(pw.SizedBox(height: 14));
+                        }
 
-                          if (includeTransactionTable) ...[
-                            pw.Text('4. Detailed Zaznams Table', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))),
-                            pw.SizedBox(height: 8),
-                            pw.Table(
+                        if (includeBarChart) {
+                          childrenWidgets.add(pw.Text('• Visual Chart: Bar Chart (Income vs Expenses)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
+                          childrenWidgets.add(pw.SizedBox(height: 4));
+                          childrenWidgets.add(pw.Container(height: 45, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.circular(6)), child: pw.Text('[Bar Chart Rendering]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
+                          childrenWidgets.add(pw.SizedBox(height: 10));
+                        }
+
+                        if (includePieChart) {
+                          childrenWidgets.add(pw.Text('• Visual Chart: Pie Chart (Expenses by Label)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
+                          childrenWidgets.add(pw.SizedBox(height: 4));
+                          childrenWidgets.add(pw.Container(height: 45, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.circular(6)), child: pw.Text('[Pie Chart Rendering]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
+                          childrenWidgets.add(pw.SizedBox(height: 10));
+                        }
+
+                        if (includeLineChart) {
+                          childrenWidgets.add(pw.Text('• Visual Chart: Liquid Trend Line Chart', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
+                          childrenWidgets.add(pw.SizedBox(height: 4));
+                          childrenWidgets.add(pw.Container(height: 45, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.circular(6)), child: pw.Text('[Line Chart Rendering]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
+                          childrenWidgets.add(pw.SizedBox(height: 10));
+                        }
+
+                        if (includeTransactionTableHistory) {
+                          childrenWidgets.add(pw.SizedBox(height: 6));
+                          childrenWidgets.add(pw.Text('• Zaznam History (${filteredTxs.length} Transactions)', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
+                          childrenWidgets.add(pw.SizedBox(height: 6));
+                          
+                          if (filteredTxs.isEmpty) {
+                            childrenWidgets.add(pw.Text('No transactions found for the selected timeframe and filters.', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)));
+                          } else {
+                            childrenWidgets.add(pw.Table(
                               border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
                               children: [
                                 pw.TableRow(
                                   decoration: const pw.BoxDecoration(color: PdfColors.grey200),
                                   children: [
-                                    pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('Date', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
-                                    pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('Description', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
-                                    pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('Pool', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
-                                    pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('Amount', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Date', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
+                                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Description', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
+                                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Owner', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
+                                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Pool', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
+                                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Amount', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
                                   ],
                                 ),
-                                pw.TableRow(
-                                  children: [
-                                    pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('2026-10-01', style: const pw.TextStyle(fontSize: 9))),
-                                    pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('Sample Zaznam Record', style: const pw.TextStyle(fontSize: 9))),
-                                    pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('Checking', style: const pw.TextStyle(fontSize: 9))),
-                                    pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('\$120.00', style: const pw.TextStyle(fontSize: 9))),
-                                  ],
-                                ),
+                                ...filteredTxs.map((tx) {
+                                  final dateStr = tx.createdAt.split('T')[0];
+                                  return pw.TableRow(
+                                    children: [
+                                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(dateStr, style: const pw.TextStyle(fontSize: 8))),
+                                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(tx.description, style: const pw.TextStyle(fontSize: 8))),
+                                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(tx.owner, style: const pw.TextStyle(fontSize: 8))),
+                                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(tx.pool, style: const pw.TextStyle(fontSize: 8))),
+                                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('${tx.type == 'expense' ? '-' : '+'}\$${tx.amount.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 8, color: tx.type == 'expense' ? PdfColors.red700 : PdfColors.green700))),
+                                    ],
+                                  );
+                                }),
                               ],
-                            ),
-                          ],
-                        ];
+                            ));
+                          }
+                        }
+
+                        return childrenWidgets;
                       },
                     ),
                   );
 
-                  final now = DateTime.now();
-                  String timeCode = selectedTimeframe;
-                  if (selectedTimeframe == 'this_month') {
-                    timeCode = '${now.month.toString().padLeft(2, '0')}.${now.year}';
-                  } else if (selectedTimeframe == 'last_month') {
-                    final lastMonthDate = DateTime(now.year, now.month - 1, 1);
-                    timeCode = '${lastMonthDate.month.toString().padLeft(2, '0')}.${lastMonthDate.year}';
-                  } else if (selectedTimeframe == 'ytd') {
-                    timeCode = '${now.year}';
-                  }
-
-                  final fileName = 'ZaznamityReport_$timeCode.pdf';
+                  final dateStamp = '${customStartDate.year}${customStartDate.month.toString().padLeft(2, '0')}${customStartDate.day.toString().padLeft(2, '0')}_to_${customEndDate.year}${customEndDate.month.toString().padLeft(2, '0')}${customEndDate.day.toString().padLeft(2, '0')}';
+                  final fileName = 'ZaznamityReport_$dateStamp.pdf';
 
                   Directory? directory;
                   if (Platform.isAndroid) {
@@ -520,9 +718,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   final savedFile = File('${directory!.path}/$fileName');
                   await savedFile.writeAsBytes(await pdfDoc.save());
 
+                  await _loadSavedReports();
+
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Saved automatically to Downloads: $fileName')),
+                    SnackBar(content: Text('Report saved to Downloads & Log: $fileName (${filteredTxs.length} transactions included)')),
                   );
 
                 } catch (e) {
@@ -532,7 +732,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   );
                 }
               },
-              child: const Text('Save PDF Report'),
+              child: const Text('Generate & Save PDF'),
             ),
           ],
         ),
@@ -1236,11 +1436,24 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           controller: _pinController,
                           keyboardType: TextInputType.number,
                           maxLength: 4,
-                          obscureText: true,
-                          decoration: const InputDecoration(
+                          obscureText: !_isPinVisible,
+                          decoration: InputDecoration(
                             labelText: 'Set 4-Digit PIN',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                            border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
                             isDense: true,
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _isPinVisible ? Icons.visibility_off : Icons.visibility,
+                                size: 18,
+                                color: const Color(0xFF64748B),
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _isPinVisible = !_isPinVisible;
+                                });
+                              },
+                              tooltip: _isPinVisible ? 'Hide PIN' : 'Show PIN',
+                            ),
                           ),
                           onChanged: (val) async {
                             if (val.length == 4) {
@@ -1318,15 +1531,15 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               // ==========================================
               _buildMainCategoryGroup(
                 title: 'Data Management & System',
-                subtitle: 'Reports, CSV imports, and zone actions',
+                subtitle: 'Reports, logs, CSV imports, and zone actions',
                 children: [
                   _buildSubSectionCard(
-                    title: 'Zaznamity Reports',
-                    subtitle: 'Generate PDF Financial Reports',
+                    title: 'Zaznamity Reports & Created Log',
+                    subtitle: 'Generate PDF reports and manage previous logs',
                     children: [
                       const Text(
-                        'Generate customized PDF Zaznamity Reports by selecting your preferred timeframe, pools, charts and more.\n'
-                        'Reports are saved automatically to your device\'s Downloads folder.',
+                        'Generate flexible customized PDF reports with custom date ranges, drill-down filters (owners, pools, labels, currencies), custom card metrics, checkmark chart selections, and full transaction history lists.\n\n'
+                        'Previously generated reports are logged below and can be opened directly from within the app.',
                         style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
                       ),
                       const SizedBox(height: 12),
@@ -1341,9 +1554,39 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           ),
                           onPressed: _showReportConfigModal,
                           icon: const Icon(Icons.picture_as_pdf, size: 18),
-                          label: const Text('Configure Report', style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: const Text('Configure & Generate Report', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
+                      const SizedBox(height: 16),
+                      const Text('Created Reports Log', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                      const SizedBox(height: 6),
+                      _savedReportsList.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8.0),
+                              child: Text('No saved reports found in local storage.', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                            )
+                          : ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 180),
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: _savedReportsList.length,
+                                itemBuilder: (context, index) {
+                                  final file = _savedReportsList[index];
+                                  final fileName = file.uri.pathSegments.last;
+                                  return ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    dense: true,
+                                    leading: const Icon(Icons.description, size: 16, color: Color(0xFF582F95)),
+                                    title: Text(fileName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)), overflow: TextOverflow.ellipsis),
+                                    trailing: TextButton(
+                                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 24)),
+                                      onPressed: () => _openReportFile(file),
+                                      child: const Text('Open', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
                     ],
                   ),
                   _buildSubSectionCard(
