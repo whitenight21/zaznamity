@@ -1,5 +1,8 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models/transaction_model.dart';
 
 class FutureMetricsCard extends StatefulWidget {
   final List<String> owners;
@@ -8,6 +11,7 @@ class FutureMetricsCard extends StatefulWidget {
   final double totalFutureFlow;
   final Map<String, double> prognosisByOwner;
   final double totalPrognosis;
+  final List<TransactionModel> transactions;
   
   // Date filter parameters
   final DateTime? startDate;
@@ -27,6 +31,7 @@ class FutureMetricsCard extends StatefulWidget {
     required this.totalFutureFlow,
     required this.prognosisByOwner,
     required this.totalPrognosis,
+    required this.transactions,
     this.startDate,
     this.endDate,
     this.onDateRangeChanged,
@@ -62,6 +67,64 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
   String _formatCurrency(double amount) {
     final format = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
     return format.format(amount);
+  }
+
+  Map<String, double> _calculateBurnAndSavingsRate() {
+    double totalIncome = 0;
+    double totalExpense = 0;
+    final now = DateTime.now();
+    final pastLimit = now.subtract(const Duration(days: 90)); // 3-month baseline
+
+    for (var tx in widget.transactions) {
+      if (tx.isConfirmed != 1) continue;
+      if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
+
+      final dt = DateTime.tryParse(tx.createdAt) ?? now;
+      if (dt.isAfter(pastLimit)) {
+        if (tx.type == 'income') totalIncome += tx.amount;
+        if (tx.type == 'expense') totalExpense += tx.amount;
+      }
+    }
+
+    double monthlyBurn = totalExpense > 0 ? (totalExpense / 3) : 0.0;
+    double monthlyIncome = totalIncome > 0 ? (totalIncome / 3) : 0.0;
+    double savingsRate = monthlyIncome > 0 ? ((monthlyIncome - monthlyBurn) / monthlyIncome) * 100 : 0.0;
+
+    return {
+      'burnRate': monthlyBurn,
+      'savingsRate': savingsRate.clamp(-100.0, 100.0),
+    };
+  }
+
+  void _showMetricInfo(BuildContext context, String title, String explanation) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded, color: Color(0xFF582F95)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)))),
+          ],
+        ),
+        content: Text(
+          explanation,
+          style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF582F95),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickDateRange(BuildContext context) async {
@@ -112,6 +175,10 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         double currentPrognosis = _selectedOwner == 'All Owners'
             ? widget.totalPrognosis
             : (widget.prognosisByOwner[_selectedOwner] ?? 0.0);
+
+        final burnAndSavings = _calculateBurnAndSavingsRate();
+        final monthlyBurn = burnAndSavings['burnRate'] ?? 0.0;
+        final savingsRate = burnAndSavings['savingsRate'] ?? 0.0;
 
         final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
 
@@ -320,7 +387,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Metric Boxes Row
+              // Metric Boxes Rows (Future Flow & Prognosis)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -331,6 +398,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       amount: currentFutureFlow,
                       amountColor: currentFutureFlow >= 0 ? const Color(0xFF10B981) : const Color(0xFFDC2626),
                       width: boxWidth,
+                      infoExplanation: 'Future Flow calculates the net sum of all scheduled incoming and outgoing transactions (income minus expenses) dated after today.',
                     ),
                   ),
                   SizedBox(
@@ -340,6 +408,34 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       amount: currentPrognosis,
                       amountColor: const Color(0xFF000000),
                       width: boxWidth,
+                      infoExplanation: 'Prognosis estimates your projected balance trajectory over time by combining current liquid funds with upcoming future cashflows.',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Additional Metric Boxes (Burn Rate & Savings Rate)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: _buildMetricBox(
+                      title: 'MONTHLY BURN RATE',
+                      amount: monthlyBurn,
+                      amountColor: const Color(0xFFDC2626),
+                      width: boxWidth,
+                      infoExplanation: 'Monthly Burn Rate represents your average monthly baseline spending calculated over a rolling 3-month period.',
+                    ),
+                  ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: _buildSavingsRateBox(
+                      title: 'SAVINGS RATE',
+                      savingsRate: savingsRate,
+                      width: boxWidth,
+                      infoExplanation: 'Savings Rate shows the exact percentage of your monthly income that you successfully retain rather than spend, based on the last 3 months.',
                     ),
                   ),
                 ],
@@ -356,20 +452,36 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     required double amount,
     required Color amountColor,
     required double width,
+    required String infoExplanation,
   }) {
     return SizedBox(
       width: width,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w900,
-              color: Colors.grey.shade600,
-              letterSpacing: 0.6,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.grey.shade600,
+                    letterSpacing: 0.6,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              InkWell(
+                onTap: () => _showMetricInfo(context, title, infoExplanation),
+                child: Padding(
+                  padding: const EdgeInsets.all(2.0),
+                  child: Icon(Icons.info_outline_rounded, size: 13, color: Colors.grey.shade500),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 2),
           FittedBox(
@@ -381,6 +493,59 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
                 color: amountColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSavingsRateBox({
+    required String title,
+    required double savingsRate,
+    required double width,
+    required String infoExplanation,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.grey.shade600,
+                    letterSpacing: 0.6,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              InkWell(
+                onTap: () => _showMetricInfo(context, title, infoExplanation),
+                child: Padding(
+                  padding: const EdgeInsets.all(2.0),
+                  child: Icon(Icons.info_outline_rounded, size: 13, color: Colors.grey.shade500),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '${savingsRate.toStringAsFixed(1)}%',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: savingsRate >= 20 ? const Color.fromARGB(255, 3, 138, 16) : const Color.fromARGB(255, 255, 127, 39),
               ),
             ),
           ),

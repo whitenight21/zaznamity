@@ -1,15 +1,19 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/transaction_model.dart';
 
 class SummaryMetricsCard extends StatefulWidget {
   final List<String> owners;
   final String? selectedOwner;
-  final Map<String, Map<String, double>> poolTotalsByOwner;
-  final Map<String, double> totalPoolTotals;
-  final Map<String, double> liquidNetByOwner;
-  final double totalLiquidNet;
-  final Map<String, Map<String, double>> ownerBreakdownForLiquidNet;
+  final Map<String, Map<String, Map<String, double>>> poolTotalsByCurrencyAndOwner;
+  final Map<String, Map<String, double>> totalPoolTotalsByCurrency;
+  final Map<String, Map<String, double>> liquidNetByCurrencyAndOwner;
+  final Map<String, Map<String, double>> totalLiquidNetByCurrency;
+  final Map<String, Map<String, Map<String, double>>> ownerBreakdownByCurrency;
+  final List<TransactionModel> transactions;
   final bool isWide;
   final VoidCallback? onToggleWidth;
   final VoidCallback? onHide;
@@ -18,11 +22,12 @@ class SummaryMetricsCard extends StatefulWidget {
     super.key,
     required this.owners,
     this.selectedOwner,
-    required this.poolTotalsByOwner,
-    required this.totalPoolTotals,
-    required this.liquidNetByOwner,
-    required this.totalLiquidNet,
-    required this.ownerBreakdownForLiquidNet,
+    required this.poolTotalsByCurrencyAndOwner,
+    required this.totalPoolTotalsByCurrency,
+    required this.liquidNetByCurrencyAndOwner,
+    required this.totalLiquidNetByCurrency,
+    required this.ownerBreakdownByCurrency,
+    required this.transactions,
     this.isWide = false,
     this.onToggleWidth,
     this.onHide,
@@ -106,21 +111,76 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     }
   }
 
+  double _calculateMonthlyExpenses(String currencyCode) {
+    final now = DateTime.now();
+    final pastLimit = now.subtract(const Duration(days: 90)); // 3-month rolling average
+    double totalExpense = 0;
+    int monthsCount = 3;
+
+    for (var tx in widget.transactions) {
+      if (tx.isConfirmed != 1 || tx.type != 'expense') continue;
+      String curr = tx.currencyCode.isNotEmpty ? tx.currencyCode : _primaryCurrency;
+      if (curr != currencyCode) continue;
+      if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
+
+      final dt = DateTime.tryParse(tx.createdAt) ?? now;
+      if (dt.isAfter(pastLimit)) {
+        totalExpense += tx.amount;
+      }
+    }
+    return totalExpense > 0 ? (totalExpense / monthsCount) : 1.0;
+  }
+
+  void _showMetricInfo(BuildContext context, String title, String explanation) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded, color: Color(0xFF582F95)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)))),
+          ],
+        ),
+        content: Text(
+          explanation,
+          style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF582F95),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCurrencySection(String currencyCode, double availableWidth, double boxWidth, double fullWidth) {
     final flag = _currencyFlags[currencyCode] ?? '';
     
+    final totalPoolsForCurr = widget.totalPoolTotalsByCurrency[currencyCode] ?? {};
+    final ownerPoolsMap = widget.poolTotalsByCurrencyAndOwner[currencyCode] ?? {};
+    final liquidNetCurrMap = widget.liquidNetByCurrencyAndOwner[currencyCode] ?? {};
+    final breakdownCurrMap = widget.ownerBreakdownByCurrency[currencyCode] ?? {};
+
     Map<String, double> currentPools;
     double currentLiquidNet;
     List<Widget> wrapSubtitles = [];
 
-    // Filter pools to only include those with non-zero asset allocations for this currency context
     if (_selectedOwner == 'All Owners') {
       currentPools = Map.fromEntries(
-        widget.totalPoolTotals.entries.where((e) => e.value != 0.0)
+        totalPoolsForCurr.entries.where((e) => e.value != 0.0)
       );
-      currentLiquidNet = widget.totalLiquidNet;
+      currentLiquidNet = widget.totalLiquidNetByCurrency[currencyCode]?['total'] ?? 0.0;
       
-      wrapSubtitles = widget.ownerBreakdownForLiquidNet.entries.map((e) {
+      wrapSubtitles = breakdownCurrMap.entries.map((e) {
         final val = e.value['liquidNet'] ?? 0;
         return Text(
           '${e.key}: ${_formatCurrency(val, currencyCode)}',
@@ -132,12 +192,15 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         );
       }).toList();
     } else {
-      final ownerPools = widget.poolTotalsByOwner[_selectedOwner] ?? {};
+      final ownerPools = ownerPoolsMap[_selectedOwner] ?? {};
       currentPools = Map.fromEntries(
         ownerPools.entries.where((e) => e.value != 0.0)
       );
-      currentLiquidNet = widget.liquidNetByOwner[_selectedOwner] ?? 0.0;
+      currentLiquidNet = liquidNetCurrMap[_selectedOwner] ?? 0.0;
     }
+
+    final monthlyBurn = _calculateMonthlyExpenses(currencyCode);
+    final emergencyRunwayMonths = monthlyBurn > 0 ? (currentLiquidNet / monthlyBurn) : 0.0;
 
     final poolEntries = currentPools.entries.toList();
     List<List<MapEntry<String, double>>> poolRows = [];
@@ -153,7 +216,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 1st row: Owner Dropdown (Left) & Center-aligned Currency Header with Flag (Right) with 1.5x Sizing
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -198,13 +260,23 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                 height: 48,
                 alignment: Alignment.center,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text(
-                  '$flag  $currencyCode',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF582F95),
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      flag,
+                      style: const TextStyle(fontSize: 28),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      currencyCode,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF582F95),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -212,7 +284,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         ),
         const SizedBox(height: 14),
 
-        // 2nd row: Liquid net (centered) - unboxed
         Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -235,12 +306,37 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                   color: Color(0xFF582F95),
                 ),
               ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '🛡️ Emergency Runway: ${emergencyRunwayMonths.toStringAsFixed(1)} mos',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: emergencyRunwayMonths >= 6 ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () => _showMetricInfo(
+                      context,
+                      'Emergency Runway',
+                      'Emergency Runway estimates how many months of baseline living expenses your total liquid net worth can support, based on your rolling 3-month average monthly expenses.',
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(2.0),
+                      child: Icon(Icons.info_outline_rounded, size: 13, color: Colors.grey.shade500),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
         const SizedBox(height: 10),
 
-        // 3rd row: All owners liquid nets
         if (_selectedOwner != 'All Owners') ...[
           Center(
             child: Text(
@@ -264,7 +360,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         ],
         const SizedBox(height: 16),
 
-        // 4th to 6th rows (Pools Breakdown rows displaying only active pool assets)
         ...poolRows.map((rowEntries) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
@@ -320,7 +415,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Top Row: Title & Action Buttons
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -383,7 +477,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Render active currencies with purple dividing lines between them
               for (int i = 0; i < activeCurrencies.length; i++) ...[
                 if (i > 0) ...[
                   const Padding(

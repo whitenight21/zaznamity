@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
 
@@ -17,6 +18,7 @@ class TransactionHistoryCard extends StatefulWidget {
   final Set<int>? selectedLabelIds;
   final String? selectedOwner;
   final String? selectedPool;
+  final Set<String>? selectedPools;
   final String? selectedCurrency;
   final String? selectedType;
   final VoidCallback? onSelectStartDate;
@@ -25,6 +27,7 @@ class TransactionHistoryCard extends StatefulWidget {
   final ValueChanged<Set<int>>? onLabelsChanged;
   final ValueChanged<String?>? onOwnerChanged;
   final ValueChanged<String?>? onPoolChanged;
+  final ValueChanged<Set<String>>? onPoolsChanged;
   final ValueChanged<String?>? onCurrencyChanged;
   final ValueChanged<String?>? onTypeChanged;
   final VoidCallback? onClearDateFilter;
@@ -48,6 +51,7 @@ class TransactionHistoryCard extends StatefulWidget {
     this.selectedLabelIds,
     this.selectedOwner,
     this.selectedPool,
+    this.selectedPools,
     this.selectedCurrency,
     this.selectedType,
     this.onSelectStartDate,
@@ -56,6 +60,7 @@ class TransactionHistoryCard extends StatefulWidget {
     this.onLabelsChanged,
     this.onOwnerChanged,
     this.onPoolChanged,
+    this.onPoolsChanged,
     this.onCurrencyChanged,
     this.onTypeChanged,
     this.onClearDateFilter,
@@ -72,17 +77,20 @@ class TransactionHistoryCard extends StatefulWidget {
 }
 
 class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
-  String _selectedLimit = '25';
+  String _selectedLimit = '50';
+  final TextEditingController _minAmountController = TextEditingController();
+  final TextEditingController _maxAmountController = TextEditingController();
   
-  // Internal state fallbacks for seamless dropdown interactivity
+  // Internal state fallbacks for seamless dropdown interactivity & clear all functionality
   late Set<int> _localSelectedLabels = {};
+  late Set<String> _localSelectedPools = {};
   String? _localOwner;
-  String? _localPool;
   String? _localCurrency;
   String? _localType;
   DateTime? _localStartDate;
   DateTime? _localEndDate;
   bool _isInitialized = false;
+  List<String> _activeCurrencies = ['USD'];
 
   final Map<String, String> _currencyFlags = {
     'USD': '🇺🇸',
@@ -100,20 +108,44 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
   @override
   void initState() {
     super.initState();
+    _loadCurrencyPrefs();
     _initDefaults();
+  }
+
+  Future<void> _loadCurrencyPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    final sec1 = prefs.getString('secondaryCurrency1');
+    final sec2 = prefs.getString('secondaryCurrency2');
+    final sec3 = prefs.getString('secondaryCurrency3');
+
+    List<String> currencies = [primary];
+    if (sec1 != null && sec1.isNotEmpty) currencies.add(sec1);
+    if (sec2 != null && sec2.isNotEmpty) currencies.add(sec2);
+    if (sec3 != null && sec3.isNotEmpty) currencies.add(sec3);
+
+    if (mounted) {
+      setState(() {
+        _activeCurrencies = currencies.toSet().toList();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _minAmountController.dispose();
+    _maxAmountController.dispose();
+    super.dispose();
   }
 
   void _initDefaults() {
     if (_isInitialized) return;
     _localOwner = widget.selectedOwner;
-    _localPool = widget.selectedPool;
     _localCurrency = widget.selectedCurrency;
     _localType = widget.selectedType;
     
-    // Default date range to today if not provided
-    final now = DateTime.now();
-    _localStartDate = widget.startDate ?? DateTime(now.year, now.month, now.day);
-    _localEndDate = widget.endDate ?? DateTime(now.year, now.month, now.day, 23, 59, 59);
+    _localStartDate = widget.startDate;
+    _localEndDate = widget.endDate;
 
     if (widget.selectedLabelIds != null) {
       _localSelectedLabels = Set.from(widget.selectedLabelIds!);
@@ -122,7 +154,39 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     } else {
       _localSelectedLabels = widget.labels.map((l) => l.id).toSet();
     }
+
+    if (widget.selectedPools != null) {
+      _localSelectedPools = Set.from(widget.selectedPools!);
+    } else if (widget.selectedPool != null) {
+      _localSelectedPools = {widget.selectedPool!};
+    } else {
+      _localSelectedPools = widget.pools.toSet();
+    }
+
     _isInitialized = true;
+  }
+
+  void _clearAllFilters() {
+    setState(() {
+      _localOwner = null;
+      _localCurrency = null;
+      _localType = null;
+      _localStartDate = null;
+      _localEndDate = null;
+      _minAmountController.clear();
+      _maxAmountController.clear();
+      _localSelectedLabels = widget.labels.map((l) => l.id).toSet();
+      _localSelectedPools = widget.pools.toSet();
+    });
+
+    if (widget.onOwnerChanged != null) widget.onOwnerChanged!(null);
+    if (widget.onPoolChanged != null) widget.onPoolChanged!(null);
+    if (widget.onPoolsChanged != null) widget.onPoolsChanged!(_localSelectedPools);
+    if (widget.onCurrencyChanged != null) widget.onCurrencyChanged!(null);
+    if (widget.onTypeChanged != null) widget.onTypeChanged!(null);
+    if (widget.onClearDateFilter != null) widget.onClearDateFilter!();
+    if (widget.onLabelsChanged != null) widget.onLabelsChanged!(_localSelectedLabels);
+    if (widget.onLabelChanged != null) widget.onLabelChanged!(null);
   }
 
   String _getCurrencySymbol(String code) {
@@ -232,6 +296,79 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     );
   }
 
+  void _showPoolsMultiSelectDialog(BuildContext context) {
+    Set<String> tempSelected = Set.from(_localSelectedPools);
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text('Select Pools', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              content: SizedBox(
+                width: 300,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    CheckboxListTile(
+                      title: const Text('Select All', style: TextStyle(fontWeight: FontWeight.bold)),
+                      value: tempSelected.length == widget.pools.length,
+                      onChanged: (val) {
+                        setDialogState(() {
+                          if (val == true) {
+                            tempSelected = widget.pools.toSet();
+                          } else {
+                            tempSelected.clear();
+                          }
+                        });
+                      },
+                    ),
+                    const Divider(),
+                    ...widget.pools.map((pool) {
+                      return CheckboxListTile(
+                        title: Text(pool.toUpperCase()),
+                        value: tempSelected.contains(pool),
+                        onChanged: (val) {
+                          setDialogState(() {
+                            if (val == true) {
+                              tempSelected.add(pool);
+                            } else {
+                              tempSelected.remove(pool);
+                            }
+                          });
+                        },
+                      );
+                    }),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
+                  onPressed: () {
+                    setState(() {
+                      _localSelectedPools = tempSelected;
+                    });
+                    if (widget.onPoolsChanged != null) {
+                      widget.onPoolsChanged!(tempSelected);
+                    }
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final activeStartDate = widget.startDate ?? _localStartDate;
@@ -239,16 +376,21 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     final bool hasDateFilter = activeStartDate != null || activeEndDate != null;
 
     final activeOwner = widget.selectedOwner ?? _localOwner;
-    final activePool = widget.selectedPool ?? _localPool;
     final activeCurrency = widget.selectedCurrency ?? _localCurrency;
     final activeType = widget.selectedType ?? _localType;
+
+    final double? minAmount = double.tryParse(_minAmountController.text);
+    final double? maxAmount = double.tryParse(_maxAmountController.text);
 
     // Filter transactions based on selected criteria
     final filteredTransactions = widget.transactions.where((tx) {
       if (activeOwner != null && tx.owner != activeOwner) return false;
-      if (activePool != null && tx.pool != activePool) return false;
+      if (_localSelectedPools.isNotEmpty && !_localSelectedPools.contains(tx.pool)) return false;
       if (activeCurrency != null && tx.currencyCode != activeCurrency && (tx.currencyCode.isNotEmpty || activeCurrency != 'USD')) return false;
       if (activeType != null && tx.type != activeType) return false;
+
+      if (minAmount != null && tx.amount < minAmount) return false;
+      if (maxAmount != null && tx.amount > maxAmount) return false;
 
       final labelObj = widget.labels.firstWhere(
         (l) => l.id == tx.labelId,
@@ -259,7 +401,10 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       }
 
       final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
-      if (activeStartDate != null && txDate.isBefore(activeStartDate)) return false;
+      if (activeStartDate != null) {
+        final startClean = DateTime(activeStartDate.year, activeStartDate.month, activeStartDate.day);
+        if (txDate.isBefore(startClean)) return false;
+      }
       if (activeEndDate != null) {
         final endOfDay = DateTime(activeEndDate.year, activeEndDate.month, activeEndDate.day, 23, 59, 59);
         if (txDate.isAfter(endOfDay)) return false;
@@ -271,7 +416,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     final int totalCount = filteredTransactions.length;
     int displayLimit = totalCount;
     if (_selectedLimit != 'All') {
-      displayLimit = int.tryParse(_selectedLimit) ?? 25;
+      displayLimit = int.tryParse(_selectedLimit) ?? 50;
     }
     final displayedTransactions = filteredTransactions.take(displayLimit).toList();
 
@@ -280,6 +425,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
         final double availableWidth = constraints.maxWidth;
         final double fullWidth = availableWidth - 48;
         final double boxWidth = (fullWidth - 12) / 2;
+        final double subBoxWidth = (boxWidth - 8) / 2;
 
         return Container(
           padding: const EdgeInsets.all(24),
@@ -457,14 +603,16 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                           activeStartDate != null && activeEndDate != null
                                               ? '${DateFormat('MM/dd').format(activeStartDate)} - ${DateFormat('MM/dd').format(activeEndDate)}'
                                               : 'Select Date Range',
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 11,
-                                            color: Color(0xFF1E293B),
-                                            fontWeight: FontWeight.bold,
+                                            color: hasDateFilter ? const Color(0xFF1E293B) : const Color(0xFF64748B),
+                                            fontWeight: hasDateFilter ? FontWeight.bold : FontWeight.normal,
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
+                                      if (!hasDateFilter)
+                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
                                     ],
                                   ),
                                 ),
@@ -506,7 +654,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: All Labels (Multi-select checkmarks) & All Pools
+              // Row 2: All Labels (Multi-select checkmarks) & All Pools (Multi-select checkmarks)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -554,38 +702,43 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   ),
                   SizedBox(
                     width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.layers_outlined, size: 16, color: Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String?>(
-                                value: activePool,
-                                isDense: true,
-                                isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
-                                items: [
-                                  const DropdownMenuItem<String?>(value: null, child: Text('All Pools')),
-                                  ...widget.pools.map((p) => DropdownMenuItem<String?>(value: p, child: Text(p.toUpperCase()))),
+                    child: InkWell(
+                      onTap: () => _showPoolsMultiSelectDialog(context),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.layers_outlined, size: 16, color: Color(0xFF582F95)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        _localSelectedPools.length == widget.pools.length
+                                            ? 'All Pools'
+                                            : '${_localSelectedPools.length} selected',
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                      ),
+                                    ),
+                                  ),
                                 ],
-                                onChanged: (val) {
-                                  setState(() => _localPool = val);
-                                  if (widget.onPoolChanged != null) widget.onPoolChanged!(val);
-                                },
                               ),
                             ),
-                          ),
-                        ],
+                            const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -631,7 +784,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                 ],
                               ),
                             ),
-                            ...widget.availableCurrencies.map((c) => DropdownMenuItem<String?>(
+                            ..._activeCurrencies.map((c) => DropdownMenuItem<String?>(
                               value: c, 
                               child: Row(
                                 children: [
@@ -690,51 +843,112 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
 
-              // Showing X of Y Zaznams + Limit Selector
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFCBD5E1)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Showing ${displayedTransactions.length} of $totalCount Zaznams',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF582F95),
+              // Row 4: Min Amount, Max Amount (equal box widths) & Clear All Button
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: TextField(
+                      controller: _minAmountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (val) => setState(() {}),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
+                        hintText: 'Min Amount',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
                       ),
                     ),
-                    Row(
+                  ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: Row(
                       children: [
-                        const Text('Show: ', style: TextStyle(fontSize: 11, color: Color(0xFF582F95))),
-                        DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _selectedLimit,
-                            isDense: true,
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95)),
-                            dropdownColor: const Color(0xFFF8FAFC),
-                            items: ['10', '25', '50', '100', 'All']
-                                .map((lim) => DropdownMenuItem(value: lim, child: Text(lim)))
-                                .toList(),
-                            onChanged: (val) {
-                              if (val != null) setState(() => _selectedLimit = val);
-                            },
+                        SizedBox(
+                          width: subBoxWidth,
+                          child: TextField(
+                            controller: _maxAmountController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            onChanged: (val) => setState(() {}),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              prefixIcon: const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
+                              hintText: 'Max Amount',
+                              hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: subBoxWidth,
+                          height: 42,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFFDC2626),
+                              side: const BorderSide(color: Color(0xFFFCA5A5)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                            ),
+                            onPressed: _clearAllFilters,
+                            child: const Text('Clear All', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Unboxed Results Count & Limit Header (Matched to Search Card style)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Showing ${displayedTransactions.length} of $totalCount found',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF64748B),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      const Text('Show: ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                      DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedLimit,
+                          isDense: true,
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+                          dropdownColor: Colors.white,
+                          items: ['25', '50', '100', '150', '200', 'All']
+                              .map((lim) => DropdownMenuItem(value: lim, child: Text(lim)))
+                              .toList(),
+                          onChanged: (val) {
+                            if (val != null) setState(() => _selectedLimit = val);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               const Divider(color: Color(0xFFE2E8F0)),
               
               // Transactions ListView

@@ -53,13 +53,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   bool _isLoading = true;
 
   String? _globalSelectedOwner;
-  String? _highlightedCardId; // Tracks card highlight animation
+  String? _highlightedCardId;
 
-  double _totalLiquidNet = 0;
-  Map<String, double> _totalPoolTotals = {};
-  Map<String, Map<String, double>> _poolTotalsByOwner = {};
-  Map<String, double> _liquidNetByOwner = {};
-  Map<String, Map<String, double>> _ownerBreakdownForLiquidNet = {};
+  Map<String, Map<String, Map<String, double>>> _poolTotalsByCurrencyAndOwner = {};
+  Map<String, Map<String, double>> _totalPoolTotalsByCurrency = {};
+  Map<String, Map<String, double>> _liquidNetByCurrencyAndOwner = {};
+  Map<String, Map<String, double>> _totalLiquidNetByCurrency = {};
+  Map<String, Map<String, Map<String, double>>> _ownerBreakdownByCurrency = {};
   
   Map<String, double> _futureFlowByOwner = {};
   double _totalFutureFlow = 0;
@@ -200,9 +200,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final sec3 = prefs.getString('secondaryCurrency3');
 
     List<String> currencies = [primary];
-    if (sec1 != null) currencies.add(sec1);
-    if (sec2 != null) currencies.add(sec2);
-    if (sec3 != null) currencies.add(sec3);
+    if (sec1 != null && sec1.isNotEmpty) currencies.add(sec1);
+    if (sec2 != null && sec2.isNotEmpty) currencies.add(sec2);
+    if (sec3 != null && sec3.isNotEmpty) currencies.add(sec3);
 
     setState(() {
       _availableCurrencies = currencies;
@@ -524,8 +524,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     setState(() {
       _transactions = txs;
       _labels = lbls;
-      _budgets = bdgs;
-      _goals = gls;
+      _budgets = List<Map<String, dynamic>>.from(bdgs);
+      _goals = List<SavingsGoalModel>.from(gls);
       calculateMetrics();
       _isLoading = false;
     });
@@ -539,57 +539,59 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Savings goal created!')));
   }
 
-  Future<void> _handleAddFundsToGoal(int goalId, double amountToAdd, String owner, String fromPool, String goalName) async {
-    final goal = _goals.firstWhere((g) => g.id == goalId);
-    final updatedAmount = goal.currentAmount + amountToAdd;
+  Future<void> _handleAddFundsToGoal(int goalId, double amountToAdd, String owner, String fromPool, String goalName, String currency) async {
+  final goal = _goals.firstWhere((g) => g.id == goalId);
+  final updatedAmount = goal.currentAmount + amountToAdd;
 
-    await DatabaseHelper.instance.updateSavingsGoalCurrentAmount(goalId, updatedAmount);
+  await DatabaseHelper.instance.updateSavingsGoalCurrentAmount(goalId, updatedAmount);
 
-    final labelObj = _labels.firstWhere(
-      (l) => l.name.toLowerCase() == 'goals',
-      orElse: () => _labels.first,
-    );
+  final labelObj = _labels.firstWhere(
+    (l) => l.name.toLowerCase() == 'goals',
+    orElse: () => _labels.first,
+  );
 
-    int transferLabelId = _labels.isNotEmpty ? _labels.first.id : 1;
-    for (var label in _labels) {
-      if (label.name.toLowerCase() == 'transfer') {
-        transferLabelId = label.id;
-        break;
-      }
+  int transferLabelId = _labels.isNotEmpty ? _labels.first.id : 1;
+  for (var label in _labels) {
+    if (label.name.toLowerCase() == 'transfer') {
+      transferLabelId = label.id;
+      break;
     }
-
-    final outboundTx = TransactionModel(
-      description: 'Transfer out to Goal: $goalName',
-      amount: amountToAdd,
-      type: 'expense',
-      pool: fromPool,
-      labelId: transferLabelId,
-      owner: owner,
-      createdAt: DateTime.now().toIso8601String(),
-      isConfirmed: 1,
-      isSavings: 0,
-    );
-
-    final inboundTx = TransactionModel(
-      description: 'Contribution to Goal: $goalName',
-      amount: amountToAdd,
-      type: 'income',
-      pool: 'goals',
-      labelId: labelObj.id,
-      owner: owner,
-      createdAt: DateTime.now().toIso8601String(),
-      isConfirmed: 1,
-      isSavings: 0,
-    );
-
-    await DatabaseHelper.instance.insertTransaction(outboundTx);
-    await DatabaseHelper.instance.insertTransaction(inboundTx);
-
-    await Future.delayed(const Duration(milliseconds: 150));
-    await loadData();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Funds transferred to goal pool successfully!')));
   }
+
+  final outboundTx = TransactionModel(
+    description: 'Transfer out to Goal: $goalName',
+    amount: amountToAdd,
+    type: 'expense',
+    pool: fromPool,
+    labelId: transferLabelId,
+    owner: owner,
+    createdAt: DateTime.now().toIso8601String(),
+    isConfirmed: 1,
+    isSavings: 0,
+    currencyCode: currency,
+  );
+
+  final inboundTx = TransactionModel(
+    description: 'Contribution to Goal: $goalName',
+    amount: amountToAdd,
+    type: 'income',
+    pool: 'goals',
+    labelId: labelObj.id,
+    owner: owner,
+    createdAt: DateTime.now().toIso8601String(),
+    isConfirmed: 1,
+    isSavings: 0,
+    currencyCode: currency,
+  );
+
+  await DatabaseHelper.instance.insertTransaction(outboundTx);
+  await DatabaseHelper.instance.insertTransaction(inboundTx);
+
+  await Future.delayed(const Duration(milliseconds: 150));
+  await loadData();
+  if (!mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Funds transferred to goal pool successfully!')));
+}
 
   Future<void> _deleteSavingsGoal(int id) async {
     final goalToDelete = _goals.firstWhere((g) => g.id == id, orElse: () => _goals.first);
@@ -617,35 +619,42 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   void calculateMetrics() {
     final now = DateTime.now();
-    final activeOwnersForCards = _globalSelectedOwner != null 
-        ? [_globalSelectedOwner!] 
-        : _owners;
+    final activeCurrencies = _availableCurrencies;
 
-    Map<String, Map<String, double>> poolByOwner = {};
-    Map<String, double> totalPools = {};
-    Map<String, double> liquidNetOwner = {};
-    Map<String, Map<String, double>> liquidNetBreakdown = {};
+    Map<String, Map<String, Map<String, double>>> currencyOwnerPools = {};
+    Map<String, Map<String, double>> currencyTotalPools = {};
+    Map<String, Map<String, double>> currencyTotalLiquidNet = {};
+    Map<String, Map<String, double>> currencyOwnerLiquidNet = {};
+    Map<String, Map<String, Map<String, double>>> currencyOwnerBreakdown = {};
+
+    for (var curr in activeCurrencies) {
+      currencyOwnerPools[curr] = {};
+      currencyTotalPools[curr] = {};
+      currencyTotalLiquidNet[curr] = {'total': 0.0};
+      currencyOwnerLiquidNet[curr] = {};
+      currencyOwnerBreakdown[curr] = {};
+
+      for (var owner in _owners) {
+        currencyOwnerPools[curr]![owner] = {};
+        for (var poolKey in _pools.keys) {
+          currencyOwnerPools[curr]![owner]![poolKey] = 0.0;
+        }
+        currencyOwnerLiquidNet[curr]![owner] = 0.0;
+        currencyOwnerBreakdown[curr]![owner] = {'liquidNet': 0.0};
+      }
+      for (var poolKey in _pools.keys) {
+        currencyTotalPools[curr]![poolKey] = 0.0;
+      }
+    }
+
+    double totFuture = 0;
+    double totPrognosis = 0;
     Map<String, double> futureByOwner = {};
     Map<String, double> prognosisByOwnerMap = {};
-
     for (var owner in _owners) {
-      poolByOwner[owner] = {};
-      for (var poolKey in _pools.keys) {
-        poolByOwner[owner]![poolKey] = 0.0;
-      }
-      liquidNetOwner[owner] = 0.0;
-      liquidNetBreakdown[owner] = {'liquidNet': 0.0};
       futureByOwner[owner] = 0.0;
       prognosisByOwnerMap[owner] = 0.0;
     }
-
-    for (var poolKey in _pools.keys) {
-      totalPools[poolKey] = 0.0;
-    }
-
-    double totLiquidNet = 0;
-    double totFuture = 0;
-    double totPrognosis = 0;
 
     for (var t in _transactions) {
       if (_globalSelectedOwner != null && t.owner != _globalSelectedOwner) continue;
@@ -655,6 +664,11 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       final isFuture = txDate.isAfter(now);
       double amount = t.type == 'income' ? t.amount : -t.amount;
       String owner = _owners.contains(t.owner) ? t.owner : (_owners.isNotEmpty ? _owners.first : 'Shared');
+      String curr = t.currencyCode.isNotEmpty ? t.currencyCode : (_availableCurrencies.firstOrNull ?? 'USD');
+
+      if (!currencyTotalPools.containsKey(curr)) {
+        curr = _availableCurrencies.firstOrNull ?? 'USD';
+      }
 
       bool matchesFutureDateRange = true;
       if (isFuture) {
@@ -672,16 +686,16 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         totFuture += amount;
         futureByOwner[owner] = (futureByOwner[owner] ?? 0) + amount;
       } else if (!isFuture) {
-        totalPools[t.pool] = (totalPools[t.pool] ?? 0) + amount;
-        if (poolByOwner.containsKey(owner)) {
-          poolByOwner[owner]![t.pool] = (poolByOwner[owner]![t.pool] ?? 0) + amount;
+        currencyTotalPools[curr]![t.pool] = (currencyTotalPools[curr]![t.pool] ?? 0.0) + amount;
+        if (currencyOwnerPools[curr]!.containsKey(owner)) {
+          currencyOwnerPools[curr]![owner]![t.pool] = (currencyOwnerPools[curr]![owner]![t.pool] ?? 0.0) + amount;
         }
 
         if (_liquidNetPools[t.pool] == true) {
-          totLiquidNet += amount;
-          liquidNetOwner[owner] = (liquidNetOwner[owner] ?? 0) + amount;
-          if (liquidNetBreakdown.containsKey(owner)) {
-            liquidNetBreakdown[owner]!['liquidNet'] = (liquidNetBreakdown[owner]!['liquidNet'] ?? 0) + amount;
+          currencyTotalLiquidNet[curr]!['total'] = (currencyTotalLiquidNet[curr]!['total'] ?? 0.0) + amount;
+          currencyOwnerLiquidNet[curr]![owner] = (currencyOwnerLiquidNet[curr]![owner] ?? 0.0) + amount;
+          if (currencyOwnerBreakdown[curr]!.containsKey(owner)) {
+            currencyOwnerBreakdown[curr]![owner]!['liquidNet'] = (currencyOwnerBreakdown[curr]![owner]!['liquidNet'] ?? 0.0) + amount;
           }
         }
       }
@@ -709,15 +723,18 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       }
     }
 
-    _totalLiquidNet = totLiquidNet;
-    _totalPoolTotals = totalPools;
-    _poolTotalsByOwner = {for (var o in activeOwnersForCards) o: poolByOwner[o] ?? {}};
-    _liquidNetByOwner = {for (var o in activeOwnersForCards) o: liquidNetOwner[o] ?? 0.0};
-    _ownerBreakdownForLiquidNet = {for (var o in activeOwnersForCards) o: liquidNetBreakdown[o] ?? {'liquidNet': 0.0}};
-    _totalFutureFlow = totFuture;
-    _futureFlowByOwner = {for (var o in activeOwnersForCards) o: futureByOwner[o] ?? 0.0};
-    _totalPrognosis = totPrognosis;
-    _prognosisByOwner = {for (var o in activeOwnersForCards) o: prognosisByOwnerMap[o] ?? 0.0};
+    setState(() {
+      _poolTotalsByCurrencyAndOwner = currencyOwnerPools;
+      _totalPoolTotalsByCurrency = currencyTotalPools;
+      _liquidNetByCurrencyAndOwner = currencyOwnerLiquidNet;
+      _totalLiquidNetByCurrency = currencyTotalLiquidNet;
+      _ownerBreakdownByCurrency = currencyOwnerBreakdown;
+
+      _totalFutureFlow = totFuture;
+      _futureFlowByOwner = {for (var o in _owners) o: futureByOwner[o] ?? 0.0};
+      _totalPrognosis = totPrognosis;
+      _prognosisByOwner = {for (var o in _owners) o: prognosisByOwnerMap[o] ?? 0.0};
+    });
   }
 
   Future<void> _deleteBulkTransactions(String mode, {int? year, int? month}) async {
@@ -870,7 +887,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   Future<void> _addBudget(int labelId, double limitAmount, String owner) async {
-    await DatabaseHelper.instance.insertBudget(labelId, limitAmount);
+    await DatabaseHelper.instance.insertBudget(labelId, limitAmount, owner);
     await loadData();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Budget created!')));
@@ -1368,7 +1385,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           pools: _pools.keys.toList(),
           selectedOwner: _globalSelectedOwner,
           onSaveGoal: _handleSaveGoal,
-          onAddFundsToGoal: _handleAddFundsToGoal,
+          onAddFundsToGoal: (goalId, amountToAdd, owner, fromPool, goalName, currency) {
+            _handleAddFundsToGoal(goalId, amountToAdd, owner, fromPool, goalName, currency);
+          },
           onDeleteGoal: _deleteSavingsGoal,
           onCompleteGoal: _completeSavingsGoal,
           isWide: card.isWide,
@@ -1432,11 +1451,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         return SummaryMetricsCard(
           owners: _owners,
           selectedOwner: _globalSelectedOwner ?? 'All Owners',
-          poolTotalsByOwner: _poolTotalsByOwner,
-          totalPoolTotals: _totalPoolTotals,
-          liquidNetByOwner: _liquidNetByOwner,
-          totalLiquidNet: _totalLiquidNet,
-          ownerBreakdownForLiquidNet: _ownerBreakdownForLiquidNet,
+          poolTotalsByCurrencyAndOwner: _poolTotalsByCurrencyAndOwner,
+          totalPoolTotalsByCurrency: _totalPoolTotalsByCurrency,
+          liquidNetByCurrencyAndOwner: _liquidNetByCurrencyAndOwner,
+          totalLiquidNetByCurrency: _totalLiquidNetByCurrency,
+          ownerBreakdownByCurrency: _ownerBreakdownByCurrency,
+          transactions: _transactions,
           isWide: card.isWide,
           onToggleWidth: () => setState(() => card.isWide = !card.isWide),
           onHide: () => setState(() => card.isVisible = false),
@@ -1498,6 +1518,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           totalFutureFlow: _totalFutureFlow,
           prognosisByOwner: _prognosisByOwner,
           totalPrognosis: _totalPrognosis,
+          transactions: _transactions,
           startDate: _futureMetricsStartDate,
           endDate: _futureMetricsEndDate,
           onDateRangeChanged: (start, end) {
@@ -1537,33 +1558,34 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           onHide: () => setState(() => card.isVisible = false),
         );
       case 'new_entry':
-        return NewZaznamCard(
-          labels: _labels,
-          pools: _pools.keys.toList(),
-          owners: _owners,
-          selectedGlobalOwner: _globalSelectedOwner,
-          isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
-          onSubmit: (description, amount, type, labelId, owner, pool, isRecurring, frequency, dayOfMonth, excludedWeekdays, excludedMonths, repeatUntilDate, date, currencyCode) {
-            _handleNewZaznamSubmit(
-              description: description,
-              amount: amount,
-              type: type,
-              labelId: labelId,
-              owner: owner,
-              pool: pool,
-              isRecurring: isRecurring,
-              frequency: frequency,
-              dayOfMonth: dayOfMonth,
-              excludedWeekdays: excludedWeekdays,
-              excludedMonths: excludedMonths,
-              repeatUntilDate: repeatUntilDate,
-              date: date,
-              currencyCode: currencyCode,
-            );
-          },
-        );
+      return NewZaznamCard(
+        labels: _labels,
+        pools: _pools.keys.toList(),
+        owners: _owners,
+        transactions: _transactions, // <-- Added required transactions parameter
+        selectedGlobalOwner: _globalSelectedOwner,
+        isWide: card.isWide,
+        onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+        onHide: () => setState(() => card.isVisible = false),
+        onSubmit: (description, amount, type, labelId, owner, pool, isRecurring, frequency, dayOfMonth, excludedWeekdays, excludedMonths, repeatUntilDate, date, currencyCode) {
+          _handleNewZaznamSubmit(
+            description: description,
+            amount: amount,
+            type: type,
+            labelId: labelId,
+            owner: owner,
+            pool: pool,
+            isRecurring: isRecurring,
+            frequency: frequency,
+            dayOfMonth: dayOfMonth,
+            excludedWeekdays: excludedWeekdays,
+            excludedMonths: excludedMonths,
+            repeatUntilDate: repeatUntilDate,
+            date: date,
+            currencyCode: currencyCode,
+          );
+        },
+      );
       case 'transfer':
         return TransferFundsCard(
           pools: _pools.keys.toList(),
@@ -2073,6 +2095,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
+      backgroundColor: const Color(0xFF1E1333), // <-- Set background color here
       resizeToAvoidBottomInset: false,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

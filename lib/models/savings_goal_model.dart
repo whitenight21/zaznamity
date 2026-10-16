@@ -4,6 +4,7 @@ class SavingsGoalModel {
   final double targetAmount;
   final double currentAmount;
   final String? targetDate;
+  final String owner;
 
   SavingsGoalModel({
     this.id,
@@ -11,6 +12,7 @@ class SavingsGoalModel {
     required this.targetAmount,
     this.currentAmount = 0.0,
     this.targetDate,
+    this.owner = 'Shared',
   });
 
   Map<String, dynamic> toMap() {
@@ -20,6 +22,7 @@ class SavingsGoalModel {
       'target_amount': targetAmount,
       'current_amount': currentAmount,
       'target_date': targetDate,
+      'owner': owner,
     };
   }
 
@@ -30,6 +33,7 @@ class SavingsGoalModel {
       targetAmount: (map['target_amount'] as num?)?.toDouble() ?? 0.0,
       currentAmount: (map['current_amount'] as num?)?.toDouble() ?? 0.0,
       targetDate: map['target_date'] as String?,
+      owner: map['owner'] as String? ?? 'Shared',
     );
   }
 
@@ -39,6 +43,7 @@ class SavingsGoalModel {
     double? targetAmount,
     double? currentAmount,
     String? targetDate,
+    String? owner,
   }) {
     return SavingsGoalModel(
       id: id ?? this.id,
@@ -46,6 +51,7 @@ class SavingsGoalModel {
       targetAmount: targetAmount ?? this.targetAmount,
       currentAmount: currentAmount ?? this.currentAmount,
       targetDate: targetDate ?? this.targetDate,
+      owner: owner ?? this.owner,
     );
   }
 }

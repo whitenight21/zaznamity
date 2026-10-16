@@ -1,6 +1,5 @@
 // ignore_for_file: deprecated_member_use
 
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -45,7 +44,7 @@ class IncomeExpensesByLabelsCard extends StatefulWidget {
 
 class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard> {
   String chartDisplayMode = 'Show Expenses';
-  String chartType = 'Bar'; // 'Bar', 'Donut', or '3D Donut'
+  String chartType = 'Bar'; // 'Bar', 'Donut', or 'Treemap'
   int? touchedPieIndex;
   
   final Set<int> selectedIncomeLabels = {};
@@ -60,6 +59,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   double _cachedActiveModeTotalSum = 0;
   double _cachedMaxTopAmount = 1.0;
   double _cachedMaxChartAmount = 1.0;
+  double _cachedFixedExpenses = 0;
+  double _cachedDiscretionaryExpenses = 0;
+  Map<String, double> _cachedLabelMoMDelta = {};
 
   int? _lastTxLength;
   String? _lastOwner;
@@ -83,6 +85,18 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
         _localOwner = widget.selectedOwner;
       });
     }
+  }
+
+  bool _isFixedExpenseLabel(String labelName) {
+    final lower = labelName.toLowerCase();
+    return lower.contains('rent') ||
+        lower.contains('housing') ||
+        lower.contains('utility') ||
+        lower.contains('utilities') ||
+        lower.contains('insurance') ||
+        lower.contains('loan') ||
+        lower.contains('mortgage') ||
+        lower.contains('bill');
   }
 
   void _computeDataIfNeeded() {
@@ -117,7 +131,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
 
     double totalIncome = 0;
     double totalExpenses = 0;
+    double fixedExp = 0;
+    double discExp = 0;
     final Map<String, double> labelTotals = {};
+    final Map<String, double> previousPeriodLabelTotals = {};
 
     for (var tx in filteredTransactions) {
       if (tx.isConfirmed != 1) continue;
@@ -126,6 +143,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
         (l) => l.id == tx.labelId,
         orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
       );
+
+      final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+      final isCurrentPeriod = (widget.startDate == null || !txDate.isBefore(widget.startDate!));
 
       if (tx.type == 'income') {
         if (!selectedIncomeLabels.contains(labelObj.id)) continue;
@@ -136,18 +156,41 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       } else {
         if (!selectedExpenseLabels.contains(labelObj.id)) continue;
         totalExpenses += tx.amount;
+        if (_isFixedExpenseLabel(labelObj.name)) {
+          fixedExp += tx.amount;
+        } else {
+          discExp += tx.amount;
+        }
+
         if (chartDisplayMode == 'Show Expenses') {
-          labelTotals[labelObj.name] = (labelTotals[labelObj.name] ?? 0) + tx.amount;
+          if (isCurrentPeriod) {
+            labelTotals[labelObj.name] = (labelTotals[labelObj.name] ?? 0) + tx.amount;
+          } else {
+            previousPeriodLabelTotals[labelObj.name] = (previousPeriodLabelTotals[labelObj.name] ?? 0) + tx.amount;
+          }
         }
       }
     }
+
+    Map<String, double> labelDeltas = {};
+    labelTotals.forEach((label, currentVal) {
+      final prevVal = previousPeriodLabelTotals[label] ?? 0.0;
+      if (prevVal > 0) {
+        labelDeltas[label] = ((currentVal - prevVal) / prevVal) * 100;
+      } else {
+        labelDeltas[label] = currentVal > 0 ? 100.0 : 0.0;
+      }
+    });
 
     final sortedEntries = labelTotals.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
     _cachedTotalIncome = totalIncome;
     _cachedTotalExpenses = totalExpenses;
+    _cachedFixedExpenses = fixedExp;
+    _cachedDiscretionaryExpenses = discExp;
     _cachedSortedEntries = sortedEntries;
+    _cachedLabelMoMDelta = labelDeltas;
     _cachedActiveModeTotalSum = sortedEntries.fold(0.0, (sum, entry) => sum + entry.value);
     _cachedMaxTopAmount = (totalIncome > totalExpenses ? totalIncome : totalExpenses) > 0 
         ? (totalIncome > totalExpenses ? totalIncome : totalExpenses) 
@@ -161,6 +204,34 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     _lastDisplayMode = chartDisplayMode;
     _lastIncomeLabelsKey = incomeLabelsKey;
     _lastExpenseLabelsKey = expenseLabelsKey;
+  }
+
+  void _showInfoModal(BuildContext context, String title, String description) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Color(0xFF582F95)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+          ],
+        ),
+        content: Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4)),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF582F95),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -179,17 +250,20 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     final activeOwner = widget.selectedOwner ?? _localOwner;
     
     final paletteColors = [
-      const Color(0xFF3B82F6),
+      const Color(0xFF582F95),
       const Color(0xFFA855F7),
+      const Color(0xFF2563EB),
+      const Color(0xFF0EA5E9),
       const Color(0xFF10B981),
+      const Color(0xFF22C55E),
       const Color(0xFFF59E0B),
-      const Color(0xFFEC4899),
-      const Color(0xFF06B6D4),
-      const Color(0xFF8B5CF6),
+      const Color(0xFFF97316),
       const Color(0xFFEF4444),
     ];
 
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
+    final double fixedRatio = _cachedTotalExpenses > 0 ? (_cachedFixedExpenses / _cachedTotalExpenses) * 100 : 0.0;
+    final double discRatio = _cachedTotalExpenses > 0 ? (_cachedDiscretionaryExpenses / _cachedTotalExpenses) * 100 : 0.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -282,6 +356,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 16),
 
+              // Row 1: Owner & Date range
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -412,7 +487,185 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+
+              // Row 2: All Labels Picker (Left) & Expense/Income Dropdown (Right)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: InkWell(
+                      onTap: () => _showMultiSelectDialog(
+                        context,
+                        chartDisplayMode == 'Show Income' ? 'Select Income Labels' : 'Select Expense Labels',
+                        widget.labels,
+                        chartDisplayMode == 'Show Income' ? selectedIncomeLabels : selectedExpenseLabels,
+                        (updatedIds) {
+                          setState(() {
+                            if (chartDisplayMode == 'Show Income') {
+                              selectedIncomeLabels.clear();
+                              selectedIncomeLabels.addAll(updatedIds);
+                            } else {
+                              selectedExpenseLabels.clear();
+                              selectedExpenseLabels.addAll(updatedIds);
+                            }
+                          });
+                        },
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        (chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length) == widget.labels.length
+                                            ? 'All Labels'
+                                            : '${chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length} selected',
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: BorderColorHelper.getCachedBorderColor()), // fallback standard border
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.swap_vert_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: chartDisplayMode,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: const [
+                                  DropdownMenuItem(value: 'Show Expenses', child: Text('Expense')),
+                                  DropdownMenuItem(value: 'Show Income', child: Text('Income')),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    setState(() {
+                                      chartDisplayMode = val;
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Fixed vs Discretionary Banner
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'FIXED VS DISCRETIONARY',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
+                        ),
+                        InkWell(
+                          onTap: () => _showInfoModal(
+                            context,
+                            'Fixed vs. Discretionary Spending',
+                            'Separates essential recurring living costs (Fixed: Rent, Utilities, Insurance, Loans) from flexible lifestyle expenses (Discretionary: Dining, Entertainment, Shopping). Maintaining a healthy ratio ensures financial resilience.',
+                          ),
+                          child: const Icon(Icons.info_outline, size: 14, color: Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: fixedRatio > 0 ? fixedRatio.round() : 1,
+                          child: Container(
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF2563EB),
+                              borderRadius: BorderRadius.horizontal(left: Radius.circular(4)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Expanded(
+                          flex: discRatio > 0 ? discRatio.round() : 1,
+                          child: Container(
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFF59E0B),
+                              borderRadius: BorderRadius.horizontal(right: Radius.circular(4)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Fixed: ${currencyFormat.format(_cachedFixedExpenses)} (${fixedRatio.toStringAsFixed(1)}%)',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2563EB)),
+                        ),
+                        Text(
+                          'Discretionary: ${currencyFormat.format(_cachedDiscretionaryExpenses)} (${discRatio.toStringAsFixed(1)}%)',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFD97706)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
 
               Column(
                 children: [
@@ -491,112 +744,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 16),
 
-              // Labels Picker (Left) & Type Dropdown (Right)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: InkWell(
-                      onTap: () => _showMultiSelectDialog(
-                        context,
-                        chartDisplayMode == 'Show Income' ? 'Select Income Labels' : 'Select Expense Labels',
-                        widget.labels,
-                        chartDisplayMode == 'Show Income' ? selectedIncomeLabels : selectedExpenseLabels,
-                        (updatedIds) {
-                          setState(() {
-                            if (chartDisplayMode == 'Show Income') {
-                              selectedIncomeLabels.clear();
-                              selectedIncomeLabels.addAll(updatedIds);
-                            } else {
-                              selectedExpenseLabels.clear();
-                              selectedExpenseLabels.addAll(updatedIds);
-                            }
-                          });
-                        },
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        height: 44,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        (chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length) == widget.labels.length
-                                            ? 'All Labels'
-                                            : '${chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length} selected',
-                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.swap_vert_rounded, size: 16, color: Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: chartDisplayMode,
-                                isDense: true,
-                                isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: const [
-                                  DropdownMenuItem(value: 'Show Expenses', child: Text('Expense')),
-                                  DropdownMenuItem(value: 'Show Income', child: Text('Income')),
-                                ],
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    setState(() {
-                                      chartDisplayMode = val;
-                                    });
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Chart Type Selector moved right below labels/type row, above the graph
+              // Chart Type Selector (Bar, Donut, Treemap)
               Container(
                 height: 38,
                 decoration: BoxDecoration(
@@ -611,7 +759,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         child: Container(
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: chartType == 'Bar' ? const Color(0xFFF8FAFC) : Colors.white,
+                            color: chartType == 'Bar' ? const Color(0xFFF3E8FF) : Colors.white,
                             borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
                           ),
                           child: Text(
@@ -631,7 +779,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         child: Container(
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: chartType == 'Donut' ? const Color(0xFFF8FAFC) : Colors.white,
+                            color: chartType == 'Donut' ? const Color(0xFFF3E8FF) : Colors.white,
                           ),
                           child: Text(
                             'Donut',
@@ -646,19 +794,19 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                     ),
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => setState(() => chartType = '3D Donut'),
+                        onTap: () => setState(() => chartType = 'Treemap'),
                         child: Container(
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: chartType == '3D Donut' ? const Color(0xFFF8FAFC) : Colors.white,
+                            color: chartType == 'Treemap' ? const Color(0xFFF3E8FF) : Colors.white,
                             borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
                           ),
                           child: Text(
-                            '3D Donut',
+                            'Treemap',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: chartType == '3D Donut' ? Colors.black : const Color(0xFF64748B),
+                              color: chartType == 'Treemap' ? Colors.black : const Color(0xFF64748B),
                             ),
                           ),
                         ),
@@ -669,6 +817,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 20),
 
+              // Display Content depending on active chartType
               _cachedSortedEntries.isEmpty
                   ? const SizedBox(
                       height: 150,
@@ -684,13 +833,14 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                               final barColor = paletteColors[index % paletteColors.length];
                               final double widthFactor = _cachedMaxChartAmount > 0 ? (entry.value / _cachedMaxChartAmount).clamp(0.02, 1.0) : 0.02;
                               final percentageShare = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
+                              final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
 
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 12.0),
                                 child: Row(
                                   children: [
                                     SizedBox(
-                                      width: 85,
+                                      width: 95,
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.end,
                                         children: [
@@ -704,13 +854,27 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                             ),
                                             overflow: TextOverflow.ellipsis,
                                           ),
-                                          Text(
-                                            '${percentageShare.toStringAsFixed(1)}%',
-                                            style: const TextStyle(
-                                              fontSize: 10,
-                                              color: Color(0xFF64748B),
-                                              fontWeight: FontWeight.w500,
-                                            ),
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.end,
+                                            children: [
+                                              Text(
+                                                '${percentageShare.toStringAsFixed(1)}%',
+                                                style: const TextStyle(
+                                                  fontSize: 10,
+                                                  color: Color(0xFF64748B),
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                '(${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%)',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: delta <= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),
@@ -775,8 +939,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       const Text('\$0', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                      Text('\$${(_cachedMaxChartAmount * 0.5).toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                      Text('\$${_cachedMaxChartAmount.toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                                      Text('\$${(_cachedMaxChartAmount * 0.5).toStringAsFixed(0)}', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                                      Text('\$${_cachedMaxChartAmount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
                                     ],
                                   ),
                                 ],
@@ -784,18 +948,19 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             ),
                           ],
                         )
-                      : chartType == '3D Donut'
+                      : chartType == 'Treemap'
                           ? Column(
                               children: [
-                                SizedBox(
+                                Container(
                                   height: 240,
-                                  width: double.infinity,
-                                  child: CustomPaint(
-                                    painter: _3DGlassDonutChartPainter(
-                                      entries: _cachedSortedEntries,
-                                      totalSum: _cachedActiveModeTotalSum,
-                                      paletteColors: paletteColors,
-                                    ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: _buildProportionalTreemap(_cachedSortedEntries, paletteColors, currencyFormat),
                                   ),
                                 ),
                                 const SizedBox(height: 20),
@@ -807,6 +972,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     final entry = _cachedSortedEntries[index];
                                     final color = paletteColors[index % paletteColors.length];
                                     final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
+                                    final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
 
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -832,8 +998,16 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                                           ),
                                           Text(
-                                            '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%)',
+                                            '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
                                             style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                          ),
+                                          Text(
+                                            '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: delta <= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -845,7 +1019,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           : Column(
                               children: [
                                 SizedBox(
-                                  height: 220,
+                                  height: 240,
                                   child: PieChart(
                                     PieChartData(
                                       pieTouchData: PieTouchData(
@@ -867,7 +1041,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                       sections: List.generate(_cachedSortedEntries.length, (index) {
                                         final entry = _cachedSortedEntries[index];
                                         final isTouched = index == touchedPieIndex;
-                                        final radius = isTouched ? 65.0 : 55.0;
+                                        final radius = isTouched ? 60.0 : 50.0;
                                         final color = paletteColors[index % paletteColors.length];
                                         final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
 
@@ -876,10 +1050,11 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                           value: entry.value,
                                           title: '${percentage.toStringAsFixed(1)}%',
                                           radius: radius,
+                                          titlePositionPercentageOffset: 1.3,
                                           titleStyle: TextStyle(
-                                            fontSize: isTouched ? 13 : 11,
+                                            fontSize: isTouched ? 12 : 10,
                                             fontWeight: FontWeight.bold,
-                                            color: Colors.white,
+                                            color: Colors.black,
                                           ),
                                         );
                                       }),
@@ -895,6 +1070,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     final entry = _cachedSortedEntries[index];
                                     final color = paletteColors[index % paletteColors.length];
                                     final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
+                                    final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
 
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -920,8 +1096,16 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                                           ),
                                           Text(
-                                            '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%)',
+                                            '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
                                             style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                          ),
+                                          Text(
+                                            '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: delta <= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -932,6 +1116,69 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  /// 2D Proportional Treemap Layout Generator with conditional text visibility
+  Widget _buildProportionalTreemap(
+    List<MapEntry<String, double>> entries,
+    List<Color> paletteColors,
+    NumberFormat currencyFormat,
+  ) {
+    if (entries.isEmpty || _cachedActiveModeTotalSum <= 0) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double width = constraints.maxWidth;
+        final double height = constraints.maxHeight;
+        final nodes = TreemapLayout.layout(entries, _cachedActiveModeTotalSum, paletteColors, width, height);
+
+        return Stack(
+          children: nodes.map((node) {
+            final bool fits = node.rect.width > 55 && node.rect.height > 38;
+
+            return Positioned.fromRect(
+              rect: node.rect,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: node.color.withValues(alpha: 0.28),
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+                child: fits
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            node.label,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E293B),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${node.percentage.toStringAsFixed(1)}%',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF475569),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            );
+          }).toList(),
         );
       },
     );
@@ -1012,138 +1259,93 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   }
 }
 
-/// Custom 3D Glassmorphic Extruded Donut Chart Painter
-class _3DGlassDonutChartPainter extends CustomPainter {
-  final List<MapEntry<String, double>> entries;
-  final double totalSum;
-  final List<Color> paletteColors;
+class BorderColorHelper {
+  static Color getCachedBorderColor() => const Color(0xFFCBD5E1);
+}
 
-  _3DGlassDonutChartPainter({
-    required this.entries,
-    required this.totalSum,
-    required this.paletteColors,
+class TreemapNode {
+  final String label;
+  final double value;
+  final double percentage;
+  final Color color;
+  Rect rect = Rect.zero;
+
+  TreemapNode({
+    required this.label,
+    required this.value,
+    required this.percentage,
+    required this.color,
   });
+}
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (totalSum <= 0 || entries.isEmpty) return;
+class TreemapLayout {
+  static List<TreemapNode> layout(
+    List<MapEntry<String, double>> entries,
+    double totalSum,
+    List<Color> paletteColors,
+    double boxWidth,
+    double boxHeight,
+  ) {
+    List<TreemapNode> nodes = [];
+    if (entries.isEmpty || totalSum <= 0) return nodes;
 
-    final center = Offset(size.width / 2, size.height / 2 - 10);
-    final maxVal = entries.first.value;
-
-    double startAngle = -math.pi / 2;
-
-    // Draw Drop Shadows first
     for (int i = 0; i < entries.length; i++) {
-      final entry = entries[i];
-      final sweepAngle = (entry.value / totalSum) * 2 * math.pi;
-      final valRatio = (entry.value / maxVal).clamp(0.4, 1.0);
-      final heightExtent = 25.0 * valRatio;
-
-      final outerR = 85.0;
-
-      final shadowPath = Path()
-        ..addOval(Rect.fromCircle(center: center.translate(0, heightExtent + 10), radius: outerR));
-
-      final shadowPaint = Paint()
-        ..color = Colors.black.withValues(alpha: 0.08)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-
-      canvas.drawPath(shadowPath, shadowPaint);
+      nodes.add(TreemapNode(
+        label: entries[i].key,
+        value: entries[i].value,
+        percentage: (entries[i].value / totalSum) * 100,
+        color: paletteColors[i % paletteColors.length],
+      ));
     }
+    nodes.sort((a, b) => b.value.compareTo(a.value));
 
-    // Draw 3D Extruded Blocks and Arc Top Faces
-    for (int i = 0; i < entries.length; i++) {
-      final entry = entries[i];
-      final sweepAngle = (entry.value / totalSum) * 2 * math.pi;
-      final color = paletteColors[i % paletteColors.length];
-
-      final valRatio = (entry.value / maxVal).clamp(0.4, 1.0);
-      final heightExtent = 35.0 * valRatio;
-
-      final outerR = 85.0;
-      final innerR = 48.0;
-
-      // Outer Arc Wall
-      final outerWallPath = Path();
-      outerWallPath.addArc(Rect.fromCircle(center: center, radius: outerR), startAngle, sweepAngle);
-      outerWallPath.lineTo(
-        center.dx + outerR * math.cos(startAngle + sweepAngle),
-        center.dy + heightExtent + outerR * math.sin(startAngle + sweepAngle),
-      );
-      outerWallPath.addArc(Rect.fromCircle(center: center.translate(0, heightExtent), radius: outerR), startAngle + sweepAngle, -sweepAngle);
-      outerWallPath.close();
-
-      final outerWallGradient = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          color.withValues(alpha: 0.85),
-          color.withValues(alpha: 0.45),
-        ],
-      );
-
-      final outerPaint = Paint()..shader = outerWallGradient.createShader(outerWallPath.getBounds());
-      canvas.drawPath(outerWallPath, outerPaint);
-
-      // Inner Wall Glass Highlight
-      final innerWallPath = Path();
-      innerWallPath.addArc(Rect.fromCircle(center: center, radius: innerR), startAngle, sweepAngle);
-      innerWallPath.lineTo(
-        center.dx + innerR * math.cos(startAngle + sweepAngle),
-        center.dy + heightExtent + innerR * math.sin(startAngle + sweepAngle),
-      );
-      innerWallPath.addArc(Rect.fromCircle(center: center.translate(0, heightExtent), radius: innerR), startAngle + sweepAngle, -sweepAngle);
-      innerWallPath.close();
-
-      final innerWallGradient = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          color.withValues(alpha: 0.70),
-          color.withValues(alpha: 0.30),
-        ],
-      );
-
-      final innerPaint = Paint()..shader = innerWallGradient.createShader(innerWallPath.getBounds());
-      canvas.drawPath(innerWallPath, innerPaint);
-
-      // Top Face Arc Ring
-      final topFacePath = Path();
-      topFacePath.addArc(Rect.fromCircle(center: center, radius: outerR), startAngle, sweepAngle);
-      topFacePath.lineTo(
-        center.dx + innerR * math.cos(startAngle + sweepAngle),
-        center.dy + innerR * math.sin(startAngle + sweepAngle),
-      );
-      topFacePath.addArc(Rect.fromCircle(center: center, radius: innerR), startAngle + sweepAngle, -sweepAngle);
-      topFacePath.close();
-
-      final topGradient = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          color.withValues(alpha: 0.95),
-          color.withValues(alpha: 0.75),
-        ],
-      );
-
-      final topPaint = Paint()..shader = topGradient.createShader(topFacePath.getBounds());
-      canvas.drawPath(topFacePath, topPaint);
-
-      // Glass Edge Highlights
-      final glassBorderPaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2
-        ..color = Colors.white.withValues(alpha: 0.6);
-
-      canvas.drawPath(topFacePath, glassBorderPaint);
-
-      startAngle += sweepAngle;
-    }
+    _partition(nodes, 0, nodes.length - 1, Rect.fromLTWH(0, 0, boxWidth, boxHeight), totalSum);
+    return nodes;
   }
 
-  @override
-  bool shouldRepaint(covariant _3DGlassDonutChartPainter oldDelegate) {
-    return oldDelegate.entries != entries || oldDelegate.totalSum != totalSum;
+  static void _partition(
+    List<TreemapNode> nodes,
+    int start,
+    int end,
+    Rect rect,
+    double totalValue,
+  ) {
+    if (start > end) return;
+    if (start == end) {
+      nodes[start].rect = rect;
+      return;
+    }
+
+    double halfTotal = totalValue / 2;
+    double accumulated = 0;
+    int splitIndex = start;
+    for (int i = start; i <= end; i++) {
+      accumulated += nodes[i].value;
+      if (accumulated >= halfTotal && i < end) {
+        splitIndex = i;
+        break;
+      }
+    }
+    if (splitIndex == start) splitIndex = start;
+
+    double firstGroupValue = 0;
+    for (int i = start; i <= splitIndex; i++) {
+      firstGroupValue += nodes[i].value;
+    }
+    double ratio = totalValue > 0 ? firstGroupValue / totalValue : 0.5;
+
+    Rect rect1, rect2;
+    if (rect.width >= rect.height) {
+      double splitWidth = rect.width * ratio;
+      rect1 = Rect.fromLTWH(rect.left, rect.top, splitWidth, rect.height);
+      rect2 = Rect.fromLTWH(rect.left + splitWidth, rect.top, rect.width - splitWidth, rect.height);
+    } else {
+      double splitHeight = rect.height * ratio;
+      rect1 = Rect.fromLTWH(rect.left, rect.top, rect.width, splitHeight);
+      rect2 = Rect.fromLTWH(rect.left, rect.top + splitHeight, rect.width, rect.height - splitHeight);
+    }
+
+    _partition(nodes, start, splitIndex, rect1, firstGroupValue);
+    _partition(nodes, splitIndex + 1, end, rect2, totalValue - firstGroupValue);
   }
 }

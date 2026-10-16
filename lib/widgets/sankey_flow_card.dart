@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'package:intl/intl.dart';
@@ -430,23 +432,39 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                 children: [
                   SizedBox(
                     width: boxWidth,
-                    child: SizedBox(
+                    child: Container(
                       height: 44,
-                      child: ToggleButtons(
-                        isSelected: [_flowMode == 'Expenses', _flowMode == 'Income'],
-                        onPressed: (index) {
-                          setState(() {
-                            _flowMode = index == 0 ? 'Expenses' : 'Income';
-                          });
-                        },
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        constraints: BoxConstraints(minHeight: 44, minWidth: boxWidth / 2 - 2),
-                        selectedColor: Colors.white,
-                        fillColor: const Color(0xFF582F95),
-                        color: const Color(0xFF475569),
-                        children: const [
-                          Text('Expenses', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          Text('Income', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.swap_vert_rounded, size: 16, color: Color(0xFF582F95)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _flowMode,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: const [
+                                  DropdownMenuItem(value: 'Expenses', child: Text('Expense')),
+                                  DropdownMenuItem(value: 'Income', child: Text('Income')),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    setState(() {
+                                      _flowMode = val;
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),

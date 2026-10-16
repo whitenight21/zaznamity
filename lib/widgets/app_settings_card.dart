@@ -92,7 +92,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   final int _notifyHoursBefore = 9;
   
   bool _biometricsEnabled = false;
-  String _biometricType = 'PIN';
+  String _biometricType = 'PIN'; // 'PIN', 'Face ID', or 'Touch ID'
   String _savedPin = "1234";
   bool _isPinVisible = false;
 
@@ -101,7 +101,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   String? _secondaryCurrency2;
   String? _secondaryCurrency3;
 
-  String _calendarStartDay = 'Monday'; // 'Monday' or 'Sunday'
+  String _calendarStartDay = 'Monday';
 
   List<File> _savedReportsList = [];
 
@@ -158,6 +158,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       _isDarkMode = prefs.getBool('isDarkMode') ?? false;
       _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
       _biometricsEnabled = prefs.getBool('biometricsEnabled') ?? false;
+      _biometricType = prefs.getString('biometricType') ?? 'PIN';
       _savedPin = prefs.getString('savedPin') ?? "1234";
       _pinController.text = _savedPin;
 
@@ -1461,7 +1462,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 children: [
                   _buildSubSectionCard(
                     title: 'Security & App Lock',
-                    subtitle: 'Secure app with PIN or Face ID',
+                    subtitle: 'Secure app with PIN, Face ID, or Touch ID',
                     children: [
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
@@ -1478,50 +1479,76 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       ),
                       if (_biometricsEnabled) ...[
                         const SizedBox(height: 8),
-                        TextField(
-                          controller: _pinController,
-                          keyboardType: TextInputType.number,
-                          maxLength: 4,
-                          obscureText: !_isPinVisible,
-                          decoration: InputDecoration(
-                            labelText: 'Set 4-Digit PIN',
-                            border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                            isDense: true,
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _isPinVisible ? Icons.visibility_off : Icons.visibility,
-                                size: 18,
-                                color: const Color(0xFF64748B),
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _isPinVisible = !_isPinVisible;
-                                });
-                              },
-                              tooltip: _isPinVisible ? 'Hide PIN' : 'Show PIN',
-                            ),
-                          ),
+                        DropdownButtonFormField<String>(
+                          initialValue: ['PIN', 'Face ID', 'Touch ID'].contains(_biometricType) ? _biometricType : 'PIN',
+                          decoration: const InputDecoration(labelText: 'Authentication Method', isDense: true),
+                          items: const [
+                            DropdownMenuItem(value: 'PIN', child: Text('4-Digit PIN Code')),
+                            DropdownMenuItem(value: 'Face ID', child: Text('Face ID (Biometrics)')),
+                            DropdownMenuItem(value: 'Touch ID', child: Text('Touch ID / Fingerprint')),
+                          ],
                           onChanged: (val) async {
-                            if (val.length == 4) {
-                              setState(() => _savedPin = val);
+                            if (val != null) {
+                              setState(() => _biometricType = val);
                               final prefs = await SharedPreferences.getInstance();
-                              await prefs.setString('savedPin', val);
-                              if (widget.onPinSettingsChanged != null) {
-                                widget.onPinSettingsChanged!(_biometricsEnabled, val);
-                              }
+                              await prefs.setString('biometricType', val);
                             }
                           },
                         ),
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<String>(
-                          initialValue: _biometricType,
-                          items: const [
-                            DropdownMenuItem(value: 'PIN', child: Text('Open on PIN Code')),
-                            DropdownMenuItem(value: 'Face', child: Text('Face Biometrics / Touch ID')),
-                          ],
-                          onChanged: (val) => setState(() => _biometricType = val ?? 'PIN'),
-                          decoration: const InputDecoration(labelText: 'Authentication Method', isDense: true),
-                        ),
+                        if (_biometricType == 'PIN') ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _pinController,
+                                  keyboardType: TextInputType.number,
+                                  maxLength: 4,
+                                  obscureText: !_isPinVisible,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Set 4-Digit PIN',
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                                    isDense: true,
+                                    counterText: '',
+                                  ),
+                                  onChanged: (val) async {
+                                    if (val.length == 4) {
+                                      setState(() => _savedPin = val);
+                                      final prefs = await SharedPreferences.getInstance();
+                                      await prefs.setString('savedPin', val);
+                                      if (widget.onPinSettingsChanged != null) {
+                                        widget.onPinSettingsChanged!(_biometricsEnabled, val);
+                                      }
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFF1F5F9),
+                                  foregroundColor: const Color(0xFF582F95),
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _isPinVisible = !_isPinVisible;
+                                  });
+                                },
+                                icon: Icon(
+                                  _isPinVisible ? Icons.visibility_off : Icons.visibility,
+                                  size: 16,
+                                ),
+                                label: Text(
+                                  _isPinVisible ? 'Hide PIN' : 'Show PIN',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ],
                   ),

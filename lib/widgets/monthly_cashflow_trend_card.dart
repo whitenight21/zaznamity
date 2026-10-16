@@ -48,6 +48,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
   List<String> _cachedMonthLabels = [];
   double _cachedMaxY = 1000.0;
   double _cachedMinY = -1000.0;
+  double _cachedSavingsRate = 0.0;
 
   int? _lastTxLength;
   String? _lastOwner;
@@ -85,6 +86,9 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
     }).toList();
 
     final Map<String, Map<String, double>> monthlyData = {};
+    double totalIncomeSum = 0;
+    double totalExpenseSum = 0;
+
     for (var tx in filteredTxs) {
       final dt = DateTime.tryParse(tx.createdAt);
       if (dt == null) continue;
@@ -93,9 +97,16 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
       monthlyData.putIfAbsent(key, () => {'income': 0.0, 'expense': 0.0});
       if (tx.type == 'income') {
         monthlyData[key]!['income'] = (monthlyData[key]!['income'] ?? 0) + tx.amount;
+        totalIncomeSum += tx.amount;
       } else if (tx.type == 'expense') {
         monthlyData[key]!['expense'] = (monthlyData[key]!['expense'] ?? 0) + tx.amount;
+        totalExpenseSum += tx.amount;
       }
+    }
+
+    double savingsRate = 0.0;
+    if (totalIncomeSum > 0) {
+      savingsRate = ((totalIncomeSum - totalExpenseSum) / totalIncomeSum) * 100;
     }
 
     final sortedKeys = monthlyData.keys.toList()..sort();
@@ -148,6 +159,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
     _cachedMonthLabels = monthLabels;
     _cachedMaxY = maxY;
     _cachedMinY = minY;
+    _cachedSavingsRate = savingsRate;
 
     _lastTxLength = widget.transactions.length;
     _lastOwner = widget.selectedOwner;
@@ -366,7 +378,37 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+
+              // Savings Rate Badge Indicator
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _cachedSavingsRate >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _cachedSavingsRate >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.savings_outlined,
+                      size: 14,
+                      color: _cachedSavingsRate >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Savings Rate: ${_cachedSavingsRate.toStringAsFixed(1)}%',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: _cachedSavingsRate >= 0 ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
 
               _cachedSortedKeys.isEmpty
                   ? const Center(

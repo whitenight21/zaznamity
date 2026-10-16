@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/label.dart';
+import '../models/transaction_model.dart';
 
 class NewZaznamCard extends StatefulWidget {
   final List<LabelModel> labels;
   final List<String> pools;
   final List<String> owners;
+  final List<TransactionModel> transactions;
   final String? selectedGlobalOwner;
   final Function(
     String description,
@@ -35,6 +37,7 @@ class NewZaznamCard extends StatefulWidget {
     required this.labels,
     required this.pools,
     required this.owners,
+    required this.transactions,
     this.selectedGlobalOwner,
     required this.onSubmit,
     this.onHide,
@@ -80,6 +83,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
 
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
+  double _currentInputAmount = 0.0;
 
   @override
   void initState() {
@@ -90,6 +94,13 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
     _owner = _resolveOwner();
     _dayOfMonth = _selectedDate.day;
     _loadCurrencyPrefs();
+    _amountController.addListener(_onAmountChanged);
+  }
+
+  void _onAmountChanged() {
+    setState(() {
+      _currentInputAmount = double.tryParse(_amountController.text) ?? 0.0;
+    });
   }
 
   Future<void> _loadCurrencyPrefs() async {
@@ -137,6 +148,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
 
   @override
   void dispose() {
+    _amountController.removeListener(_onAmountChanged);
     _descController.dispose();
     _amountController.dispose();
     super.dispose();
@@ -158,6 +170,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
       _repeatUntilDate = null;
       _excludedWeekdays.clear();
       _excludedMonths.clear();
+      _currentInputAmount = 0.0;
     });
   }
 
@@ -170,14 +183,32 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
     }
   }
 
+  bool _isBudgetExceeded() {
+    if (_type != 'expense' || _selectedLabelId == null) return false;
+    
+    // Calculate current month spending for this label
+    double spentSoFar = 0;
+    final now = DateTime.now();
+    for (var tx in widget.transactions) {
+      if (tx.isConfirmed == 1 && tx.type == 'expense' && tx.labelId == _selectedLabelId) {
+        final dt = DateTime.tryParse(tx.createdAt);
+        if (dt != null && dt.year == now.year && dt.month == now.month) {
+          spentSoFar += tx.amount;
+        }
+      }
+    }
+    
+    // Example threshold soft limit baseline per category (e.g. $500/mo)
+    const double categoryBudgetLimit = 500.0;
+    return (spentSoFar + _currentInputAmount) > categoryBudgetLimit;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool budgetExceeded = _isBudgetExceeded();
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48;
-        final double boxWidth = (fullWidth - 12) / 2;
-
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
@@ -265,10 +296,8 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
 
               // Row 1: Date & Time Selectors
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  SizedBox(
-                    width: boxWidth,
+                  Expanded(
                     child: InkWell(
                       onTap: () async {
                         final picked = await showDatePicker(
@@ -309,8 +338,8 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       ),
                     ),
                   ),
-                  SizedBox(
-                    width: boxWidth,
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: InkWell(
                       onTap: () async {
                         final picked = await showTimePicker(
@@ -348,12 +377,10 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: All Owners & Select Label
+              // Row 2: Owners & Expense/Income Dropdown
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  SizedBox(
-                    width: boxWidth,
+                  Expanded(
                     child: Container(
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -389,125 +416,8 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       ),
                     ),
                   ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<int?>(
-                                value: _selectedLabelId,
-                                isDense: true,
-                                isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('Select Label', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
-                                items: widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))).toList(),
-                                onChanged: (val) => setState(() => _selectedLabelId = val),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Row 3: Description & Amount
-              Row(
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: TextField(
-                      controller: _amountController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: '0.00 (${_getCurrencySymbol(_selectedCurrency)})',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: boxWidth,
-                    child: TextField(
-                      controller: _descController,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: 'Description',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Row 4: Currency & Expense/Income
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(_currencyFlags[_selectedCurrency] ?? '💵', style: const TextStyle(fontSize: 16)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedCurrency,
-                                isDense: true,
-                                isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: _availableCurrencies.map((c) {
-                                  return DropdownMenuItem(
-                                    value: c,
-                                    child: Text('$c (${_getCurrencySymbol(c)})', style: const TextStyle(fontSize: 11)),
-                                  );
-                                }).toList(),
-                                onChanged: (val) {
-                                  if (val != null) setState(() => _selectedCurrency = val);
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Container(
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -543,47 +453,41 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 5: Recurring & Checking (Pool)
+              // Row 3: All Labels & Pool
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  SizedBox(
-                    width: boxWidth,
-                    height: 44,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isRecurring 
-                            ? const Color(0xFF582F95) 
-                            : const Color(0xFFF1F5F9),
-                        foregroundColor: _isRecurring 
-                            ? Colors.white 
-                            : const Color(0xFF334155),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
+                  Expanded(
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
                       ),
-                      onPressed: () => setState(() => _isRecurring = !_isRecurring),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            _isRecurring ? Icons.check_circle_rounded : Icons.repeat_rounded, 
-                            size: 16,
-                          ),
+                          const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
                           const SizedBox(width: 6),
-                          const Flexible(
-                            child: Text(
-                              'Recurring',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-                              overflow: TextOverflow.ellipsis,
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<int?>(
+                                value: _selectedLabelId,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                hint: const Text('Select Label', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                items: widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))).toList(),
+                                onChanged: (val) => setState(() => _selectedLabelId = val),
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
-                  SizedBox(
-                    width: boxWidth,
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Container(
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -610,6 +514,152 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Row 4: Amount & Description
+              Row(
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: TextField(
+                      controller: _amountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: '0.00 (${_getCurrencySymbol(_selectedCurrency)})',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 6,
+                    child: TextField(
+                      controller: _descController,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'Description',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // Budget Threshold Warning Banner
+              if (budgetExceeded) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFFECACA)),
+                  ),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFFDC2626)),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Warning: This entry exceeds your recommended monthly budget threshold for this category!',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFFB91C1C)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+
+              // Row 5: Currency & Recurring Button
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(_currencyFlags[_selectedCurrency] ?? '💵', style: const TextStyle(fontSize: 16)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedCurrency,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: _availableCurrencies.map((c) {
+                                  return DropdownMenuItem(
+                                    value: c,
+                                    child: Text('$c (${_getCurrencySymbol(c)})', style: const TextStyle(fontSize: 11)),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _selectedCurrency = val);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 44,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isRecurring 
+                              ? const Color(0xFF582F95) 
+                              : const Color(0xFFF1F5F9),
+                          foregroundColor: _isRecurring 
+                              ? Colors.white 
+                              : const Color(0xFF334155),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
+                        onPressed: () => setState(() => _isRecurring = !_isRecurring),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _isRecurring ? Icons.check_circle_rounded : Icons.repeat_rounded, 
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            const Flexible(
+                              child: Text(
+                                'Recurring',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -811,13 +861,13 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ],
               const SizedBox(height: 16),
 
-              // Row 6: Save Zaznam Action Button
+              // Save Zaznam Action Button with Z logo integration
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    foregroundColor: const Color(0xFF334155),
+                    backgroundColor: const Color(0xFF582F95),
+                    foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
@@ -854,7 +904,26 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
 
                     _clearForm();
                   },
-                  child: const Text('Save Zaznam', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text(
+                          'Z',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text('Save Zaznam', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    ],
+                  ),
                 ),
               ),
             ],

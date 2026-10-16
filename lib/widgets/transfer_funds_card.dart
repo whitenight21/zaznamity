@@ -51,10 +51,15 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
   
   final _amountController = TextEditingController();
   final _rateController = TextEditingController(text: '1.0');
+  final _feeController = TextEditingController(text: '0.0');
   final _descController = TextEditingController();
   
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
+
+  double _enteredAmount = 0.0;
+  double _transferFee = 0.0;
+  double _exchangeRate = 1.0;
 
   final Map<String, String> _currencyFlags = {
     'USD': '🇺🇸',
@@ -79,6 +84,18 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
     _fromOwner = initialOwner;
     _toOwner = initialOwner;
     _loadCurrencyPrefs();
+
+    _amountController.addListener(_updateCalculations);
+    _feeController.addListener(_updateCalculations);
+    _rateController.addListener(_updateCalculations);
+  }
+
+  void _updateCalculations() {
+    setState(() {
+      _enteredAmount = double.tryParse(_amountController.text) ?? 0.0;
+      _transferFee = double.tryParse(_feeController.text) ?? 0.0;
+      _exchangeRate = double.tryParse(_rateController.text) ?? 1.0;
+    });
   }
 
   Future<void> _loadCurrencyPrefs() async {
@@ -140,14 +157,21 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
 
   @override
   void dispose() {
+    _amountController.removeListener(_updateCalculations);
+    _feeController.removeListener(_updateCalculations);
+    _rateController.removeListener(_updateCalculations);
     _amountController.dispose();
     _rateController.dispose();
+    _feeController.dispose();
     _descController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final double netSourceAmount = (_enteredAmount - _transferFee).clamp(0.0, double.infinity);
+    final double netDestinationAmount = netSourceAmount * _exchangeRate;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
@@ -541,7 +565,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 5: Description (60%) & Amount (40%)
+              // Row 5: Amount & Description
               Row(
                 children: [
                   Expanded(
@@ -580,6 +604,72 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+
+              // Row 6: Transfer Fee & Exchange Rate Inputs
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _feeController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        labelText: 'Transfer Fee',
+                        labelStyle: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                        hintText: '0.00',
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _rateController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        labelText: 'Exchange Rate',
+                        labelStyle: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                        hintText: '1.0',
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Net Destination Preview Banner
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Net Destination Preview:',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                    ),
+                    Text(
+                      '${_getCurrencySymbol(_toCurrency)}${netDestinationAmount.toStringAsFixed(2)} $_toCurrency',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 16),
 
               // Action Button
@@ -587,8 +677,8 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    foregroundColor: const Color(0xFF334155),
+                    backgroundColor: const Color(0xFF582F95),
+                    foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
@@ -620,6 +710,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                     );
                     
                     _amountController.clear();
+                    _feeController.text = '0.0';
                     _descController.clear();
                   },
                   child: const Text('Transfer Funds', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),

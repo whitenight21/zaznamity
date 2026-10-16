@@ -1,9 +1,9 @@
-// ignore_for_file: 
-// deprecated_member_use
+// ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zaznamity/models/transaction_model.dart';
 
 enum MovingAverageFilter { days30, days90, all }
@@ -52,6 +52,8 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
   double _cachedMinY = 0;
   double _cachedMaxY = 100;
   List<DateTime> _cachedSpotDates = [];
+  double _cachedMonthlyVelocity = 0;
+  double _cachedRunwayMonths = 0;
 
   int? _lastTxLength;
   String? _lastOwner;
@@ -59,6 +61,32 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
   DateTime? _lastEndDate;
   MovingAverageFilter? _lastMaFilter;
   String _lastPoolsKey = '';
+  String _currencySymbol = '\$';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrencyPrefs();
+  }
+
+  Future<void> _loadCurrencyPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    if (mounted) {
+      setState(() {
+        _currencySymbol = _getCurrencySymbol(primary);
+      });
+    }
+  }
+
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': return '¥';
+      default: return '\$';
+    }
+  }
 
   void _computeChartDataIfNeeded() {
     final poolsKey = widget.liquidNetPools.entries.map((e) => '${e.key}:${e.value}').join(',');
@@ -288,6 +316,42 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
     if (lowestPoint == double.infinity) lowestPoint = 0;
     if (highestPoint == -double.infinity) highestPoint = 0;
 
+    // Monthly Velocity calculation
+    double monthlyVelocity = 0;
+    if (balancePoints.length >= 2) {
+      final firstPoint = balancePoints.first;
+      final lastPoint = balancePoints.last;
+      final daysDiff = (lastPoint['date'] as DateTime).difference(firstPoint['date'] as DateTime).inDays;
+      if (daysDiff > 0) {
+        final totalDelta = (lastPoint['balance'] as double) - (firstPoint['balance'] as double);
+        monthlyVelocity = (totalDelta / daysDiff) * 30;
+      }
+    }
+
+    // Emergency Runway calculation (Current Balance / Average Monthly Expenses)
+    double totalExpensesSum = 0;
+    int expenseTxCount = 0;
+    for (var tx in filteredTx) {
+      if (tx.isConfirmed == 1 && tx.type == 'expense') {
+        totalExpensesSum += tx.amount;
+        expenseTxCount++;
+      }
+    }
+    double runwayMonths = 0;
+    if (expenseTxCount > 0 && balancePoints.isNotEmpty) {
+      final latestBalance = balancePoints.last['balance'] as double;
+      // Estimate monthly expense rate based on total filtered span or transaction frequency
+      final firstDate = balancePoints.first['date'] as DateTime;
+      final lastDate = balancePoints.last['date'] as DateTime;
+      final totalSpanDays = lastDate.difference(firstDate).inDays;
+      if (totalSpanDays > 0) {
+        final monthlyBurnRate = (totalExpensesSum / totalSpanDays) * 30;
+        if (monthlyBurnRate > 0) {
+          runwayMonths = latestBalance / monthlyBurnRate;
+        }
+      }
+    }
+
     final double yRange = highestPoint - lowestPoint;
     final double yPadding = yRange == 0 ? 50 : yRange * 0.15;
     
@@ -299,6 +363,8 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
     _cachedMinY = minY;
     _cachedMaxY = maxY;
     _cachedSpotDates = spotDates;
+    _cachedMonthlyVelocity = monthlyVelocity;
+    _cachedRunwayMonths = runwayMonths;
 
     _lastTxLength = widget.transactions.length;
     _lastOwner = widget.selectedOwner;
@@ -527,6 +593,68 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                 ],
               ),
               const SizedBox(height: 12),
+              // Velocity & Runway Badges Row
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _cachedMonthlyVelocity >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                          size: 14,
+                          color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Velocity: ${_cachedMonthlyVelocity >= 0 ? '+' : ''}$_currencySymbol${_cachedMonthlyVelocity.toStringAsFixed(2)}/mo',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.hourglass_top_rounded,
+                          size: 14,
+                          color: Color(0xFF2563EB),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Runway: ${_cachedRunwayMonths.toStringAsFixed(1)} mos',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1D4ED8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -627,7 +755,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                           reservedSize: 48,
                           getTitlesWidget: (value, meta) {
                             return Text(
-                              '\$${value.toInt()}',
+                              '$_currencySymbol${value.toInt()}',
                               style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
                             );
                           },
@@ -647,7 +775,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                               dateStr = '${DateFormat('MMM d, yyyy').format(_cachedSpotDates[spotIndex])}\n';
                             }
                             return LineTooltipItem(
-                              '${dateStr}\$${spot.y.toStringAsFixed(2)}',
+                              '${dateStr}$_currencySymbol${spot.y.toStringAsFixed(2)}',
                               const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
                             );
                           }).toList();

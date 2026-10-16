@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/savings_goal_model.dart';
 import '../models/label.dart';
 
@@ -10,10 +11,10 @@ class SavingsGoalsCard extends StatefulWidget {
   final List<LabelModel> labels;
   final List<String> owners;
   final List<String> pools;
-  final List<String> availableCurrencies;
   final String? selectedOwner;
   final Function(SavingsGoalModel) onSaveGoal;
-  final Function(int goalId, double amountToAdd, String owner, String fromPool, String goalName) onAddFundsToGoal;
+  // Updated callback to include selectedCurrency
+  final Function(int goalId, double amountToAdd, String owner, String fromPool, String goalName, String currency) onAddFundsToGoal;
   final Function(int goalId) onDeleteGoal;
   final Function(int goalId) onCompleteGoal;
   final bool isWide;
@@ -26,7 +27,6 @@ class SavingsGoalsCard extends StatefulWidget {
     required this.labels,
     required this.owners,
     required this.pools,
-    this.availableCurrencies = const ['USD'],
     this.selectedOwner,
     required this.onSaveGoal,
     required this.onAddFundsToGoal,
@@ -43,21 +43,60 @@ class SavingsGoalsCard extends StatefulWidget {
 
 class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
   late String _selectedOwner;
-  final NumberFormat _currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+  List<String> _userCurrencies = ['USD'];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedOwner = widget.selectedOwner ?? 'All Owners';
+    _loadAllUserCurrencies();
+  }
+
+  Future<void> _loadAllUserCurrencies() async {
+    final prefs = await SharedPreferences.getInstance();
+    final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    final sec1 = prefs.getString('secondaryCurrency1');
+    final sec2 = prefs.getString('secondaryCurrency2');
+    final sec3 = prefs.getString('secondaryCurrency3');
+
+    final List<String> list = [primary];
+    if (sec1 != null && sec1.isNotEmpty) list.add(sec1);
+    if (sec2 != null && sec2.isNotEmpty) list.add(sec2);
+    if (sec3 != null && sec3.isNotEmpty) list.add(sec3);
+
+    setState(() {
+      _userCurrencies = list;
+    });
+  }
 
   String _getCurrencySymbol(String code) {
     switch (code.toUpperCase()) {
       case 'EUR': return '€';
       case 'GBP': return '£';
       case 'JPY': return '¥';
+      case 'AUD': return 'A\$';
+      case 'CAD': return 'C\$';
+      case 'CHF': return 'CHF';
+      case 'HKD': return 'HK\$';
+      case 'SGD': return 'S\$';
+      case 'CNY': return '¥';
       default: return '\$';
     }
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _selectedOwner = widget.selectedOwner ?? 'All Owners';
+  String _getCurrencyFlag(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '🇪🇺';
+      case 'GBP': return '🇬🇧';
+      case 'JPY': return '🇯🇵';
+      case 'AUD': return '🇦🇺';
+      case 'CAD': return '🇨🇦';
+      case 'CHF': return '🇨🇭';
+      case 'HKD': return '🇭🇰';
+      case 'SGD': return '🇸🇬';
+      case 'CNY': return '🇨🇳';
+      default: return '🇺🇸';
+    }
   }
 
   @override
@@ -77,128 +116,36 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
         : (widget.owners.isNotEmpty ? widget.owners.first : 'Shared');
     
     String selectedDialogPool = widget.pools.isNotEmpty ? widget.pools.first : 'checking';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: StatefulBuilder(
-              builder: (context, setDialogState) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Add Funds to "${goal.name}"', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      initialValue: widget.owners.contains(selectedDialogOwner) ? selectedDialogOwner : widget.owners.first,
-                      decoration: const InputDecoration(labelText: 'Owner', border: OutlineInputBorder()),
-                      items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
-                      onChanged: (val) {
-                        if (val != null) setDialogState(() => selectedDialogOwner = val);
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    DropdownButtonFormField<String>(
-                      initialValue: widget.pools.contains(selectedDialogPool) ? selectedDialogPool : widget.pools.first,
-                      decoration: const InputDecoration(labelText: 'From Pool (Source)', border: OutlineInputBorder()),
-                      items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))).toList(),
-                      onChanged: (val) {
-                        if (val != null) setDialogState(() => selectedDialogPool = val);
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: amountController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      autofocus: true,
-                      decoration: const InputDecoration(labelText: 'Amount to Add (\$)', hintText: '50.00', border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancel'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
-                          onPressed: () {
-                            final val = double.tryParse(amountController.text);
-                            if (val != null && val > 0) {
-                              widget.onAddFundsToGoal(goal.id!, val, selectedDialogOwner, selectedDialogPool, goal.name);
-                              Navigator.pop(context);
-                            }
-                          },
-                          child: const Text('Add Funds'),
-                        ),
-                      ],
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showCreateGoalDialog() {
-    final TextEditingController nameController = TextEditingController();
-    final TextEditingController targetController = TextEditingController();
-    String selectedCurrency = widget.availableCurrencies.isNotEmpty ? widget.availableCurrencies.first : 'USD';
+    String selectedCurrency = _userCurrencies.first;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Create New Savings Goal', style: TextStyle(color: Color.fromARGB(255, 88, 47, 149), fontWeight: FontWeight.bold)),
+          title: Text('Add Funds to "${goal.name}"', style: const TextStyle(color: Color.fromARGB(255, 88, 47, 149), fontWeight: FontWeight.bold, fontSize: 16)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: 'Goal Name (e.g. New Car)',
-                  labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                ),
-              ),
-              const SizedBox(height: 14),
+              // Row 1: Owner, Currency
               Row(
                 children: [
                   Expanded(
                     flex: 3,
-                    child: TextField(
-                      controller: targetController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: widget.owners.contains(selectedDialogOwner) ? selectedDialogOwner : widget.owners.first,
                       decoration: InputDecoration(
-                        labelText: 'Target Amount',
+                        labelText: 'Owner',
                         labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                       ),
+                      items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 13)))).toList(),
+                      onChanged: (val) {
+                        if (val != null) setDialogState(() => selectedDialogOwner = val);
+                      },
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -214,11 +161,11 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
-                          value: selectedCurrency,
+                          value: _userCurrencies.contains(selectedCurrency) ? selectedCurrency : _userCurrencies.first,
                           isDense: true,
                           isExpanded: true,
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                          items: widget.availableCurrencies.map((c) {
+                          items: _userCurrencies.map((c) {
                             return DropdownMenuItem(
                               value: c,
                               child: Text('$c (${_getCurrencySymbol(c)})', style: const TextStyle(fontSize: 11)),
@@ -233,12 +180,187 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                   ),
                 ],
               ),
+              const SizedBox(height: 14),
+              // Row 2: Amount to Add, Source Pool
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextField(
+                      controller: amountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'Amount to Add',
+                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 3,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: widget.pools.contains(selectedDialogPool) ? selectedDialogPool : widget.pools.first,
+                      decoration: InputDecoration(
+                        labelText: 'From Pool',
+                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      ),
+                      items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase(), style: const TextStyle(fontSize: 13)))).toList(),
+                      onChanged: (val) {
+                        if (val != null) setDialogState(() => selectedDialogPool = val);
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+              onPressed: () {
+                final val = double.tryParse(amountController.text);
+                if (val != null && val > 0) {
+                  // Pass selectedCurrency down to parent handler
+                  widget.onAddFundsToGoal(goal.id!, val, selectedDialogOwner, selectedDialogPool, goal.name, selectedCurrency);
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Add Funds', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCreateGoalDialog() {
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController targetController = TextEditingController();
+    
+    String selectedCurrency = _userCurrencies.first;
+    String dialogOwner = (_selectedOwner != 'All Owners' && widget.owners.contains(_selectedOwner))
+        ? _selectedOwner
+        : (widget.owners.isNotEmpty ? widget.owners.first : 'Shared');
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Create New Savings Goal', style: TextStyle(color: Color.fromARGB(255, 88, 47, 149), fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: widget.owners.contains(dialogOwner) ? dialogOwner : widget.owners.first,
+                      decoration: InputDecoration(
+                        labelText: 'Owner',
+                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      ),
+                      items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 13)))).toList(),
+                      onChanged: (val) {
+                        if (val != null) setDialogState(() => dialogOwner = val);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      height: 42,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _userCurrencies.contains(selectedCurrency) ? selectedCurrency : _userCurrencies.first,
+                          isDense: true,
+                          isExpanded: true,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                          items: _userCurrencies.map((c) {
+                            return DropdownMenuItem(
+                              value: c,
+                              child: Text('$c (${_getCurrencySymbol(c)})', style: const TextStyle(fontSize: 11)),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => selectedCurrency = val);
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextField(
+                      controller: targetController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'Target Amount',
+                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 3,
+                    child: TextField(
+                      controller: nameController,
+                      decoration: InputDecoration(
+                        labelText: 'Goal Name (e.g. New Car)',
+                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -255,12 +377,14 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                     name: name,
                     targetAmount: target,
                     currentAmount: 0.0,
+                    owner: dialogOwner,
                   );
                   widget.onSaveGoal(newGoal);
+                  setState(() {});
                   Navigator.pop(context);
                 }
               },
-              child: const Text('Create Goal'),
+              child: const Text('Create Goal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -270,6 +394,13 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
 
   @override
   Widget build(BuildContext context) {
+    final filteredGoals = widget.goals.where((goal) {
+      if (_selectedOwner.isNotEmpty && _selectedOwner != 'All Owners') {
+        return goal.owner.toLowerCase().trim() == _selectedOwner.toLowerCase().trim();
+      }
+      return true;
+    }).toList();
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
@@ -293,7 +424,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Top Row: Title & Action Buttons (Wide / Hide)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -356,7 +486,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Second Row: Owners Dropdown (Left) & New Goal Button (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -408,7 +537,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                         ),
                         onPressed: _showCreateGoalDialog,
                         icon: const Icon(Icons.add, size: 16),
-                        label: const Text('New Savings Goal', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        label: const Text('New Savings Goal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ),
@@ -416,13 +545,12 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
               ),
               const SizedBox(height: 16),
 
-              // Goals List
-              widget.goals.isEmpty
+              filteredGoals.isEmpty
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(24.0),
                         child: Text(
-                          'No savings goals set yet. Create one above!',
+                          'No savings goals set for this owner.',
                           style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
                         ),
                       ),
@@ -430,15 +558,18 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                   : ListView.separated(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: widget.goals.length,
+                      itemCount: filteredGoals.length,
                       separatorBuilder: (context, index) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
-                        final goal = widget.goals[index];
+                        final goal = filteredGoals[index];
                         final double progress = goal.targetAmount > 0 
                             ? (goal.currentAmount / goal.targetAmount).clamp(0.0, 1.0) 
                             : 0.0;
                         
                         final bool isCompleted = goal.currentAmount >= goal.targetAmount;
+                        final activeSymbol = _getCurrencySymbol(_userCurrencies.first);
+                        final activeFlag = _getCurrencyFlag(_userCurrencies.first);
+                        final currencyFormat = NumberFormat.currency(symbol: activeSymbol, decimalDigits: 2);
 
                         return Container(
                           padding: const EdgeInsets.all(16),
@@ -456,7 +587,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                   Expanded(
                                     child: Row(
                                       children: [
-                                        // Conditional Complete Checkmark shown when goal is completed
                                         if (isCompleted) ...[
                                           InkWell(
                                             onTap: () => widget.onCompleteGoal(goal.id!),
@@ -471,17 +601,30 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                           ),
                                           const SizedBox(width: 6),
                                         ],
-                                        const Icon(Icons.attach_money_rounded, size: 18, color: Color(0xFF582F95)),
-                                        const SizedBox(width: 4),
+                                        Text(activeFlag, style: const TextStyle(fontSize: 16)),
+                                        const SizedBox(width: 6),
                                         Expanded(
-                                          child: Text(
-                                            goal.name,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 16, // Two fonts larger
-                                              color: Color(0xFF1E293B),
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                goal.name,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16,
+                                                  color: Color(0xFF1E293B),
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              Text(
+                                                '(${goal.owner})',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: Color(0xFF64748B),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ],
@@ -490,7 +633,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                   Row(
                                     children: [
                                       Text(
-                                        'Target: ${_currencyFormat.format(goal.targetAmount)}',
+                                        'Target: ${currencyFormat.format(goal.targetAmount)}',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w600,
                                           fontSize: 12,
@@ -498,23 +641,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                         ),
                                       ),
                                       const SizedBox(width: 8),
-                                      // Purple "+" button positioned on the end
-                                      SizedBox(
-                                        height: 28,
-                                        width: 28,
-                                        child: IconButton(
-                                          style: IconButton.styleFrom(
-                                            backgroundColor: const Color(0xFF582F95),
-                                            foregroundColor: Colors.white,
-                                            padding: EdgeInsets.zero,
-                                          ),
-                                          icon: const Icon(Icons.add, size: 16),
-                                          tooltip: 'Add funds to goal',
-                                          onPressed: () => _showAddFundsDialog(goal),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      // Feint delete X
                                       InkWell(
                                         onTap: () => widget.onDeleteGoal(goal.id!),
                                         child: const Icon(Icons.close, color: Color(0xFF94A3B8), size: 16),
@@ -537,21 +663,39 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(
-                                    'Saved: ${_currencyFormat.format(goal.currentAmount)}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                      color: Color(0xFF059669),
-                                    ),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Saved: ${currencyFormat.format(goal.currentAmount)}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                          color: Color(0xFF059669),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '(${(progress * 100).toStringAsFixed(1)}%)',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                          color: Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  // Percent trailing behind the amount
-                                  Text(
-                                    '${(progress * 100).toStringAsFixed(1)}%',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                      color: Color(0xFF64748B),
+                                  SizedBox(
+                                    height: 28,
+                                    width: 28,
+                                    child: IconButton(
+                                      style: IconButton.styleFrom(
+                                        backgroundColor: const Color(0xFF582F95),
+                                        foregroundColor: Colors.white,
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                      icon: const Icon(Icons.add, size: 16),
+                                      tooltip: 'Add funds to goal',
+                                      onPressed: () => _showAddFundsDialog(goal),
                                     ),
                                   ),
                                 ],

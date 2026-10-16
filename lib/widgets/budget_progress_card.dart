@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/label.dart';
 import '../models/transaction_model.dart';
 
@@ -41,6 +42,55 @@ class BudgetProgressCard extends StatefulWidget {
 
 class _BudgetProgressCardState extends State<BudgetProgressCard> {
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  bool _enableRollover = false;
+  String _selectedCurrency = 'USD';
+  List<String> _availableCurrencies = ['USD'];
+
+  final Map<String, String> _currencyFlags = {
+    'USD': '🇺🇸',
+    'EUR': '🇪🇺',
+    'JPY': '🇯🇵',
+    'GBP': '🇬🇧',
+    'CNY': '🇨🇳',
+    'AUD': '🇦🇺',
+    'CAD': '🇨🇦',
+    'CHF': '🇨🇭',
+    'HKD': '🇭🇰',
+    'SGD': '🇸🇬',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrencyPrefs();
+  }
+
+  Future<void> _loadCurrencyPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    final sec1 = prefs.getString('secondaryCurrency1');
+    final sec2 = prefs.getString('secondaryCurrency2');
+    final sec3 = prefs.getString('secondaryCurrency3');
+
+    List<String> currencies = [primary];
+    if (sec1 != null && sec1.isNotEmpty) currencies.add(sec1);
+    if (sec2 != null && sec2.isNotEmpty) currencies.add(sec2);
+    if (sec3 != null && sec3.isNotEmpty) currencies.add(sec3);
+
+    setState(() {
+      _availableCurrencies = currencies;
+      _selectedCurrency = primary;
+    });
+  }
+
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': return '¥';
+      default: return '\$';
+    }
+  }
 
   Future<void> _selectMonth(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
@@ -125,7 +175,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 controller: limitController,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: 'Monthly Limit (\$)',
+                  labelText: 'Monthly Limit (${_getCurrencySymbol(_selectedCurrency)})',
                   labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -177,8 +227,16 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
               itemBuilder: (context, index) {
                 final b = widget.budgets[index];
                 final budgetId = b['id'] as int;
-                final labelName = b['label_name'] ?? 'General';
-                final limitAmount = (b['limit_amount'] as num).toDouble();
+                
+                final labelId = b['label_id'] ?? b['labelId'];
+                final labelObj = widget.labels.firstWhere(
+                  (l) => l.id == labelId,
+                  orElse: () => LabelModel(id: -1, name: b['label_name'] ?? 'General', color: '582F95'),
+                );
+                final labelName = labelObj.name;
+
+                final limitAmount = ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
+                final budgetOwner = b['owner'] ?? '';
                 final controller = TextEditingController(text: limitAmount.toString());
 
                 return Padding(
@@ -187,7 +245,14 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                     children: [
                       Expanded(
                         flex: 2,
-                        child: Text(labelName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF334155))),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(labelName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF334155))),
+                            if (budgetOwner.isNotEmpty)
+                              Text('Owner: $budgetOwner', style: const TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+                          ],
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -240,26 +305,52 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 0);
+    final currencySymbol = _getCurrencySymbol(_selectedCurrency);
+    final currencyFormat = NumberFormat.currency(symbol: currencySymbol, decimalDigits: 0);
+
+    final filteredBudgets = widget.budgets.where((b) {
+      if (widget.selectedOwner != null && 
+          widget.selectedOwner!.isNotEmpty && 
+          widget.selectedOwner != 'All Owners') {
+        final ownerField = b['owner']?.toString().trim() ?? '';
+        return ownerField.toLowerCase() == widget.selectedOwner!.trim().toLowerCase();
+      }
+      return true; 
+    }).toList();
 
     double totalSpentAll = 0;
     double totalLimitAll = 0;
 
-    List<Map<String, dynamic>> processedBudgets = widget.budgets.map((b) {
-      final labelId = b['label_id'];
-      final limit = (b['limit_amount'] as num).toDouble();
+    List<Map<String, dynamic>> processedBudgets = filteredBudgets.map((b) {
+      final labelId = b['label_id'] ?? b['labelId'];
+      double limit = ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
+      final owner = b['owner'] ?? 'Shared';
+      
+      final labelObj = widget.labels.firstWhere(
+        (l) => l.id == labelId,
+        orElse: () => LabelModel(id: -1, name: b['label_name'] ?? 'General', color: b['label_color'] ?? '582F95'),
+      );
       
       double spent = 0;
+      double rolloverAmount = 0;
+
       for (var tx in widget.transactions) {
         if (tx.labelId == labelId && tx.type == 'expense' && tx.isConfirmed == 1) {
-          if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty) {
-            if (tx.owner != widget.selectedOwner) continue;
-          }
+          if (tx.owner.trim().toLowerCase() != owner.trim().toLowerCase()) continue;
+
           final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
           if (txDate.year == _selectedMonth.year && txDate.month == _selectedMonth.month) {
             spent += tx.amount;
+          } else if (_enableRollover && 
+                     (txDate.isBefore(DateTime(_selectedMonth.year, _selectedMonth.month, 1)))) {
+            // Calculate prior net savings/surplus if rollover is enabled
+            rolloverAmount += limit - tx.amount;
           }
         }
+      }
+
+      if (_enableRollover && rolloverAmount > 0) {
+        limit += rolloverAmount; // Add prior surplus to current limit
       }
 
       totalSpentAll += spent;
@@ -267,14 +358,17 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
 
       return {
         'id': b['id'],
-        'label_name': b['label_name'] ?? 'General',
-        'label_color': b['label_color'] ?? '#582F95',
+        'label_name': labelObj.name,
+        'label_color': labelObj.color.startsWith('#') ? labelObj.color : '#${labelObj.color}',
+        'owner': owner,
         'spent': spent,
         'limit': limit,
+        'remaining': limit - spent,
       };
     }).toList();
 
     double overallProgress = totalLimitAll > 0 ? (totalSpentAll / totalLimitAll).clamp(0.0, 1.0) : 0.0;
+    double overallRemaining = totalLimitAll - totalSpentAll;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -298,7 +392,6 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Row matching Future Metrics style
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -366,7 +459,6 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
               ),
               const SizedBox(height: 16),
 
-              // Row 1: Owners Dropdown & Month Picker (Sized identically)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -440,7 +532,64 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: "Edit Budgets" (Left) and "Add new Budget" (Right, grey color)
+              // Row: Currency Selector & Rollover Toggle
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: boxWidth,
+                    child: Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(_currencyFlags[_selectedCurrency] ?? '💵', style: const TextStyle(fontSize: 14)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedCurrency,
+                                isDense: true,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                items: _availableCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _selectedCurrency = val);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: boxWidth,
+                    child: SizedBox(
+                      height: 40,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: _enableRollover ? const Color(0xFFEDE9FE) : const Color(0xFFF8FAFC),
+                          foregroundColor: _enableRollover ? const Color(0xFF582F95) : const Color(0xFF64748B),
+                          side: BorderSide(color: _enableRollover ? const Color(0xFFA855F7) : const Color(0xFFCBD5E1)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        onPressed: () => setState(() => _enableRollover = !_enableRollover),
+                        icon: Icon(_enableRollover ? Icons.check_circle : Icons.radio_button_unchecked, size: 14),
+                        label: Text('Rollover Surplus', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -479,7 +628,6 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
               const Divider(color: Color(0xFFE2E8F0)),
               const SizedBox(height: 8),
 
-              // Overall Summary Progress
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -488,9 +636,11 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                     style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                   Text(
-                    '${(overallProgress * 100).toStringAsFixed(0)}% Spent',
+                    overallRemaining >= 1 
+                        ? 'Left: ${currencyFormat.format(overallRemaining)}' 
+                        : 'Over: ${currencyFormat.format(overallRemaining.abs())}',
                     style: TextStyle(
-                      color: overallProgress > 0.9 ? Colors.red.shade700 : Colors.green.shade700,
+                      color: overallRemaining < 0 ? Colors.red.shade700 : Colors.green.shade700,
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                     ),
@@ -516,81 +666,139 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                       padding: EdgeInsets.symmetric(vertical: 24.0),
                       child: Center(
                         child: Text(
-                          'No budget limits set. Tap "Add new Budget" to start.',
+                          'No budget limits set for this selection.',
                           style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
                         ),
                       ),
                     )
-                  : ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: processedBudgets.length,
-                      itemBuilder: (context, index) {
-                        final b = processedBudgets[index];
-                        final spent = b['spent'] as double;
-                        final limit = b['limit'] as double;
-                        final progress = limit > 0 ? (spent / limit).clamp(0.0, 1.0) : 0.0;
-                        final isOverBudget = spent > limit;
-                        final colorHex = b['label_color'].toString().replaceAll('#', '');
-                        final cardColor = Color(int.parse('0xFF$colorHex'));
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 14.0),
-                          child: Column(
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  : (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty)
+                      ? _buildBudgetList(processedBudgets, currencyFormat)
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: widget.owners.map((owner) {
+                            final ownerBudgets = processedBudgets
+                                .where((b) => (b['owner'] as String).toLowerCase() == owner.toLowerCase())
+                                .toList();
+                            if (ownerBudgets.isEmpty) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        width: 10,
-                                        height: 10,
-                                        decoration: BoxDecoration(color: cardColor, shape: BoxShape.circle),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        b['label_name'],
-                                        style: const TextStyle(color: Color(0xFF334155), fontSize: 13, fontWeight: FontWeight.w600),
-                                      ),
-                                    ],
+                                  Text(
+                                    owner.toUpperCase(),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF582F95),
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        '${currencyFormat.format(spent)} / ${currencyFormat.format(limit)}',
-                                        style: TextStyle(
-                                          color: isOverBudget ? Colors.red.shade700 : const Color(0xFF64748B),
-                                          fontSize: 13,
-                                          fontWeight: isOverBudget ? FontWeight.bold : FontWeight.normal,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      InkWell(
-                                        onTap: () => widget.onDeleteBudget(b['id']),
-                                        child: const Icon(Icons.close, color: Color(0xFF94A3B8), size: 16),
-                                      ),
-                                    ],
-                                  ),
+                                  const SizedBox(height: 8),
+                                  _buildBudgetList(ownerBudgets, currencyFormat),
                                 ],
                               ),
-                              const SizedBox(height: 6),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: progress,
-                                  minHeight: 5,
-                                  backgroundColor: const Color(0xFFF1F5F9),
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    isOverBudget ? Colors.red.shade700 : cardColor,
-                                  ),
-                                ),
-                              ),
-                            ],
+                            );
+                          }).toList(),
+                        ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBudgetList(List<Map<String, dynamic>> budgets, NumberFormat currencyFormat) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: budgets.length,
+      itemBuilder: (context, index) {
+        final b = budgets[index];
+        final spent = b['spent'] as double;
+        final limit = b['limit'] as double;
+        final remaining = b['remaining'] as double;
+        final progress = limit > 0 ? (spent / limit).clamp(0.0, 1.0) : 0.0;
+        final isOverBudget = spent > limit;
+        final colorHex = b['label_color'].toString().replaceAll('#', '');
+        final cardColor = Color(int.parse('0xFF$colorHex'));
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 14.0),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(color: cardColor, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        b['label_name'],
+                        style: const TextStyle(color: Color(0xFF334155), fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                      if (isOverBudget) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade100,
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                        );
-                      },
-                    ),
+                          child: Text('OVER', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.red.shade800)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${currencyFormat.format(spent)} / ${currencyFormat.format(limit)}',
+                            style: TextStyle(
+                              color: isOverBudget ? Colors.red.shade700 : const Color(0xFF64748B),
+                              fontSize: 12,
+                              fontWeight: isOverBudget ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                          Text(
+                            remaining >= 0 ? 'Left: ${currencyFormat.format(remaining)}' : 'Over: ${currencyFormat.format(remaining.abs())}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: remaining >= 0 ? const Color(0xFF10B981) : Colors.red.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () => widget.onDeleteBudget(b['id']),
+                        child: const Icon(Icons.close, color: Color(0xFF94A3B8), size: 16),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 5,
+                  backgroundColor: const Color(0xFFF1F5F9),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    isOverBudget ? Colors.red.shade700 : cardColor,
+                  ),
+                ),
+              ),
             ],
           ),
         );

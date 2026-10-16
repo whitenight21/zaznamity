@@ -44,6 +44,34 @@ class SelectedLabelFocusCard extends StatelessWidget {
     this.onJumpToHistory,
   });
 
+  void _showInfoModal(BuildContext context, String title, String description) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Color(0xFF582F95)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+          ],
+        ),
+        content: Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4)),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF582F95),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Default to the past 15 days including today if start/end are not set
@@ -415,14 +443,29 @@ class SelectedLabelFocusCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Text(
-                      'NET BALANCE',
-                      style: TextStyle(
-                        color: Color(0xFF582F95),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'NET BALANCE',
+                          style: TextStyle(
+                            color: Color(0xFF582F95),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        InkWell(
+                          onTap: () => _showInfoModal(
+                            context,
+                            'Net Balance Mechanics',
+                            'The net cash flow resulting from total inflows minus total outflows filtered for the selected single label and date range.',
+                          ),
+                          child: const Icon(Icons.info_outline, size: 13, color: Color(0xFF64748B)),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -442,7 +485,21 @@ class SelectedLabelFocusCard extends StatelessWidget {
                 children: [
                   Column(
                     children: [
-                      const Text('INFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('INFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                          const SizedBox(width: 3),
+                          InkWell(
+                            onTap: () => _showInfoModal(
+                              context,
+                              'Inflows & Share',
+                              'Total incoming transaction amounts associated with this label, accompanied by its percentage share of global inflows.',
+                            ),
+                            child: const Icon(Icons.info_outline, size: 12, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 4),
                       Text('+\$${inflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
                       const SizedBox(height: 2),
@@ -452,7 +509,21 @@ class SelectedLabelFocusCard extends StatelessWidget {
                   Container(height: 35, width: 1, color: const Color(0xFFE2E8F0)),
                   Column(
                     children: [
-                      const Text('OUTFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('OUTFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                          const SizedBox(width: 3),
+                          InkWell(
+                            onTap: () => _showInfoModal(
+                              context,
+                              'Outflows & Share',
+                              'Total outgoing spending associated with this label, alongside its percentage share of global portfolio outflows.',
+                            ),
+                            child: const Icon(Icons.info_outline, size: 12, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 4),
                       Text('-\$${outflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFFDC2626))),
                       const SizedBox(height: 2),

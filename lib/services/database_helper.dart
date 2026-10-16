@@ -23,7 +23,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 4, // Upgraded to version 4 to support currency_code on transactions
+      version: 5, // Upgraded to version 5 to add owner column to budgets and savings_goals
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -63,6 +63,7 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         label_id INTEGER NOT NULL,
         limit_amount REAL NOT NULL,
+        owner TEXT DEFAULT 'Shared',
         FOREIGN KEY (label_id) REFERENCES labels (id) ON DELETE CASCADE
       );
     ''');
@@ -73,7 +74,8 @@ class DatabaseHelper {
         name TEXT NOT NULL,
         target_amount REAL NOT NULL,
         current_amount REAL NOT NULL DEFAULT 0.0,
-        target_date TEXT
+        target_date TEXT,
+        owner TEXT DEFAULT 'Shared'
       );
     ''');
 
@@ -95,6 +97,7 @@ class DatabaseHelper {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           label_id INTEGER NOT NULL,
           limit_amount REAL NOT NULL,
+          owner TEXT DEFAULT 'Shared',
           FOREIGN KEY (label_id) REFERENCES labels (id) ON DELETE CASCADE
         );
       ''');
@@ -106,7 +109,8 @@ class DatabaseHelper {
           name TEXT NOT NULL,
           target_amount REAL NOT NULL,
           current_amount REAL NOT NULL DEFAULT 0.0,
-          target_date TEXT
+          target_date TEXT,
+          owner TEXT DEFAULT 'Shared'
         );
       ''');
     }
@@ -114,6 +118,10 @@ class DatabaseHelper {
       await db.execute('''
         ALTER TABLE transactions ADD COLUMN currency_code TEXT DEFAULT 'EUR';
       ''');
+    }
+    if (oldVersion < 5) {
+      await db.execute('ALTER TABLE budgets ADD COLUMN owner TEXT DEFAULT "Shared";');
+      await db.execute('ALTER TABLE savings_goals ADD COLUMN owner TEXT DEFAULT "Shared";');
     }
   }
 
@@ -141,15 +149,19 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getBudgets() async {
     final db = await instance.database;
     return await db.rawQuery('''
-      SELECT b.id, b.label_id, b.limit_amount, l.name as label_name, l.color as label_color
+      SELECT b.id, b.label_id, b.limit_amount, b.owner, l.name as label_name, l.color as label_color
       FROM budgets b
       LEFT JOIN labels l ON b.label_id = l.id
     ''');
   }
 
-  Future<int> insertBudget(int labelId, double limitAmount) async {
+  Future<int> insertBudget(int labelId, double limitAmount, String owner) async {
     final db = await instance.database;
-    return await db.insert('budgets', {'label_id': labelId, 'limit_amount': limitAmount});
+    return await db.insert('budgets', {
+      'label_id': labelId,
+      'limit_amount': limitAmount,
+      'owner': owner,
+    });
   }
 
   Future<int> updateBudget(int id, double limitAmount) async {

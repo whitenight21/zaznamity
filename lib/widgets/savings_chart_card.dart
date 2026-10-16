@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zaznamity/models/transaction_model.dart';
 import 'package:zaznamity/models/label.dart';
 
@@ -52,6 +53,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
   double _cachedMinY = 0;
   double _cachedMaxY = 100;
   List<DateTime> _cachedSpotDates = [];
+  double _cachedMonthlyVelocity = 0;
 
   int? _lastTxLength;
   int? _lastLabelsLength;
@@ -59,6 +61,32 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
   DateTime? _lastStartDate;
   DateTime? _lastEndDate;
   SavingsMovingAverageFilter? _lastMaFilter;
+  String _currencySymbol = '\$';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrencyPrefs();
+  }
+
+  Future<void> _loadCurrencyPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    if (mounted) {
+      setState(() {
+        _currencySymbol = _getCurrencySymbol(primary);
+      });
+    }
+  }
+
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': return '¥';
+      default: return '\$';
+    }
+  }
 
   void _computeChartDataIfNeeded() {
     if (_lastTxLength == widget.transactions.length &&
@@ -293,6 +321,17 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
     if (lowestPoint == double.infinity) lowestPoint = 0;
     if (highestPoint == -double.infinity) highestPoint = 0;
 
+    double monthlyVelocity = 0;
+    if (balancePoints.length >= 2) {
+      final firstPoint = balancePoints.first;
+      final lastPoint = balancePoints.last;
+      final daysDiff = (lastPoint['date'] as DateTime).difference(firstPoint['date'] as DateTime).inDays;
+      if (daysDiff > 0) {
+        final totalDelta = (lastPoint['balance'] as double) - (firstPoint['balance'] as double);
+        monthlyVelocity = (totalDelta / daysDiff) * 30;
+      }
+    }
+
     final double yRange = highestPoint - lowestPoint;
     final double yPadding = yRange == 0 ? 50 : yRange * 0.15;
     
@@ -304,6 +343,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
     _cachedMinY = minY;
     _cachedMaxY = maxY;
     _cachedSpotDates = spotDates;
+    _cachedMonthlyVelocity = monthlyVelocity;
 
     _lastTxLength = widget.transactions.length;
     _lastLabelsLength = widget.labels.length;
@@ -532,6 +572,35 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                 ],
               ),
               const SizedBox(height: 12),
+              // Rate of change / Velocity badge indicator
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _cachedMonthlyVelocity >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                      size: 14,
+                      color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Savings Velocity: ${_cachedMonthlyVelocity >= 0 ? '+' : ''}$_currencySymbol${_cachedMonthlyVelocity.toStringAsFixed(2)}/mo',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -632,7 +701,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                           reservedSize: 48,
                           getTitlesWidget: (value, meta) {
                             return Text(
-                              '\$${value.toInt()}',
+                              '$_currencySymbol${value.toInt()}',
                               style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
                             );
                           },
@@ -652,7 +721,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                               dateStr = '${DateFormat('MMM d, yyyy').format(_cachedSpotDates[spotIndex])}\n';
                             }
                             return LineTooltipItem(
-                              '${dateStr}\$${spot.y.toStringAsFixed(2)}',
+                              '${dateStr}$_currencySymbol${spot.y.toStringAsFixed(2)}',
                               const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
                             );
                           }).toList();
