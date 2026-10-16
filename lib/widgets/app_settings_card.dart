@@ -92,7 +92,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   final int _notifyHoursBefore = 9;
   
   bool _biometricsEnabled = false;
-  String _biometricType = 'PIN'; // 'PIN', 'Face ID', or 'Touch ID'
+  String _biometricType = 'PIN';
   String _savedPin = "1234";
   bool _isPinVisible = false;
 
@@ -102,6 +102,21 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   String? _secondaryCurrency3;
 
   String _calendarStartDay = 'Monday';
+  String _defaultOpenCard = 'history';
+
+  // Title Card configuration state variables
+  bool _titleCardShowMessage = true;
+  final TextEditingController _titleCardMessageController = TextEditingController();
+
+  // Card-specific settings state variables (Non-date range parameters)
+  final Map<String, bool> _multiLabelFixedCategories = {};
+
+  bool _liquidTrendShowFuture = false;
+  bool _poolsTrendsShowOnlyFunded = false;
+  bool _poolsTrendsShowFuture = false;
+  final Map<String, bool> _poolsTrendsVisibility = {};
+
+  bool _budgetRolloverEnabled = false;
 
   List<File> _savedReportsList = [];
 
@@ -129,6 +144,10 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     _prognosisPools = Map.from(widget.initialPrognosisPools);
     _owners = List.from(widget.initialOwners);
     
+    for (var poolKey in _pools.keys) {
+      _poolsTrendsVisibility[poolKey] = true;
+    }
+
     _leftNavItems = [
       'owner',
       widget.initialLeftNavItems.length > 1 ? widget.initialLeftNavItems[1] : 'metrics',
@@ -139,9 +158,21 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       widget.initialRightNavItems.length > 1 ? widget.initialRightNavItems[1] : 'calendar',
       'snapshot',
     ];
+
+    for (var label in widget.labels) {
+      _multiLabelFixedCategories[label.name] = false;
+    }
     
     _loadPrefs();
     _loadSavedReports();
+  }
+
+  @override
+  void dispose() {
+    _titleCardMessageController.dispose();
+    _newLabelController.dispose();
+    _pinController.dispose();
+    super.dispose();
   }
 
   @override
@@ -149,6 +180,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     super.didUpdateWidget(oldWidget);
     if (widget.initialOwners != oldWidget.initialOwners) {
       _owners = List.from(widget.initialOwners);
+    }
+    if (widget.labels != oldWidget.labels) {
+      for (var label in widget.labels) {
+        _multiLabelFixedCategories.putIfAbsent(label.name, () => false);
+      }
     }
   }
 
@@ -168,6 +204,30 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       _secondaryCurrency3 = prefs.getString('secondaryCurrency3');
 
       _calendarStartDay = prefs.getString('calendarStartDay') ?? 'Monday';
+      _defaultOpenCard = prefs.getString('defaultOpenCard') ?? 'history';
+
+      // Load Title Card preferences
+      _titleCardShowMessage = prefs.getBool('titleCardShowMessage') ?? true;
+      final savedMsg = prefs.getString('titleCardCustomMessage');
+      if (savedMsg != null && savedMsg.isNotEmpty) {
+        _titleCardMessageController.text = savedMsg;
+      } else {
+        _titleCardMessageController.text = _owners.isNotEmpty ? _owners.first : 'Mathias';
+      }
+
+      for (var label in widget.labels) {
+        _multiLabelFixedCategories[label.name] = prefs.getBool('set_multilabel_fixed_${label.name}') ?? false;
+      }
+
+      for (var poolKey in _pools.keys) {
+        _poolsTrendsVisibility[poolKey] = prefs.getBool('set_poolsTrends_pool_visible_$poolKey') ?? true;
+        _liquidNetPools[poolKey] = prefs.getBool('set_liquidNet_pool_$poolKey') ?? true;
+      }
+
+      _liquidTrendShowFuture = prefs.getBool('set_liquidTrend_show_future') ?? false;
+      _poolsTrendsShowOnlyFunded = prefs.getBool('set_poolsTrends_funded_only') ?? false;
+      _poolsTrendsShowFuture = prefs.getBool('set_poolsTrends_show_future') ?? false;
+      _budgetRolloverEnabled = prefs.getBool('set_budget_rollover') ?? false;
 
       final leftSaved = prefs.getStringList('leftNavItems');
       if (leftSaved != null && leftSaved.length >= 3) {
@@ -258,6 +318,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     for (var card in widget.cards) {
       uniqueItems[card.id] = card.title;
     }
+    uniqueItems['title_card'] = 'Title Card';
+
     return uniqueItems.entries.map((entry) {
       return DropdownMenuItem(
         value: entry.key,
@@ -289,6 +351,156 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
             child: const Text('Save'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showConfigureBudgetsDialog() async {
+    List<Map<String, dynamic>> budgets = [];
+    try {
+      budgets = await DatabaseHelper.instance.getBudgets();
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Configure Budgets', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+          content: SizedBox(
+            width: 450,
+            child: budgets.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: Text('No budgets configured yet. Create budgets in the Budgets card.', style: TextStyle(fontSize: 13, color: Color(0xFF64748B)))),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: budgets.length,
+                    itemBuilder: (context, index) {
+                      final b = budgets[index];
+                      final budgetId = b['id'] as int;
+                      final labelId = b['label_id'] ?? b['labelId'];
+                      double limitAmount = ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
+                      String owner = b['owner'] ?? _owners.firstOrNull ?? 'Shared';
+                      String currency = b['currency'] ?? _primaryCurrency;
+
+                      final labelObj = widget.labels.firstWhere(
+                        (l) => l.id == labelId,
+                        orElse: () => LabelModel(id: -1, name: b['label_name'] ?? 'General', color: '582F95'),
+                      );
+
+                      final limitController = TextEditingController(text: limitAmount.toStringAsFixed(0));
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(labelObj.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B))),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFDC2626)),
+                                  onPressed: () async {
+                                    await DatabaseHelper.instance.deleteBudget(budgetId);
+                                    final updated = await DatabaseHelper.instance.getBudgets();
+                                    setDialogState(() => budgets = updated);
+                                  },
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Expanded(
+                                  flex: 2,
+                                  child: TextField(
+                                    controller: limitController,
+                                    keyboardType: TextInputType.number,
+                                    decoration: const InputDecoration(labelText: 'Amount Limit', isDense: true, border: OutlineInputBorder()),
+                                    onChanged: (val) {
+                                      final parsed = double.tryParse(val);
+                                      if (parsed != null) {
+                                        b['limit_amount'] = parsed;
+                                      }
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  flex: 2,
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue: _owners.contains(owner) ? owner : (_owners.isNotEmpty ? _owners.first : owner),
+                                    decoration: const InputDecoration(labelText: 'Owner', isDense: true, border: OutlineInputBorder()),
+                                    items: _owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 12)))).toList(),
+                                    onChanged: (val) {
+                                      if (val != null) {
+                                        setDialogState(() => owner = val);
+                                        b['owner'] = val;
+                                      }
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  flex: 2,
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue: [_primaryCurrency, if (_secondaryCurrency1 != null) _secondaryCurrency1!, if (_secondaryCurrency2 != null) _secondaryCurrency2!].contains(currency) ? currency : _primaryCurrency,
+                                    decoration: const InputDecoration(labelText: 'Currency', isDense: true, border: OutlineInputBorder()),
+                                    items: [
+                                      _primaryCurrency,
+                                      if (_secondaryCurrency1 != null) _secondaryCurrency1!,
+                                      if (_secondaryCurrency2 != null) _secondaryCurrency2!,
+                                      if (_secondaryCurrency3 != null) _secondaryCurrency3!,
+                                    ].map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 12)))).toList(),
+                                    onChanged: (val) {
+                                      if (val != null) {
+                                        setDialogState(() => currency = val);
+                                        b['currency'] = val;
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(50, 24)),
+                                onPressed: () async {
+                                  final finalLimit = double.tryParse(limitController.text) ?? limitAmount;
+                                  await DatabaseHelper.instance.updateBudget(budgetId, finalLimit);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Budget updated successfully')));
+                                  }
+                                },
+                                child: const Text('Save Changes', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -430,25 +642,25 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   const SizedBox(height: 4),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Include Summary Metrics Card', style: TextStyle(fontSize: 12)),
+                    title: const Text('Include Metrics', style: TextStyle(fontSize: 12)),
                     value: includeSummaryCard,
                     onChanged: (val) => setStateModal(() => includeSummaryCard = val ?? true),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Include Future Metrics Card', style: TextStyle(fontSize: 12)),
+                    title: const Text('Include Future Metrics', style: TextStyle(fontSize: 12)),
                     value: includeFutureMetricsCard,
                     onChanged: (val) => setStateModal(() => includeFutureMetricsCard = val ?? true),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Include Savings Goals Card', style: TextStyle(fontSize: 12)),
+                    title: const Text('Include Savings Goals', style: TextStyle(fontSize: 12)),
                     value: includeSavingsGoalsCard,
                     onChanged: (val) => setStateModal(() => includeSavingsGoalsCard = val ?? true),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Include Budget Progress Card', style: TextStyle(fontSize: 12)),
+                    title: const Text('Include Budgets', style: TextStyle(fontSize: 12)),
                     value: includeBudgetCard,
                     onChanged: (val) => setStateModal(() => includeBudgetCard = val ?? true),
                   ),
@@ -458,19 +670,19 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   const SizedBox(height: 4),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Bar Chart (Income vs Expenses)', style: TextStyle(fontSize: 12)),
+                    title: const Text('Bar Chart (Multi-Label Analytics)', style: TextStyle(fontSize: 12)),
                     value: includeBarChart,
                     onChanged: (val) => setStateModal(() => includeBarChart = val ?? false),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Pie Chart (Expenses by Label)', style: TextStyle(fontSize: 12)),
+                    title: const Text('Pie Chart (Multi-Label Analytics)', style: TextStyle(fontSize: 12)),
                     value: includePieChart,
                     onChanged: (val) => setStateModal(() => includePieChart = val ?? false),
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Liquid Trend Line Chart', style: TextStyle(fontSize: 12)),
+                    title: const Text('Liquid Trend', style: TextStyle(fontSize: 12)),
                     value: includeLineChart,
                     onChanged: (val) => setStateModal(() => includeLineChart = val ?? false),
                   ),
@@ -480,7 +692,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   const SizedBox(height: 4),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('List Zaznam history as last parameter (Full transactions table)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    title: const Text('List Zaznam history as last parameter (Full Zaznams table)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                     value: includeTransactionTableHistory,
                     onChanged: (val) => setStateModal(() => includeTransactionTableHistory = val ?? true),
                   ),
@@ -657,26 +869,26 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         if (includeSavingsGoalsCard || includeBudgetCard) {
                           childrenWidgets.add(pw.Text('• Savings Goals & Budget Status', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
                           childrenWidgets.add(pw.SizedBox(height: 6));
-                          childrenWidgets.add(pw.Container(height: 25, alignment: pw.Alignment.centerLeft, child: pw.Text('[Goals and budget progress parameters included]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
+                          childrenWidgets.add(pw.Container(height: 25, alignment: pw.Alignment.centerLeft, child: pw.Text('[Goals and budget parameters included]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
                           childrenWidgets.add(pw.SizedBox(height: 14));
                         }
 
                         if (includeBarChart) {
-                          childrenWidgets.add(pw.Text('• Visual Chart: Bar Chart (Income vs Expenses)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
+                          childrenWidgets.add(pw.Text('• Visual Chart: Bar Chart', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
                           childrenWidgets.add(pw.SizedBox(height: 4));
                           childrenWidgets.add(pw.Container(height: 45, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.circular(6)), child: pw.Text('[Bar Chart Rendering]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
                           childrenWidgets.add(pw.SizedBox(height: 10));
                         }
 
                         if (includePieChart) {
-                          childrenWidgets.add(pw.Text('• Visual Chart: Pie Chart (Expenses by Label)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
+                          childrenWidgets.add(pw.Text('• Visual Chart: Pie Chart', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
                           childrenWidgets.add(pw.SizedBox(height: 4));
                           childrenWidgets.add(pw.Container(height: 45, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.circular(6)), child: pw.Text('[Pie Chart Rendering]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
                           childrenWidgets.add(pw.SizedBox(height: 10));
                         }
 
                         if (includeLineChart) {
-                          childrenWidgets.add(pw.Text('• Visual Chart: Liquid Trend Line Chart', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
+                          childrenWidgets.add(pw.Text('• Visual Chart: Liquid Trend', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
                           childrenWidgets.add(pw.SizedBox(height: 4));
                           childrenWidgets.add(pw.Container(height: 45, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.circular(6)), child: pw.Text('[Line Chart Rendering]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
                           childrenWidgets.add(pw.SizedBox(height: 10));
@@ -684,11 +896,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
                         if (includeTransactionTableHistory) {
                           childrenWidgets.add(pw.SizedBox(height: 6));
-                          childrenWidgets.add(pw.Text('• Zaznam History (${filteredTxs.length} Transactions)', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
+                          childrenWidgets.add(pw.Text('• All Zaznams (${filteredTxs.length})', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF1E293B))));
                           childrenWidgets.add(pw.SizedBox(height: 6));
                           
                           if (filteredTxs.isEmpty) {
-                            childrenWidgets.add(pw.Text('No transactions found for the selected timeframe and filters.', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)));
+                            childrenWidgets.add(pw.Text('No Zaznams found for the selected timeframe and filters.', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)));
                           } else {
                             childrenWidgets.add(pw.Table(
                               border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
@@ -1002,8 +1214,29 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               // ==========================================
               _buildMainCategoryGroup(
                 title: 'Appearance & Navigation',
-                subtitle: 'Theme preferences and navigation layout configuration',
+                subtitle: 'Theme preferences, app launch card, and navigation layout',
                 children: [
+                  _buildSubSectionCard(
+                    title: 'On App Open',
+                    subtitle: 'Choose which card is displayed by default upon launching the app',
+                    children: [
+                      const Text('Default Landing Card', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                      const SizedBox(height: 4),
+                      DropdownButtonFormField<String>(
+                        initialValue: _buildNavDropdownItems().any((item) => item.value == _defaultOpenCard) ? _defaultOpenCard : 'history',
+                        isExpanded: true,
+                        decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
+                        items: _buildNavDropdownItems(),
+                        onChanged: (val) async {
+                          if (val != null) {
+                            setState(() => _defaultOpenCard = val);
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setString('defaultOpenCard', val);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
                   _buildSubSectionCard(
                     title: 'Dark Mode',
                     subtitle: 'Toggle light or dark theme',
@@ -1161,25 +1394,138 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               ),
 
               // ==========================================
-              // GROUP 2: ORGANIZATION & STRUCTURE
+              // GROUP 2: CARDS SETTINGS
               // ==========================================
               _buildMainCategoryGroup(
-                title: 'Organization & Structure',
-                subtitle: 'Labels, owners, pools, currencies, and metric configurations',
+                title: 'Cards Settings',
+                subtitle: 'Configure default behaviors, parameters, and filters for each dashboard card',
                 children: [
                   _buildSubSectionCard(
-                    title: 'Calendar First Day of the Week',
-                    subtitle: 'Choose whether calendar weeks start on Monday or Sunday',
+                    title: 'Title Card',
+                    subtitle: 'Dashboard header badge & personal greeting message',
                     children: [
-                      const Text('Start Day', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Show Personal Message / Name', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        subtitle: const Text('Display your custom greeting or name badge on the dashboard title card', style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+                        value: _titleCardShowMessage,
+                        onChanged: (val) async {
+                          setState(() => _titleCardShowMessage = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('titleCardShowMessage', val);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('Custom Message / Display Name', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _titleCardMessageController,
+                              decoration: const InputDecoration(
+                                hintText: 'Enter name or message (e.g. Mathias)...',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                                isDense: true,
+                              ),
+                              onChanged: (val) async {
+                                final prefs = await SharedPreferences.getInstance();
+                                await prefs.setString('titleCardCustomMessage', val.trim());
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF582F95),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed: () async {
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.setString('titleCardCustomMessage', _titleCardMessageController.text.trim());
+                              await prefs.setBool('titleCardShowMessage', _titleCardShowMessage);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Title card settings saved successfully!')),
+                                );
+                              }
+                            },
+                            child: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  _buildSubSectionCard(
+                    title: 'All Zaznams',
+                    subtitle: 'Data management & bulk operations',
+                    children: [
+                      const Text('Zaznams Management - DANGER ZONE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                      const SizedBox(height: 4),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
+                        onPressed: _showBulkDeleteDialog,
+                        icon: const Icon(Icons.delete_sweep, size: 16),
+                        label: const Text('Delete Zaznams Configurator (Bulk)', style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                  _buildSubSectionCard(
+                    title: 'Multi-Label Analytics',
+                    subtitle: 'Fixed vs discretionary category mappings',
+                    children: [
+                      const Text('Fixed vs Discretionary Labels Configuration', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                      const SizedBox(height: 4),
+                      const Text('Check labels that should be categorized as Fixed expenses (unchecked are Discretionary):', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                      const SizedBox(height: 8),
+                      widget.labels.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8.0),
+                              child: Text('No labels available. Add labels in the Organization group.', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                            )
+                          : ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 200),
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: widget.labels.length,
+                                itemBuilder: (context, index) {
+                                  final label = widget.labels[index];
+                                  final isFixed = _multiLabelFixedCategories[label.name] ?? false;
+                                  return CheckboxListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    dense: true,
+                                    title: Text(label.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                    subtitle: Text(isFixed ? 'Fixed Expense' : 'Discretionary Expense', style: TextStyle(fontSize: 10, color: isFixed ? const Color(0xFF582F95) : const Color(0xFF64748B))),
+                                    value: isFixed,
+                                    onChanged: (val) async {
+                                      final newVal = val ?? false;
+                                      setState(() {
+                                        _multiLabelFixedCategories[label.name] = newVal;
+                                      });
+                                      final prefs = await SharedPreferences.getInstance();
+                                      await prefs.setBool('set_multilabel_fixed_${label.name}', newVal);
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                    ],
+                  ),
+                  _buildSubSectionCard(
+                    title: 'Calendar',
+                    subtitle: 'Start day of the week',
+                    children: [
+                      const Text('Start Day', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
                       const SizedBox(height: 4),
                       DropdownButtonFormField<String>(
                         initialValue: _calendarStartDay,
                         isExpanded: true,
                         decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
                         items: const [
-                          DropdownMenuItem(value: 'Monday', child: Text('Monday (Start of week)')),
-                          DropdownMenuItem(value: 'Sunday', child: Text('Sunday (Start of week)')),
+                          DropdownMenuItem(value: 'Monday', child: Text('Monday')),
+                          DropdownMenuItem(value: 'Sunday', child: Text('Sunday')),
                         ],
                         onChanged: (val) async {
                           if (val != null) {
@@ -1192,7 +1538,154 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     ],
                   ),
                   _buildSubSectionCard(
-                    title: 'Currency Preferences (Max 4 Total)',
+                    title: 'Liquid Trend',
+                    subtitle: 'Future zaznams visibility',
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Show Future Zaznams in Chart', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        value: _liquidTrendShowFuture,
+                        onChanged: (val) async {
+                          setState(() => _liquidTrendShowFuture = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('set_liquidTrend_show_future', val);
+                        },
+                      ),
+                    ],
+                  ),
+                  _buildSubSectionCard(
+                    title: 'Pools Trends',
+                    subtitle: 'Funded pools filter, future zaznams, and individual pool visibility',
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Show Only Pools with Funds', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        value: _poolsTrendsShowOnlyFunded,
+                        onChanged: (val) async {
+                          setState(() => _poolsTrendsShowOnlyFunded = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('set_poolsTrends_funded_only', val);
+                        },
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Show Future Zaznams in Chart', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        value: _poolsTrendsShowFuture,
+                        onChanged: (val) async {
+                          setState(() => _poolsTrendsShowFuture = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('set_poolsTrends_show_future', val);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('Pool Visibility in Trends', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                      const SizedBox(height: 4),
+                      ..._pools.keys.map((poolKey) {
+                        return CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(poolKey.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                          value: _poolsTrendsVisibility[poolKey] ?? true,
+                          onChanged: (val) async {
+                            final visible = val ?? true;
+                            setState(() {
+                              _poolsTrendsVisibility[poolKey] = visible;
+                            });
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setBool('set_poolsTrends_pool_visible_$poolKey', visible);
+                          },
+                        );
+                      }),
+                    ],
+                  ),
+                  _buildSubSectionCard(
+                    title: 'Metrics',
+                    subtitle: 'Select which pools contribute to liquid net calculation',
+                    children: _pools.keys.map((poolKey) {
+                      return CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(poolKey.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                        value: _liquidNetPools[poolKey] ?? true,
+                        onChanged: (val) async {
+                          final included = val ?? true;
+                          setState(() {
+                            _liquidNetPools[poolKey] = included;
+                          });
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('set_liquidNet_pool_$poolKey', included);
+                          widget.onSaveLiquidNetPools(_liquidNetPools);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  _buildSubSectionCard(
+                    title: 'Future Metrics',
+                    subtitle: 'Selector for pools updating future metrics',
+                    children: [
+                      const Text('Prognosis Counting Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                      const SizedBox(height: 4),
+                      const Text('Configure which pools update future metrics/prognosis:', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                      const SizedBox(height: 8),
+                      ..._pools.keys.map((poolKey) {
+                        return CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(poolKey.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                          value: _prognosisPools[poolKey] ?? false,
+                          onChanged: (val) {
+                            setState(() {
+                              _prognosisPools[poolKey] = val ?? false;
+                            });
+                            widget.onSavePrognosisPools(_prognosisPools);
+                          },
+                        );
+                      }),
+                    ],
+                  ),
+                  _buildSubSectionCard(
+                    title: 'Budgets',
+                    subtitle: 'Budget configurator and rollover preferences',
+                    children: [
+                      const Text('Configure Existing Budgets', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF582F95),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: _showConfigureBudgetsDialog,
+                          icon: const Icon(Icons.tune, size: 16),
+                          label: const Text('Configure Budgets', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Enable Budget Rollover', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        subtitle: const Text('Rollover unspent budget amounts to the next period', style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+                        value: _budgetRolloverEnabled,
+                        onChanged: (val) async {
+                          setState(() => _budgetRolloverEnabled = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('set_budget_rollover', val);
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              // ==========================================
+              // GROUP 3: ORGANIZATION & STRUCTURE
+              // ==========================================
+              _buildMainCategoryGroup(
+                title: 'Organization & Structure',
+                subtitle: 'Labels, owners, pools, and currencies',
+                children: [
+                  _buildSubSectionCard(
+                    title: 'Currency Preferences',
                     subtitle: 'Set 1 primary currency and up to 3 secondary currencies for multi-currency tracking',
                     children: [
                       const Text('Primary Currency (1 required)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
@@ -1286,8 +1779,10 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   ),
                   _buildSubSectionCard(
                     title: 'Labels Management',
-                    subtitle: 'Manage Zaznamity labels',
+                    subtitle: 'Create, edit, delete labels, and bulk reassign Zaznam labels',
                     children: [
+                      const Text('Add & Manage Individual Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                      const SizedBox(height: 6),
                       Row(
                         children: [
                           Expanded(
@@ -1315,7 +1810,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       ),
                       const SizedBox(height: 12),
                       ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 200),
+                        constraints: const BoxConstraints(maxHeight: 180),
                         child: ListView.builder(
                           shrinkWrap: true,
                           itemCount: widget.labels.length,
@@ -1341,29 +1836,26 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           },
                         ),
                       ),
-                    ],
-                  ),
-                  _buildSubSectionCard(
-                    title: 'Bulk Edit Zaznam Labels',
-                    subtitle: 'Change all Zaznams labeled "x" to "y"',
-                    children: [
+                      const Divider(height: 24, color: Color(0xFFE2E8F0)),
+                      const Text('Bulk Edit Zaznam Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                      const SizedBox(height: 4),
                       const Text(
                         'Reassign all existing Zaznams from one label to another in batch',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
+                        style: TextStyle(fontSize: 11, color: Color(0xFF64748B), height: 1.4),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color.fromARGB(255, 88, 47, 149),
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           onPressed: _showBulkEditLabelDialog,
                           icon: const Icon(Icons.edit_note, size: 18),
-                          label: const Text('Bulk Edit Labels', style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: const Text('Bulk Edit Labels', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                         ),
                       ),
                     ],
@@ -1416,45 +1908,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       ),
                     ],
                   ),
-                  _buildSubSectionCard(
-                    title: 'Liquid Net Counting Pools',
-                    subtitle: 'Choose which pools contribute to liquid net',
-                    children: _pools.keys.map((poolKey) {
-                      return CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(poolKey.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
-                        value: _liquidNetPools[poolKey] ?? true,
-                        onChanged: (val) {
-                          setState(() {
-                            _liquidNetPools[poolKey] = val ?? false;
-                          });
-                          widget.onSaveLiquidNetPools(_liquidNetPools);
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  _buildSubSectionCard(
-                    title: 'Future Metrics Counting Pools',
-                    subtitle: 'Configure which pools update future metrics',
-                    children: _pools.keys.map((poolKey) {
-                      return CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(poolKey.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
-                        value: _prognosisPools[poolKey] ?? false,
-                        onChanged: (val) {
-                          setState(() {
-                            _prognosisPools[poolKey] = val ?? false;
-                          });
-                          widget.onSavePrognosisPools(_prognosisPools);
-                        },
-                      );
-                    }).toList(),
-                  ),
                 ],
               ),
 
               // ==========================================
-              // GROUP 3: SECURITY & NOTIFICATIONS
+              // GROUP 4: SECURITY & NOTIFICATIONS
               // ==========================================
               _buildMainCategoryGroup(
                 title: 'Security & Notifications',
@@ -1600,7 +2058,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               ),
 
               // ==========================================
-              // GROUP 4: DATA MANAGEMENT & SYSTEM
+              // GROUP 5: DATA MANAGEMENT & SYSTEM
               // ==========================================
               _buildMainCategoryGroup(
                 title: 'Data Management & System',
@@ -1745,8 +2203,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       Padding(
                         padding: EdgeInsets.symmetric(vertical: 8.0),
                         child: Text(
-                          'Welcome to Zaznamity v1.0.0!\n\n'
-                          '"Zaznam" in Slovak means record or transaction. Keep track of all your Zaznams and keep them secure on your phone—no cloud, no subscriptions.\n\n'
+                          'Welcome to Zaznamity v 1.0.0!\n\n'
+                          '"Zaznam" in Slovak means record or transaction. Keep track of all your Zaznams and keep them secure on your phone — no cloud, no subscriptions.\n\n'
                           'Local-first (SQLite): Full privacy and ownership. Your financial data stays entirely on your device.\n\n'
                           'Features of this app:\n',
                           style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),

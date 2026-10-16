@@ -45,6 +45,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
   bool _enableRollover = false;
   String _selectedCurrency = 'USD';
   List<String> _availableCurrencies = ['USD'];
+  String _budgetDefaultRange = 'Current Month';
 
   final Map<String, String> _currencyFlags = {
     'USD': '🇺🇸',
@@ -62,10 +63,10 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
   @override
   void initState() {
     super.initState();
-    _loadCurrencyPrefs();
+    _loadPrefs();
   }
 
-  Future<void> _loadCurrencyPrefs() async {
+  Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     final sec1 = prefs.getString('secondaryCurrency1');
@@ -80,6 +81,8 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
     setState(() {
       _availableCurrencies = currencies;
       _selectedCurrency = primary;
+      _enableRollover = prefs.getBool('set_budget_rollover') ?? false;
+      _budgetDefaultRange = prefs.getString('set_budget_range') ?? 'Current Month';
     });
   }
 
@@ -212,99 +215,9 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
     );
   }
 
-  void _showEditBudgetsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Edit Budgets', style: TextStyle(color: Color.fromARGB(255, 88, 47, 149), fontWeight: FontWeight.bold)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: widget.budgets.length,
-              itemBuilder: (context, index) {
-                final b = widget.budgets[index];
-                final budgetId = b['id'] as int;
-                
-                final labelId = b['label_id'] ?? b['labelId'];
-                final labelObj = widget.labels.firstWhere(
-                  (l) => l.id == labelId,
-                  orElse: () => LabelModel(id: -1, name: b['label_name'] ?? 'General', color: '582F95'),
-                );
-                final labelName = labelObj.name;
-
-                final limitAmount = ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
-                final budgetOwner = b['owner'] ?? '';
-                final controller = TextEditingController(text: limitAmount.toString());
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(labelName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF334155))),
-                            if (budgetOwner.isNotEmpty)
-                              Text('Owner: $budgetOwner', style: const TextStyle(fontSize: 10, color: Color(0xFF64748B))),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 2,
-                        child: TextField(
-                          controller: controller,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          onChanged: (val) {
-                            final parsed = double.tryParse(val);
-                            if (parsed != null) {
-                              widget.onUpdateBudgetLimit(budgetId, parsed);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Color(0xFFDC2626), size: 18),
-                        onPressed: () {
-                          widget.onDeleteBudget(budgetId);
-                          setDialogState(() {});
-                        },
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF582F95),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Done'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    _loadPrefs();
     final currencySymbol = _getCurrencySymbol(_selectedCurrency);
     final currencyFormat = NumberFormat.currency(symbol: currencySymbol, decimalDigits: 0);
 
@@ -320,6 +233,9 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
 
     double totalSpentAll = 0;
     double totalLimitAll = 0;
+
+    final now = DateTime.now();
+    final rollingStart = now.subtract(const Duration(days: 30));
 
     List<Map<String, dynamic>> processedBudgets = filteredBudgets.map((b) {
       final labelId = b['label_id'] ?? b['labelId'];
@@ -338,19 +254,43 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
         if (tx.labelId == labelId && tx.type == 'expense' && tx.isConfirmed == 1) {
           if (tx.owner.trim().toLowerCase() != owner.trim().toLowerCase()) continue;
 
-          final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
-          if (txDate.year == _selectedMonth.year && txDate.month == _selectedMonth.month) {
-            spent += tx.amount;
-          } else if (_enableRollover && 
-                     (txDate.isBefore(DateTime(_selectedMonth.year, _selectedMonth.month, 1)))) {
-            // Calculate prior net savings/surplus if rollover is enabled
-            rolloverAmount += limit - tx.amount;
+          final txDate = DateTime.tryParse(tx.createdAt) ?? now;
+          if (_budgetDefaultRange == 'Current Month') {
+            if (txDate.year == _selectedMonth.year && txDate.month == _selectedMonth.month) {
+              spent += tx.amount;
+            }
+          } else {
+            // Rolling 30 Days window checking
+            if (txDate.isAfter(rollingStart) && txDate.isBefore(now.add(const Duration(days: 1)))) {
+              spent += tx.amount;
+            }
           }
         }
       }
 
-      if (_enableRollover && rolloverAmount > 0) {
-        limit += rolloverAmount; // Add prior surplus to current limit
+      if (_enableRollover && _budgetDefaultRange == 'Current Month') {
+        Map<String, double> pastMonthExpenses = {};
+
+        for (var tx in widget.transactions) {
+          if (tx.labelId == labelId && tx.type == 'expense' && tx.isConfirmed == 1) {
+            if (tx.owner.trim().toLowerCase() != owner.trim().toLowerCase()) continue;
+
+            final txDate = DateTime.tryParse(tx.createdAt) ?? now;
+            if (txDate.isBefore(DateTime(_selectedMonth.year, _selectedMonth.month, 1))) {
+              String monthKey = '${txDate.year}-${txDate.month.toString().padLeft(2, '0')}';
+              pastMonthExpenses[monthKey] = (pastMonthExpenses[monthKey] ?? 0) + tx.amount;
+            }
+          }
+        }
+
+        pastMonthExpenses.forEach((monthKey, monthSpent) {
+          double monthSurplus = limit - monthSpent;
+          if (monthSurplus > 0) {
+            rolloverAmount += monthSurplus;
+          }
+        });
+
+        limit += rolloverAmount;
       }
 
       totalSpentAll += spent;
@@ -400,7 +340,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: const Text(
-                        'BUDGET',
+                        'BUDGETS',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -499,11 +439,39 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                       ),
                     ),
                   ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: InkWell(
-                      onTap: () => _selectMonth(context),
-                      borderRadius: BorderRadius.circular(10),
+                  if (_budgetDefaultRange == 'Current Month')
+                    SizedBox(
+                      width: boxWidth,
+                      child: InkWell(
+                        onTap: () => _selectMonth(context),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          height: 44,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF582F95)),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  DateFormat('MMM yyyy').format(_selectedMonth),
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      width: boxWidth,
                       child: Container(
                         height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -514,11 +482,11 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF582F95)),
+                            const Icon(Icons.update_rounded, size: 16, color: Color(0xFF582F95)),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
-                                DateFormat('MMM yyyy').format(_selectedMonth),
+                                '${DateFormat('MMM d').format(rollingStart)} - ${DateFormat('MMM d').format(now)}',
                                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -527,12 +495,10 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 12),
 
-              // Row: Currency Selector & Rollover Toggle
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -572,54 +538,18 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                     width: boxWidth,
                     child: SizedBox(
                       height: 40,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          backgroundColor: _enableRollover ? const Color(0xFFEDE9FE) : const Color(0xFFF8FAFC),
-                          foregroundColor: _enableRollover ? const Color(0xFF582F95) : const Color(0xFF64748B),
-                          side: BorderSide(color: _enableRollover ? const Color(0xFFA855F7) : const Color(0xFFCBD5E1)),
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFF1F5F9),
+                          foregroundColor: const Color(0xFF334155),
+                          elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
-                        onPressed: () => setState(() => _enableRollover = !_enableRollover),
-                        icon: Icon(_enableRollover ? Icons.check_circle : Icons.radio_button_unchecked, size: 14),
-                        label: Text('Rollover Surplus', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                        onPressed: () => _showAddBudgetDialog(context),
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('New Budget', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        foregroundColor: const Color(0xFF334155),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () => _showEditBudgetsDialog(context),
-                      child: const Text('Edit Budgets', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        foregroundColor: const Color(0xFF334155),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () => _showAddBudgetDialog(context),
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text('New Budget', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],

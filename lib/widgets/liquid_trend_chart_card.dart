@@ -62,21 +62,31 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
   MovingAverageFilter? _lastMaFilter;
   String _lastPoolsKey = '';
   String _currencySymbol = '\$';
+  String _dateRangeSetting = '30 Days';
+  bool _showFuture = false;
 
   @override
   void initState() {
     super.initState();
-    _loadCurrencyPrefs();
+    _loadPrefs();
   }
 
-  Future<void> _loadCurrencyPrefs() async {
+  Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     if (mounted) {
       setState(() {
         _currencySymbol = _getCurrencySymbol(primary);
+        _dateRangeSetting = prefs.getString('set_liquidTrend_range') ?? '30 Days';
+        _showFuture = prefs.getBool('set_liquidTrend_show_future') ?? false;
       });
     }
+  }
+
+  @override
+  void didUpdateWidget(covariant LiquidTrendChartCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadPrefs();
   }
 
   String _getCurrencySymbol(String code) {
@@ -86,6 +96,34 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
       case 'JPY': return '¥';
       default: return '\$';
     }
+  }
+
+  void _showInfoDialog(BuildContext context, String title, String description) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded, color: Color(0xFF582F95), size: 22),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+          ],
+        ),
+        content: Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4)),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF582F95),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _computeChartDataIfNeeded() {
@@ -100,9 +138,23 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
       return;
     }
 
+    final now = DateTime.now();
+
+    // Fully linked setting for effective start date if widget.startDate is not explicitly provided
+    DateTime? effectiveStartDate = widget.startDate;
+    if (effectiveStartDate == null) {
+      if (_dateRangeSetting == '90 Days') {
+        effectiveStartDate = now.subtract(const Duration(days: 90));
+      } else if (_dateRangeSetting == '1 Year') {
+        effectiveStartDate = now.subtract(const Duration(days: 365));
+      } else {
+        effectiveStartDate = now.subtract(const Duration(days: 30));
+      }
+    }
+
     double initialBalance = 0;
-    if (widget.startDate != null) {
-      final startClean = DateTime(widget.startDate!.year, widget.startDate!.month, widget.startDate!.day);
+    if (effectiveStartDate != null) {
+      final startClean = DateTime(effectiveStartDate.year, effectiveStartDate.month, effectiveStartDate.day);
       for (var tx in widget.transactions) {
         if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty) {
           if (tx.owner != widget.selectedOwner) continue;
@@ -123,8 +175,12 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
       }
       final txDate = DateTime.tryParse(tx.createdAt);
       if (txDate == null) return true;
-      if (widget.startDate != null) {
-        final startClean = DateTime(widget.startDate!.year, widget.startDate!.month, widget.startDate!.day);
+
+      // Fully linked setting for showing future transactions
+      if (!_showFuture && txDate.isAfter(now)) return false;
+
+      if (effectiveStartDate != null) {
+        final startClean = DateTime(effectiveStartDate.year, effectiveStartDate.month, effectiveStartDate.day);
         if (txDate.isBefore(startClean)) return false;
       }
       if (widget.endDate != null) {
@@ -142,7 +198,6 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
       });
 
     List<LineChartBarData> lineBars = [];
-    final now = DateTime.now();
 
     double currentBalance = initialBalance;
     List<FlSpot> currentSegmentSpots = [];
@@ -316,7 +371,6 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
     if (lowestPoint == double.infinity) lowestPoint = 0;
     if (highestPoint == -double.infinity) highestPoint = 0;
 
-    // Monthly Velocity calculation
     double monthlyVelocity = 0;
     if (balancePoints.length >= 2) {
       final firstPoint = balancePoints.first;
@@ -328,7 +382,6 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
       }
     }
 
-    // Emergency Runway calculation (Current Balance / Average Monthly Expenses)
     double totalExpensesSum = 0;
     int expenseTxCount = 0;
     for (var tx in filteredTx) {
@@ -340,7 +393,6 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
     double runwayMonths = 0;
     if (expenseTxCount > 0 && balancePoints.isNotEmpty) {
       final latestBalance = balancePoints.last['balance'] as double;
-      // Estimate monthly expense rate based on total filtered span or transaction frequency
       final firstDate = balancePoints.first['date'] as DateTime;
       final lastDate = balancePoints.last['date'] as DateTime;
       final totalSpanDays = lastDate.difference(firstDate).inDays;
@@ -409,14 +461,30 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: const Text(
-                        'LIQUID TREND',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 88, 47, 149),
-                          letterSpacing: 0.8,
-                        ),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'LIQUID TREND',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color.fromARGB(255, 88, 47, 149),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              hasDateFilter ? 'Custom' : _dateRangeSetting,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -593,121 +661,232 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                 ],
               ),
               const SizedBox(height: 12),
-              // Velocity & Runway Badges Row
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _cachedMonthlyVelocity >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                          size: 14,
-                          color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+
+              LayoutBuilder(
+                builder: (context, rowConstraints) {
+                  final double rowWidth = rowConstraints.maxWidth;
+                  final double w25 = (rowWidth - 16) * 0.24;
+                  final double w50 = (rowWidth - 16) * 0.48;
+
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      SizedBox(
+                        width: w25,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              height: 48,
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _cachedMonthlyVelocity >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                                        size: 11,
+                                        color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                      ),
+                                      const SizedBox(width: 3),
+                                      const Text(
+                                        'Velocity',
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF334155),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 1),
+                                  Text(
+                                    '${_cachedMonthlyVelocity >= 0 ? '+' : ''}$_currencySymbol${_cachedMonthlyVelocity.toStringAsFixed(2)}/mo',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Positioned(
+                              top: -6,
+                              right: -4,
+                              child: InkWell(
+                                onTap: () => _showInfoDialog(
+                                  context,
+                                  'Liquid Velocity',
+                                  'Liquid velocity measures the average monthly rate of change in your liquid net worth over the selected period.',
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.info_outline_rounded, size: 13, color: Color.fromARGB(255, 158, 158, 158)),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Velocity: ${_cachedMonthlyVelocity >= 0 ? '+' : ''}$_currencySymbol${_cachedMonthlyVelocity.toStringAsFixed(2)}/mo',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF047857) : const Color(0xFFB91C1C),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFBFDBFE)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.hourglass_top_rounded,
-                          size: 14,
-                          color: Color(0xFF2563EB),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Runway: ${_cachedRunwayMonths.toStringAsFixed(1)} mos',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1D4ED8),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    const SizedBox(
-                      width: 95,
-                      child: Text(
-                        'Moving Average',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                        maxLines: 2,
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: const Text('30-Day', style: TextStyle(fontSize: 11)),
-                      selected: _maFilter == MovingAverageFilter.days30,
-                      showCheckmark: false,
-                      onSelected: (selected) {
-                        setState(() {
-                          _maFilter = selected ? MovingAverageFilter.days30 : null;
-                        });
-                      },
-                      selectedColor: Colors.amber.shade200,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    const SizedBox(width: 6),
-                    ChoiceChip(
-                      label: const Text('90-Day', style: TextStyle(fontSize: 11)),
-                      selected: _maFilter == MovingAverageFilter.days90,
-                      showCheckmark: false,
-                      onSelected: (selected) {
-                        setState(() {
-                          _maFilter = selected ? MovingAverageFilter.days90 : null;
-                        });
-                      },
-                      selectedColor: Colors.amber.shade200,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    const SizedBox(width: 6),
-                    ChoiceChip(
-                      label: const Text('All', style: TextStyle(fontSize: 11)),
-                      selected: _maFilter == MovingAverageFilter.all,
-                      showCheckmark: false,
-                      onSelected: (selected) {
-                        setState(() {
-                          _maFilter = selected ? MovingAverageFilter.all : null;
-                        });
-                      },
-                      selectedColor: Colors.amber.shade200,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ],
-                ),
+                      SizedBox(
+                        width: w25,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              height: 48,
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFFBFDBFE)),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.hourglass_top_rounded,
+                                        size: 11,
+                                        color: Color(0xFF2563EB),
+                                      ),
+                                      const SizedBox(width: 3),
+                                      const Text(
+                                        'Runway',
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF334155),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 1),
+                                  Text(
+                                    '${_cachedRunwayMonths.toStringAsFixed(1)} mos',
+                                    style: const TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1D4ED8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Positioned(
+                              top: -6,
+                              right: -4,
+                              child: InkWell(
+                                onTap: () => _showInfoDialog(
+                                  context,
+                                  'Liquid Runway',
+                                  'Liquid runway estimates how many months your current liquid balance will last based on your average burn rate.',
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.info_outline_rounded, size: 13, color: Color.fromARGB(255, 158, 158, 158)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: w50,
+                        child: Container(
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'Moving average:',
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                              ),
+                              const SizedBox(height: 2),
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    ChoiceChip(
+                                      label: const Text('30-Day', style: TextStyle(fontSize: 9.5)),
+                                      selected: _maFilter == MovingAverageFilter.days30,
+                                      showCheckmark: false,
+                                      onSelected: (selected) {
+                                        setState(() {
+                                          _maFilter = selected ? MovingAverageFilter.days30 : null;
+                                        });
+                                      },
+                                      selectedColor: Colors.amber.shade200,
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    ChoiceChip(
+                                      label: const Text('90-Day', style: TextStyle(fontSize: 9.5)),
+                                      selected: _maFilter == MovingAverageFilter.days90,
+                                      showCheckmark: false,
+                                      onSelected: (selected) {
+                                        setState(() {
+                                          _maFilter = selected ? MovingAverageFilter.days90 : null;
+                                        });
+                                      },
+                                      selectedColor: Colors.amber.shade200,
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    ChoiceChip(
+                                      label: const Text('All', style: TextStyle(fontSize: 9.5)),
+                                      selected: _maFilter == MovingAverageFilter.all,
+                                      showCheckmark: false,
+                                      onSelected: (selected) {
+                                        setState(() {
+                                          _maFilter = selected ? MovingAverageFilter.all : null;
+                                        });
+                                      },
+                                      selectedColor: Colors.amber.shade200,
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 16),
               SizedBox(

@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
 
@@ -44,15 +45,16 @@ class IncomeExpensesByLabelsCard extends StatefulWidget {
 
 class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard> {
   String chartDisplayMode = 'Show Expenses';
-  String chartType = 'Bar'; // 'Bar', 'Donut', or 'Treemap'
+  String chartType = 'Bar';
   int? touchedPieIndex;
   
   final Set<int> selectedIncomeLabels = {};
   final Set<int> selectedExpenseLabels = {};
+  final Map<String, bool> _multiLabelFixedCategories = {};
   bool _initializedLabels = false;
   String? _localOwner;
+  String _multiLabelDefaultRange = '30 Days';
 
-  // --- Memoization Cache Fields ---
   double _cachedTotalIncome = 0;
   double _cachedTotalExpenses = 0;
   List<MapEntry<String, double>> _cachedSortedEntries = [];
@@ -70,11 +72,23 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   String? _lastDisplayMode;
   String _lastIncomeLabelsKey = '';
   String _lastExpenseLabelsKey = '';
+  String _lastFixedLabelsKey = '';
 
   @override
   void initState() {
     super.initState();
     _localOwner = widget.selectedOwner;
+    _loadMultiLabelSettings();
+  }
+
+  Future<void> _loadMultiLabelSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _multiLabelDefaultRange = prefs.getString('set_multiLabel_range') ?? '30 Days';
+      for (var label in widget.labels) {
+        _multiLabelFixedCategories[label.name] = prefs.getBool('set_multilabel_fixed_${label.name}') ?? false;
+      }
+    });
   }
 
   @override
@@ -85,10 +99,14 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
         _localOwner = widget.selectedOwner;
       });
     }
+    _loadMultiLabelSettings();
   }
 
-  bool _isFixedExpenseLabel(String labelName) {
-    final lower = labelName.toLowerCase();
+  bool _isFixedExpenseLabel(LabelModel label) {
+    if (_multiLabelFixedCategories.containsKey(label.name)) {
+      return _multiLabelFixedCategories[label.name] == true;
+    }
+    final lower = label.name.toLowerCase();
     return lower.contains('rent') ||
         lower.contains('housing') ||
         lower.contains('utility') ||
@@ -99,31 +117,56 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
         lower.contains('bill');
   }
 
+  DateTime? _getEffectiveStartDate() {
+    if (widget.startDate != null) return widget.startDate;
+    final now = DateTime.now();
+    switch (_multiLabelDefaultRange) {
+      case '15 Days':
+        return now.subtract(const Duration(days: 15));
+      case '30 Days':
+        return now.subtract(const Duration(days: 30));
+      case 'Current Month':
+        return DateTime(now.year, now.month, 1);
+      case '3 Months':
+        return DateTime(now.year, now.month - 3, now.day);
+      default:
+        return now.subtract(const Duration(days: 30));
+    }
+  }
+
+  DateTime? _getEffectiveEndDate() {
+    return widget.endDate ?? DateTime.now();
+  }
+
   void _computeDataIfNeeded() {
     final activeOwner = widget.selectedOwner ?? _localOwner;
     final incomeLabelsKey = selectedIncomeLabels.join(',');
     final expenseLabelsKey = selectedExpenseLabels.join(',');
+    final fixedLabelsKey = _multiLabelFixedCategories.entries.where((e) => e.value).map((e) => e.key).join(',');
+    final effectiveStart = _getEffectiveStartDate();
+    final effectiveEnd = _getEffectiveEndDate();
 
     if (_lastTxLength == widget.transactions.length &&
         _lastOwner == activeOwner &&
-        _lastStartDate == widget.startDate &&
-        _lastEndDate == widget.endDate &&
+        _lastStartDate == effectiveStart &&
+        _lastEndDate == effectiveEnd &&
         _lastDisplayMode == chartDisplayMode &&
         _lastIncomeLabelsKey == incomeLabelsKey &&
-        _lastExpenseLabelsKey == expenseLabelsKey) {
+        _lastExpenseLabelsKey == expenseLabelsKey &&
+        _lastFixedLabelsKey == fixedLabelsKey) {
       return;
     }
 
     final filteredTransactions = widget.transactions.where((tx) {
-      if (activeOwner != null && tx.owner != activeOwner) {
+      if (activeOwner != null && activeOwner.isNotEmpty && activeOwner != 'All Owners' && tx.owner != activeOwner) {
         return false;
       }
       final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
-      if (widget.startDate != null && txDate.isBefore(widget.startDate!)) {
+      if (effectiveStart != null && txDate.isBefore(effectiveStart)) {
         return false;
       }
-      if (widget.endDate != null) {
-        final endOfDay = DateTime(widget.endDate!.year, widget.endDate!.month, widget.endDate!.day, 23, 59, 59);
+      if (effectiveEnd != null) {
+        final endOfDay = DateTime(effectiveEnd.year, effectiveEnd.month, effectiveEnd.day, 23, 59, 59);
         if (txDate.isAfter(endOfDay)) return false;
       }
       return true;
@@ -137,15 +180,17 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     final Map<String, double> previousPeriodLabelTotals = {};
 
     for (var tx in filteredTransactions) {
-      if (tx.isConfirmed != 1) continue;
+      final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+      final bool timePassed = txDate.isBefore(DateTime.now());
+      
+      if (tx.isConfirmed != 1 && !timePassed) continue;
       
       final labelObj = widget.labels.firstWhere(
         (l) => l.id == tx.labelId,
         orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
       );
 
-      final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
-      final isCurrentPeriod = (widget.startDate == null || !txDate.isBefore(widget.startDate!));
+      final isCurrentPeriod = (effectiveStart == null || !txDate.isBefore(effectiveStart));
 
       if (tx.type == 'income') {
         if (!selectedIncomeLabels.contains(labelObj.id)) continue;
@@ -156,7 +201,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       } else {
         if (!selectedExpenseLabels.contains(labelObj.id)) continue;
         totalExpenses += tx.amount;
-        if (_isFixedExpenseLabel(labelObj.name)) {
+        if (_isFixedExpenseLabel(labelObj)) {
           fixedExp += tx.amount;
         } else {
           discExp += tx.amount;
@@ -199,11 +244,12 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
 
     _lastTxLength = widget.transactions.length;
     _lastOwner = activeOwner;
-    _lastStartDate = widget.startDate;
-    _lastEndDate = widget.endDate;
+    _lastStartDate = effectiveStart;
+    _lastEndDate = effectiveEnd;
     _lastDisplayMode = chartDisplayMode;
     _lastIncomeLabelsKey = incomeLabelsKey;
     _lastExpenseLabelsKey = expenseLabelsKey;
+    _lastFixedLabelsKey = fixedLabelsKey;
   }
 
   void _showInfoModal(BuildContext context, String title, String description) {
@@ -244,6 +290,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       _initializedLabels = true;
     }
 
+    _loadMultiLabelSettings();
     _computeDataIfNeeded();
 
     final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
@@ -264,6 +311,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
     final double fixedRatio = _cachedTotalExpenses > 0 ? (_cachedFixedExpenses / _cachedTotalExpenses) * 100 : 0.0;
     final double discRatio = _cachedTotalExpenses > 0 ? (_cachedDiscretionaryExpenses / _cachedTotalExpenses) * 100 : 0.0;
+    final effectiveStart = _getEffectiveStartDate();
+    final effectiveEnd = _getEffectiveEndDate();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -356,7 +405,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 16),
 
-              // Row 1: Owner & Date range
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -434,11 +482,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
-                                          widget.startDate != null && widget.endDate != null
-                                              ? '${DateFormat('MM/dd').format(widget.startDate!)} - ${DateFormat('MM/dd').format(widget.endDate!)}'
-                                              : widget.startDate != null
-                                                  ? DateFormat('MM/dd').format(widget.startDate!)
-                                                  : 'Select Date Range',
+                                          effectiveStart != null && effectiveEnd != null
+                                              ? '${DateFormat('MM/dd').format(effectiveStart)} - ${DateFormat('MM/dd').format(effectiveEnd)}'
+                                              : 'Select Date Range',
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: hasDateFilter
@@ -489,7 +535,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 12),
 
-              // Row 2: All Labels Picker (Left) & Expense/Income Dropdown (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -559,7 +604,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: BorderColorHelper.getCachedBorderColor()), // fallback standard border
+                        border: Border.all(color: BorderColorHelper.getCachedBorderColor()),
                       ),
                       child: Row(
                         children: [
@@ -594,157 +639,208 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 16),
 
-              // Fixed vs Discretionary Banner
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'FIXED VS DISCRETIONARY',
                           style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
                         ),
-                        InkWell(
-                          onTap: () => _showInfoModal(
-                            context,
-                            'Fixed vs. Discretionary Spending',
-                            'Separates essential recurring living costs (Fixed: Rent, Utilities, Insurance, Loans) from flexible lifestyle expenses (Discretionary: Dining, Entertainment, Shopping). Maintaining a healthy ratio ensures financial resilience.',
-                          ),
-                          child: const Icon(Icons.info_outline, size: 14, color: Color(0xFF64748B)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: fixedRatio > 0 ? fixedRatio.round() : 1,
-                          child: Container(
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF2563EB),
-                              borderRadius: BorderRadius.horizontal(left: Radius.circular(4)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 2),
-                        Expanded(
-                          flex: discRatio > 0 ? discRatio.round() : 1,
-                          child: Container(
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF59E0B),
-                              borderRadius: BorderRadius.horizontal(right: Radius.circular(4)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Fixed: ${currencyFormat.format(_cachedFixedExpenses)} (${fixedRatio.toStringAsFixed(1)}%)',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2563EB)),
-                        ),
-                        Text(
-                          'Discretionary: ${currencyFormat.format(_cachedDiscretionaryExpenses)} (${discRatio.toStringAsFixed(1)}%)',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFD97706)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFECFDF5),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFA7F3D0)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('TOTAL INCOME', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF047857), letterSpacing: 0.5)),
                         const SizedBox(height: 8),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: (_cachedTotalIncome / _cachedMaxTopAmount).clamp(0.0, 1.0),
-                            backgroundColor: const Color(0xDDA7F3D0),
-                            color: const Color(0xFF10B981),
-                            minHeight: 10,
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: fixedRatio > 0 ? fixedRatio.round() : 1,
+                              child: Container(
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF2563EB),
+                                  borderRadius: BorderRadius.horizontal(left: Radius.circular(4)),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            Expanded(
+                              flex: discRatio > 0 ? discRatio.round() : 1,
+                              child: Container(
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFF59E0B),
+                                  borderRadius: BorderRadius.horizontal(right: Radius.circular(4)),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              currencyFormat.format(_cachedTotalIncome),
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Fixed: ${currencyFormat.format(_cachedFixedExpenses)} (${fixedRatio.toStringAsFixed(1)}%)',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2563EB)),
                             ),
-                          ),
+                            Text(
+                              'Discretionary: ${currencyFormat.format(_cachedDiscretionaryExpenses)} (${discRatio.toStringAsFixed(1)}%)',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFD97706)),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFFECACA)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('TOTAL EXPENSES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFB91C1C), letterSpacing: 0.5)),
-                        const SizedBox(height: 8),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: (_cachedTotalExpenses / _cachedMaxTopAmount).clamp(0.0, 1.0),
-                            backgroundColor: const Color(0xDDFECACA),
-                            color: const Color(0xFFEF4444),
-                            minHeight: 10,
-                          ),
+                  Positioned(
+                    top: -6,
+                    right: -4,
+                    child: InkWell(
+                      onTap: () => _showInfoModal(
+                        context,
+                        'Fixed vs. Discretionary Spending',
+                        'Separates essential recurring living costs from flexible lifestyle expenses. Configure labels in App Settings -> Cards Settings -> Multi-Label Analytics.',
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
                         ),
-                        const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              currencyFormat.format(_cachedTotalExpenses),
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
-                            ),
-                          ),
-                        ),
-                      ],
+                        child: const Icon(Icons.info_outline_rounded, size: 13, color: Color.fromARGB(255, 158, 158, 158)),
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
 
-              // Chart Type Selector (Bar, Donut, Treemap)
+              Column(
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFA7F3D0)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('TOTAL INCOME', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF047857), letterSpacing: 0.5)),
+                            const SizedBox(height: 8),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: (_cachedTotalIncome / _cachedMaxTopAmount).clamp(0.0, 1.0),
+                                backgroundColor: const Color(0xDDA7F3D0),
+                                color: const Color(0xFF10B981),
+                                minHeight: 10,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  currencyFormat.format(_cachedTotalIncome),
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Positioned(
+                        top: -6,
+                        right: -4,
+                        child: InkWell(
+                          onTap: () => _showInfoModal(
+                            context,
+                            'Total Income',
+                            'Sum of all incoming money transactions filtered by owner, date range, and selected income labels.',
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                            child: const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFF047857)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFFECACA)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('TOTAL EXPENSES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFB91C1C), letterSpacing: 0.5)),
+                            const SizedBox(height: 8),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: (_cachedTotalExpenses / _cachedMaxTopAmount).clamp(0.0, 1.0),
+                                backgroundColor: const Color(0xDDFECACA),
+                                color: const Color(0xFFEF4444),
+                                minHeight: 10,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  currencyFormat.format(_cachedTotalExpenses),
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Positioned(
+                        top: -6,
+                        right: -4,
+                        child: InkWell(
+                          onTap: () => _showInfoModal(
+                            context,
+                            'Total Expenses',
+                            'Sum of all outgoing expense transactions filtered by owner, date range, and your chosen expense labels.',
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                            child: const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFFB91C1C)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
               Container(
                 height: 38,
                 decoration: BoxDecoration(
@@ -817,7 +913,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 20),
 
-              // Display Content depending on active chartType
               _cachedSortedEntries.isEmpty
                   ? const SizedBox(
                       height: 150,
@@ -1121,7 +1216,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     );
   }
 
-  /// 2D Proportional Treemap Layout Generator with conditional text visibility
   Widget _buildProportionalTreemap(
     List<MapEntry<String, double>> entries,
     List<Color> paletteColors,

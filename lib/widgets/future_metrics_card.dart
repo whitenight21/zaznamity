@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 
 class FutureMetricsCard extends StatefulWidget {
@@ -47,11 +48,23 @@ class FutureMetricsCard extends StatefulWidget {
 
 class _FutureMetricsCardState extends State<FutureMetricsCard> {
   late String _selectedOwner;
+  String _dateRangeSetting = '90 Days';
+  final Map<String, bool> _prognosisPools = {};
 
   @override
   void initState() {
     super.initState();
     _selectedOwner = widget.selectedOwner ?? 'All Owners';
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _dateRangeSetting = prefs.getString('set_futureMetrics_range') ?? '90 Days';
+      });
+    }
   }
 
   @override
@@ -73,7 +86,13 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     double totalIncome = 0;
     double totalExpense = 0;
     final now = DateTime.now();
-    final pastLimit = now.subtract(const Duration(days: 90)); // 3-month baseline
+    
+    // Linked to settings date range or default rolling baseline
+    int baselineDays = 90;
+    if (_dateRangeSetting == '30 Days') baselineDays = 30;
+    else if (_dateRangeSetting == '1 Year' || _dateRangeSetting == 'Next 1 Year') baselineDays = 365;
+
+    final pastLimit = now.subtract(Duration(days: baselineDays));
 
     for (var tx in widget.transactions) {
       if (tx.isConfirmed != 1) continue;
@@ -86,8 +105,11 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
       }
     }
 
-    double monthlyBurn = totalExpense > 0 ? (totalExpense / 3) : 0.0;
-    double monthlyIncome = totalIncome > 0 ? (totalIncome / 3) : 0.0;
+    double monthsDiv = baselineDays / 30.0;
+    if (monthsDiv < 1) monthsDiv = 1.0;
+
+    double monthlyBurn = totalExpense > 0 ? (totalExpense / monthsDiv) : 0.0;
+    double monthlyIncome = totalIncome > 0 ? (totalIncome / monthsDiv) : 0.0;
     double savingsRate = monthlyIncome > 0 ? ((monthlyIncome - monthlyBurn) / monthlyIncome) * 100 : 0.0;
 
     return {
@@ -199,17 +221,38 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Top Row: Title & Action Buttons
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'FUTURE METRICS',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF582F95),
-                      letterSpacing: 0.8,
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        children: [
+                          const Text(
+                            'FUTURE METRICS',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF582F95),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              hasDateFilter ? 'Custom' : _dateRangeSetting,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   Row(
@@ -262,11 +305,9 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Second Row: Owner Dropdown (Left) & Date Range Picker (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Owner Dropdown Box
                   SizedBox(
                     width: boxWidth,
                     child: Container(
@@ -302,7 +343,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       ),
                     ),
                   ),
-                  // Date Range Picker Box with Separate Clear Button
                   SizedBox(
                     width: boxWidth,
                     child: Row(
@@ -387,7 +427,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Metric Boxes Rows (Future Flow & Prognosis)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -415,7 +454,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Additional Metric Boxes (Burn Rate & Savings Rate)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -426,7 +464,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       amount: monthlyBurn,
                       amountColor: const Color(0xFFDC2626),
                       width: boxWidth,
-                      infoExplanation: 'Monthly Burn Rate represents your average monthly baseline spending calculated over a rolling 3-month period.',
+                      infoExplanation: 'Monthly Burn Rate represents your average monthly baseline spending calculated over your configured timeframe setting ($_dateRangeSetting).',
                     ),
                   ),
                   SizedBox(
@@ -435,7 +473,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       title: 'SAVINGS RATE',
                       savingsRate: savingsRate,
                       width: boxWidth,
-                      infoExplanation: 'Savings Rate shows the exact percentage of your monthly income that you successfully retain rather than spend, based on the last 3 months.',
+                      infoExplanation: 'Savings Rate shows the exact percentage of your monthly income that you successfully retain rather than spend, based on your configured timeframe setting ($_dateRangeSetting).',
                     ),
                   ),
                 ],

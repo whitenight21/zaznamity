@@ -2,10 +2,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
 
-class SelectedLabelFocusCard extends StatelessWidget {
+class SelectedLabelFocusCard extends StatefulWidget {
   final List<TransactionModel> transactions;
   final List<LabelModel> labels;
   final List<String> owners;
@@ -44,6 +45,47 @@ class SelectedLabelFocusCard extends StatelessWidget {
     this.onJumpToHistory,
   });
 
+  @override
+  State<SelectedLabelFocusCard> createState() => _SelectedLabelFocusCardState();
+}
+
+class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
+  String _singleLabelDefaultRange = '15 Days';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _singleLabelDefaultRange = prefs.getString('set_singleLabel_range') ?? '15 Days';
+    });
+  }
+
+  DateTime _getComputedStartDate() {
+    if (widget.startDate != null) return widget.startDate!;
+    final now = DateTime.now();
+    switch (_singleLabelDefaultRange) {
+      case '7 Days':
+        return now.subtract(const Duration(days: 7));
+      case '15 Days':
+        return now.subtract(const Duration(days: 15));
+      case '30 Days':
+        return now.subtract(const Duration(days: 30));
+      case 'Current Month':
+        return DateTime(now.year, now.month, 1);
+      default:
+        return now.subtract(const Duration(days: 15));
+    }
+  }
+
+  DateTime _getComputedEndDate() {
+    return widget.endDate ?? DateTime.now();
+  }
+
   void _showInfoModal(BuildContext context, String title, String description) {
     showDialog(
       context: context,
@@ -74,12 +116,11 @@ class SelectedLabelFocusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Default to the past 15 days including today if start/end are not set
-    final now = DateTime.now();
-    final effectiveStartDate = startDate ?? now.subtract(const Duration(days: 15));
-    final effectiveEndDate = endDate ?? now;
+    _loadPrefs();
+    final effectiveStartDate = _getComputedStartDate();
+    final effectiveEndDate = _getComputedEndDate();
 
-    final filteredTxs = transactions.where((tx) {
+    final filteredTxs = widget.transactions.where((tx) {
       final txDate = DateTime.tryParse(tx.createdAt);
       if (txDate == null) return true;
       
@@ -89,8 +130,8 @@ class SelectedLabelFocusCard extends StatelessWidget {
       final endClean = DateTime(effectiveEndDate.year, effectiveEndDate.month, effectiveEndDate.day, 23, 59, 59);
       if (txDate.isAfter(endClean)) return false;
 
-      if (selectedLabelId != null && tx.labelId != selectedLabelId) return false;
-      if (selectedOwner != null && tx.owner != selectedOwner) return false;
+      if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) return false;
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) return false;
       return true;
     }).toList();
 
@@ -107,7 +148,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
     }
     double net = inflow - outflow;
 
-    final allCardFilteredTxs = transactions.where((tx) {
+    final allCardFilteredTxs = widget.transactions.where((tx) {
       final txDate = DateTime.tryParse(tx.createdAt);
       if (txDate == null) return true;
       
@@ -117,7 +158,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
       final endClean = DateTime(effectiveEndDate.year, effectiveEndDate.month, effectiveEndDate.day, 23, 59, 59);
       if (txDate.isAfter(endClean)) return false;
 
-      if (selectedOwner != null && tx.owner != selectedOwner) return false;
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) return false;
       return true;
     }).toList();
 
@@ -144,7 +185,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
       });
     final recentTransactions = sortedFilteredTxs.take(5).toList();
 
-    final bool hasDateFilter = startDate != null || endDate != null;
+    final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -202,12 +243,12 @@ class SelectedLabelFocusCard extends StatelessWidget {
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
-                            onPressed: onToggleWidth,
+                            onPressed: widget.onToggleWidth,
                             icon: Icon(
-                              isWide ? Icons.fullscreen_exit : Icons.fullscreen,
+                              widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
                               size: 18,
                             ),
-                            tooltip: isWide ? 'Narrow' : 'Wide',
+                            tooltip: widget.isWide ? 'Narrow' : 'Wide',
                           ),
                         ),
                       ),
@@ -221,7 +262,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
-                          onPressed: onHide,
+                          onPressed: widget.onHide,
                           icon: const Icon(
                             Icons.visibility_off_outlined,
                             size: 16,
@@ -254,16 +295,16 @@ class SelectedLabelFocusCard extends StatelessWidget {
                           Expanded(
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String?>(
-                                value: selectedOwner,
+                                value: widget.selectedOwner,
                                 isDense: true,
                                 isExpanded: true,
                                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                                 hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
                                 items: [
                                   const DropdownMenuItem<String?>(value: null, child: Text('All Owners')),
-                                  ...owners.map((o) => DropdownMenuItem<String?>(value: o, child: Text(o))),
+                                  ...widget.owners.map((o) => DropdownMenuItem<String?>(value: o, child: Text(o))),
                                 ],
-                                onChanged: onOwnerChanged,
+                                onChanged: widget.onOwnerChanged,
                               ),
                             ),
                           ),
@@ -289,7 +330,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
                             child: Material(
                               color: Colors.transparent,
                               child: InkWell(
-                                onTap: onSelectStartDate,
+                                onTap: widget.onSelectStartDate,
                                 borderRadius: BorderRadius.horizontal(
                                   left: const Radius.circular(10),
                                   right: hasDateFilter ? Radius.zero : const Radius.circular(10),
@@ -333,7 +374,7 @@ class SelectedLabelFocusCard extends StatelessWidget {
                             child: Material(
                               color: Colors.transparent,
                               child: InkWell(
-                                onTap: onClearDateFilter,
+                                onTap: widget.onClearDateFilter,
                                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
                                 child: const Center(
                                   child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
@@ -368,16 +409,16 @@ class SelectedLabelFocusCard extends StatelessWidget {
                           Expanded(
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<int?>(
-                                value: selectedLabelId,
+                                value: widget.selectedLabelId,
                                 isDense: true,
                                 isExpanded: true,
                                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                                 hint: const Text('All Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
                                 items: [
                                   const DropdownMenuItem<int?>(value: null, child: Text('All Labels')),
-                                  ...labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))),
+                                  ...widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))),
                                 ],
-                                onChanged: onLabelChanged,
+                                onChanged: widget.onLabelChanged,
                               ),
                             ),
                           ),
@@ -389,8 +430,13 @@ class SelectedLabelFocusCard extends StatelessWidget {
                     width: boxWidth,
                     child: InkWell(
                       onTap: () {
-                        if (onJumpToHistory != null) {
-                          onJumpToHistory!(selectedLabelId, selectedOwner, startDate, endDate);
+                        if (widget.onJumpToHistory != null) {
+                          widget.onJumpToHistory!(
+                            widget.selectedLabelId, 
+                            (widget.selectedOwner == 'All Owners' ? null : widget.selectedOwner), 
+                            effectiveStartDate, 
+                            effectiveEndDate,
+                          );
                         }
                       },
                       borderRadius: BorderRadius.circular(10),

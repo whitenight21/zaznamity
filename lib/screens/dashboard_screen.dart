@@ -28,6 +28,7 @@ import '../widgets/sankey_flow_card.dart';
 import '../widgets/pools_analytics_card.dart';
 import '../widgets/monthly_cashflow_trend_card.dart';
 import '../widgets/savings_goals_card.dart';
+import '../widgets/title_card.dart'; // <-- Imported Title Card widget
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -145,6 +146,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   List<String> _owners = ['Mathias', 'Julia', 'Shared'];
 
+  // Title Card config state wrapper
+  final CardConfig _titleCardConfig = CardConfig(id: 'title_card', title: 'Title Card', key: GlobalKey());
+
   late final List<CardConfig> _cards = [
     CardConfig(id: 'settings', title: 'Zaznamity Settings', key: GlobalKey(), isVisible: false),
     CardConfig(id: 'metrics', title: 'Metrics', key: GlobalKey()),
@@ -155,12 +159,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     CardConfig(id: 'transaction_search', title: 'Search Zaznams', key: GlobalKey()),
     CardConfig(id: 'new_entry', title: 'New Zaznam', key: GlobalKey()),
     CardConfig(id: 'transfer', title: 'Transfer Funds', key: GlobalKey()),
-    CardConfig(id: 'budget', title: 'Budget', key: GlobalKey()),
+    CardConfig(id: 'budget', title: 'Budgets', key: GlobalKey()),
     CardConfig(id: 'trend_chart', title: 'Liquid Trend', key: GlobalKey()),
     CardConfig(id: 'savings_chart', title: 'Savings Trend', key: GlobalKey()),
-    CardConfig(id: 'pools_analytics', title: 'Pools Analytics', key: GlobalKey()),
+    CardConfig(id: 'pools_analytics', title: 'Pools Trends', key: GlobalKey()),
     CardConfig(id: 'sankey_flow', title: 'Sankey Flow Trend', key: GlobalKey()),
-    CardConfig(id: 'monthly_trend', title: 'Cashflow Trend', key: GlobalKey()),
+    CardConfig(id: 'monthly_trend', title: 'Cash Flow Trend', key: GlobalKey()),
     CardConfig(id: 'calendar', title: 'Calendar', key: GlobalKey()),
     CardConfig(id: 'history', title: 'All Zaznams', key: GlobalKey()),
   ];
@@ -540,58 +544,58 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   Future<void> _handleAddFundsToGoal(int goalId, double amountToAdd, String owner, String fromPool, String goalName, String currency) async {
-  final goal = _goals.firstWhere((g) => g.id == goalId);
-  final updatedAmount = goal.currentAmount + amountToAdd;
+    final goal = _goals.firstWhere((g) => g.id == goalId);
+    final updatedAmount = goal.currentAmount + amountToAdd;
 
-  await DatabaseHelper.instance.updateSavingsGoalCurrentAmount(goalId, updatedAmount);
+    await DatabaseHelper.instance.updateSavingsGoalCurrentAmount(goalId, updatedAmount);
 
-  final labelObj = _labels.firstWhere(
-    (l) => l.name.toLowerCase() == 'goals',
-    orElse: () => _labels.first,
-  );
+    final labelObj = _labels.firstWhere(
+      (l) => l.name.toLowerCase() == 'goals',
+      orElse: () => _labels.first,
+    );
 
-  int transferLabelId = _labels.isNotEmpty ? _labels.first.id : 1;
-  for (var label in _labels) {
-    if (label.name.toLowerCase() == 'transfer') {
-      transferLabelId = label.id;
-      break;
+    int transferLabelId = _labels.isNotEmpty ? _labels.first.id : 1;
+    for (var label in _labels) {
+      if (label.name.toLowerCase() == 'transfer') {
+        transferLabelId = label.id;
+        break;
+      }
     }
+
+    final outboundTx = TransactionModel(
+      description: 'Transfer out to Goal: $goalName',
+      amount: amountToAdd,
+      type: 'expense',
+      pool: fromPool,
+      labelId: transferLabelId,
+      owner: owner,
+      createdAt: DateTime.now().toIso8601String(),
+      isConfirmed: 1,
+      isSavings: 0,
+      currencyCode: currency,
+    );
+
+    final inboundTx = TransactionModel(
+      description: 'Contribution to Goal: $goalName',
+      amount: amountToAdd,
+      type: 'income',
+      pool: 'goals',
+      labelId: labelObj.id,
+      owner: owner,
+      createdAt: DateTime.now().toIso8601String(),
+      isConfirmed: 1,
+      isSavings: 0,
+      currencyCode: currency,
+    );
+
+    await DatabaseHelper.instance.insertTransaction(outboundTx);
+    await DatabaseHelper.instance.insertTransaction(inboundTx);
+
+    await Future.delayed(const Duration(milliseconds: 150));
+    await loadData();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Funds transferred to goal pool successfully!')));
   }
-
-  final outboundTx = TransactionModel(
-    description: 'Transfer out to Goal: $goalName',
-    amount: amountToAdd,
-    type: 'expense',
-    pool: fromPool,
-    labelId: transferLabelId,
-    owner: owner,
-    createdAt: DateTime.now().toIso8601String(),
-    isConfirmed: 1,
-    isSavings: 0,
-    currencyCode: currency,
-  );
-
-  final inboundTx = TransactionModel(
-    description: 'Contribution to Goal: $goalName',
-    amount: amountToAdd,
-    type: 'income',
-    pool: 'goals',
-    labelId: labelObj.id,
-    owner: owner,
-    createdAt: DateTime.now().toIso8601String(),
-    isConfirmed: 1,
-    isSavings: 0,
-    currencyCode: currency,
-  );
-
-  await DatabaseHelper.instance.insertTransaction(outboundTx);
-  await DatabaseHelper.instance.insertTransaction(inboundTx);
-
-  await Future.delayed(const Duration(milliseconds: 150));
-  await loadData();
-  if (!mounted) return;
-  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Funds transferred to goal pool successfully!')));
-}
 
   Future<void> _deleteSavingsGoal(int id) async {
     final goalToDelete = _goals.firstWhere((g) => g.id == id, orElse: () => _goals.first);
@@ -663,7 +667,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       final txDate = DateTime.tryParse(t.createdAt) ?? now;
       final isFuture = txDate.isAfter(now);
       double amount = t.type == 'income' ? t.amount : -t.amount;
-      String owner = _owners.contains(t.owner) ? t.owner : (_owners.isNotEmpty ? _owners.first : 'Shared');
+      String owner = _owners.contains(t.owner) ? t.owner : (_owners.isNotEmpty ? t.owner : 'Shared');
       String curr = t.currencyCode.isNotEmpty ? t.currencyCode : (_availableCurrencies.firstOrNull ?? 'USD');
 
       if (!currencyTotalPools.containsKey(curr)) {
@@ -764,7 +768,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await loadData(showLoading: false);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Successfully deleted $deletedCount transactions!')),
+      SnackBar(content: Text('Successfully deleted $deletedCount zaznams!')),
     );
   }
 
@@ -773,7 +777,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await loadData(showLoading: false);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Successfully updated $count transactions from "$oldLabel" to "$newLabel"!')),
+      SnackBar(content: Text('Successfully updated $count zaznams from "$oldLabel" to "$newLabel"!')),
     );
   }
 
@@ -856,7 +860,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       await loadData(showLoading: false);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Successfully imported $importedCount transactions!')),
+        SnackBar(content: Text('Successfully imported $importedCount zaznams!')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -923,7 +927,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await DatabaseHelper.instance.deleteTransaction(id);
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transaction deleted & funds restored!')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zaznam deleted & funds restored!')));
   }
 
   Future<void> _confirmTransaction(TransactionModel tx) async {
@@ -943,7 +947,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await DatabaseHelper.instance.updateTransaction(confirmedTx);
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transaction confirmed!')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zaznam confirmed!')));
   }
 
   Future<void> _handleNewZaznamSubmit({
@@ -1130,7 +1134,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       builder: (dialogContext) => StatefulBuilder(
         builder: (stateContext, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Edit Transaction', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+          title: const Text('Edit Zaznam', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
           content: SizedBox(
             width: 400,
             child: SingleChildScrollView(
@@ -1345,7 +1349,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 Navigator.pop(dialogContext);
                 await loadData();
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transaction updated!')));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zaznam updated!')));
               },
               child: const Text('Save'),
             ),
@@ -1562,7 +1566,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         labels: _labels,
         pools: _pools.keys.toList(),
         owners: _owners,
-        transactions: _transactions, // <-- Added required transactions parameter
+        transactions: _transactions,
         selectedGlobalOwner: _globalSelectedOwner,
         isWide: card.isWide,
         onToggleWidth: () => setState(() => card.isWide = !card.isWide),
@@ -2023,9 +2027,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     return rows;
   }
 
-  Widget _buildCardTabContent(List<CardConfig> sectionCards, double screenWidth) {
+  Widget _buildCardTabContent(List<CardConfig> sectionCards, double screenWidth, {bool isMetricsTab = false}) {
     final rows = _chunkCardsIntoRows(sectionCards, screenWidth);
-    if (rows.isEmpty) {
+    if (rows.isEmpty && !isMetricsTab) {
       return const Center(
         child: Text('No active cards in this tab', style: TextStyle(color: Colors.grey)),
       );
@@ -2037,55 +2041,75 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(2, 50, 2, 140),
       child: Column(
-        children: rows.map((rowCards) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: rowCards.map((card) {
-                double cardWidth;
-                if (card.isWide) {
-                  cardWidth = netWidth;
-                } else {
-                  if (screenWidth >= 1200) {
-                    cardWidth = (netWidth - 40) / 3;
-                  } else if (screenWidth >= 768) {
-                    cardWidth = (netWidth - 20) / 2;
-                  } else {
+        children: [
+          // Inject the Title Card right at the top of the Metrics tab before other metric cards
+          if (isMetricsTab) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: SizedBox(
+                key: _titleCardConfig.key,
+                width: netWidth,
+                child: TitleCard(
+                  owners: _owners,
+                  isWide: _titleCardConfig.isWide,
+                  onToggleWidth: () => setState(() => _titleCardConfig.isWide = !_titleCardConfig.isWide),
+                  onHide: () {
+                    // Optional hide handler
+                  },
+                ),
+              ),
+            ),
+          ],
+          ...rows.map((rowCards) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: rowCards.map((card) {
+                  double cardWidth;
+                  if (card.isWide) {
                     cardWidth = netWidth;
+                  } else {
+                    if (screenWidth >= 1200) {
+                      cardWidth = (netWidth - 40) / 3;
+                    } else if (screenWidth >= 768) {
+                      cardWidth = (netWidth - 20) / 2;
+                    } else {
+                      cardWidth = netWidth;
+                    }
                   }
-                }
 
-                final bool isHighlighted = _highlightedCardId == card.id;
+                  final bool isHighlighted = _highlightedCardId == card.id;
 
-                return Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      right: rowCards.last == card ? 0 : 16,
-                    ),
-                    child: SizedBox(
-                      key: card.key,
-                      width: cardWidth,
-                      child: RepaintBoundary(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isHighlighted ? const Color(0xFFA855F7) : Colors.transparent,
-                              width: 3,
+                  return Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        right: rowCards.last == card ? 0 : 16,
+                      ),
+                      child: SizedBox(
+                        key: card.key,
+                        width: cardWidth,
+                        child: RepaintBoundary(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: isHighlighted ? const Color(0xFFA855F7) : Colors.transparent,
+                                width: 3,
+                              ),
                             ),
+                            child: _buildCardWidget(card),
                           ),
-                          child: _buildCardWidget(card),
                         ),
                       ),
                     ),
-                  ),
-                );
-              }).toList(),
-            ),
-          );
-        }).toList(),
+                  );
+                }).toList(),
+              ),
+            );
+          }).toList(),
+        ],
       ),
     );
   }
@@ -2095,7 +2119,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1E1333), // <-- Set background color here
+      backgroundColor: const Color(0xFF1E1333),
       resizeToAvoidBottomInset: false,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -2117,7 +2141,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                           return TabBarView(
                             controller: _tabController,
                             children: [
-                              _buildCardTabContent(metricsCards, screenWidth),
+                              _buildCardTabContent(metricsCards, screenWidth, isMetricsTab: true), // <-- Flags the Metrics tab for Title Card injection
                               _buildCardTabContent(trendsCards, screenWidth),
                               _buildCardTabContent(analyticsCards, screenWidth),
                               _buildCardTabContent(actionsCards, screenWidth),

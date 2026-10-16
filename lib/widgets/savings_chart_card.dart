@@ -62,6 +62,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
   DateTime? _lastEndDate;
   SavingsMovingAverageFilter? _lastMaFilter;
   String _currencySymbol = '\$';
+  String _dateRangeSetting = '6 Months';
 
   @override
   void initState() {
@@ -75,6 +76,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
     if (mounted) {
       setState(() {
         _currencySymbol = _getCurrencySymbol(primary);
+        _dateRangeSetting = prefs.getString('set_savingsTrend_range') ?? '6 Months';
       });
     }
   }
@@ -88,6 +90,34 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
     }
   }
 
+  void _showInfoDialog(BuildContext context, String title, String description) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded, color: Color(0xFF582F95), size: 22),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+          ],
+        ),
+        content: Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4)),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF582F95),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _computeChartDataIfNeeded() {
     if (_lastTxLength == widget.transactions.length &&
         _lastLabelsLength == widget.labels.length &&
@@ -96,6 +126,20 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
         _lastEndDate == widget.endDate &&
         _lastMaFilter == _maFilter) {
       return;
+    }
+
+    final now = DateTime.now();
+
+    // Fully linked setting for effective start date if widget.startDate is not explicitly provided
+    DateTime? effectiveStartDate = widget.startDate;
+    if (effectiveStartDate == null) {
+      if (_dateRangeSetting == '1 Year') {
+        effectiveStartDate = now.subtract(const Duration(days: 365));
+      } else if (_dateRangeSetting == 'All Time') {
+        effectiveStartDate = null;
+      } else {
+        effectiveStartDate = now.subtract(const Duration(days: 180)); // 6 Months default
+      }
     }
 
     int? savingsLabelId;
@@ -107,8 +151,8 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
     }
 
     double initialSavingsBalance = 0;
-    if (widget.startDate != null) {
-      final startClean = DateTime(widget.startDate!.year, widget.startDate!.month, widget.startDate!.day);
+    if (effectiveStartDate != null) {
+      final startClean = DateTime(effectiveStartDate.year, effectiveStartDate.month, effectiveStartDate.day);
       for (var tx in widget.transactions) {
         if (tx.pool.toLowerCase() != 'savings') continue;
         if (savingsLabelId != null && tx.labelId != savingsLabelId) continue;
@@ -133,8 +177,8 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
       }
       final txDate = DateTime.tryParse(tx.createdAt);
       if (txDate == null) return true;
-      if (widget.startDate != null) {
-        final startClean = DateTime(widget.startDate!.year, widget.startDate!.month, widget.startDate!.day);
+      if (effectiveStartDate != null) {
+        final startClean = DateTime(effectiveStartDate.year, effectiveStartDate.month, effectiveStartDate.day);
         if (txDate.isBefore(startClean)) return false;
       }
       if (widget.endDate != null) {
@@ -152,7 +196,6 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
       });
 
     List<LineChartBarData> lineBars = [];
-    final now = DateTime.now();
 
     double currentBalance = initialSavingsBalance;
     List<FlSpot> currentSegmentSpots = [];
@@ -388,14 +431,30 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: const Text(
-                        'SAVINGS TREND',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 88, 47, 149),
-                          letterSpacing: 0.8,
-                        ),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'SAVINGS TREND',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color.fromARGB(255, 88, 47, 149),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              hasDateFilter ? 'Custom' : _dateRangeSetting,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -572,88 +631,160 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                 ],
               ),
               const SizedBox(height: 12),
-              // Rate of change / Velocity badge indicator
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _cachedMonthlyVelocity >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                      size: 14,
-                      color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Savings Velocity: ${_cachedMonthlyVelocity >= 0 ? '+' : ''}$_currencySymbol${_cachedMonthlyVelocity.toStringAsFixed(2)}/mo',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+
+              LayoutBuilder(
+                builder: (context, rowConstraints) {
+                  final double rowWidth = rowConstraints.maxWidth;
+                  final double w50 = (rowWidth - 12) * 0.50;
+
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      SizedBox(
+                        width: w50,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              height: 48,
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _cachedMonthlyVelocity >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                                        size: 11,
+                                        color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                      ),
+                                      const SizedBox(width: 3),
+                                      const Text(
+                                        'Savings Velocity',
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF334155),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 1),
+                                  Text(
+                                    '${_cachedMonthlyVelocity >= 0 ? '+' : ''}$_currencySymbol${_cachedMonthlyVelocity.toStringAsFixed(2)}/mo',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Positioned(
+                              top: -6,
+                              right: -4,
+                              child: InkWell(
+                                onTap: () => _showInfoDialog(
+                                  context,
+                                  'Savings Velocity',
+                                  'Savings velocity estimates your average monthly accumulation or withdrawal rate specifically across your savings pool and accounts.',
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.info_outline_rounded, size: 13, color: Color.fromARGB(255, 158, 158, 158)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    const SizedBox(
-                      width: 95,
-                      child: Text(
-                        'Moving Average',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                        maxLines: 2,
+                      SizedBox(
+                        width: w50,
+                        child: Container(
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'Moving average:',
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                              ),
+                              const SizedBox(height: 2),
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    ChoiceChip(
+                                      label: const Text('30-Day', style: TextStyle(fontSize: 9.5)),
+                                      selected: _maFilter == SavingsMovingAverageFilter.days30,
+                                      showCheckmark: false,
+                                      onSelected: (selected) {
+                                        setState(() {
+                                          _maFilter = selected ? SavingsMovingAverageFilter.days30 : null;
+                                        });
+                                      },
+                                      selectedColor: Colors.amber.shade200,
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    ChoiceChip(
+                                      label: const Text('90-Day', style: TextStyle(fontSize: 9.5)),
+                                      selected: _maFilter == SavingsMovingAverageFilter.days90,
+                                      showCheckmark: false,
+                                      onSelected: (selected) {
+                                        setState(() {
+                                          _maFilter = selected ? SavingsMovingAverageFilter.days90 : null;
+                                        });
+                                      },
+                                      selectedColor: Colors.amber.shade200,
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    ChoiceChip(
+                                      label: const Text('All', style: TextStyle(fontSize: 9.5)),
+                                      selected: _maFilter == SavingsMovingAverageFilter.all,
+                                      showCheckmark: false,
+                                      onSelected: (selected) {
+                                        setState(() {
+                                          _maFilter = selected ? SavingsMovingAverageFilter.all : null;
+                                        });
+                                      },
+                                      selectedColor: Colors.amber.shade200,
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: const Text('30-Day', style: TextStyle(fontSize: 11)),
-                      selected: _maFilter == SavingsMovingAverageFilter.days30,
-                      showCheckmark: false,
-                      onSelected: (selected) {
-                        setState(() {
-                          _maFilter = selected ? SavingsMovingAverageFilter.days30 : null;
-                        });
-                      },
-                      selectedColor: Colors.amber.shade200,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    const SizedBox(width: 6),
-                    ChoiceChip(
-                      label: const Text('90-Day', style: TextStyle(fontSize: 11)),
-                      selected: _maFilter == SavingsMovingAverageFilter.days90,
-                      showCheckmark: false,
-                      onSelected: (selected) {
-                        setState(() {
-                          _maFilter = selected ? SavingsMovingAverageFilter.days90 : null;
-                        });
-                      },
-                      selectedColor: Colors.amber.shade200,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    const SizedBox(width: 6),
-                    ChoiceChip(
-                      label: const Text('All', style: TextStyle(fontSize: 11)),
-                      selected: _maFilter == SavingsMovingAverageFilter.all,
-                      showCheckmark: false,
-                      onSelected: (selected) {
-                        setState(() {
-                          _maFilter = selected ? SavingsMovingAverageFilter.all : null;
-                        });
-                      },
-                      selectedColor: Colors.amber.shade200,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ],
-                ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 16),
               SizedBox(

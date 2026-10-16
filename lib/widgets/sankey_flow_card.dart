@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
 
@@ -48,6 +49,7 @@ class SankeyFlowCard extends StatefulWidget {
 
 class _SankeyFlowCardState extends State<SankeyFlowCard> {
   String _flowMode = 'Expenses';
+  String _dateRangeSetting = '30 Days';
 
   List<MapEntry<String, double>> _cachedSortedSources = [];
   List<MapEntry<String, double>> _cachedSortedTargets = [];
@@ -64,14 +66,32 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
   @override
   void initState() {
     super.initState();
-    // Default to current month if dates are not already provided externally
-    if (widget.startDate == null && widget.endDate == null && widget.onDateRangeChanged != null) {
-      final now = DateTime.now();
-      final firstDay = DateTime(now.year, now.month, 1);
-      final lastDay = DateTime(now.year, now.month + 1, 0);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.onDateRangeChanged!(firstDay, lastDay);
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final setting = prefs.getString('set_sankey_range') ?? '30 Days';
+    if (mounted) {
+      setState(() {
+        _dateRangeSetting = setting;
       });
+      // Set initial dates based on settings preference if not externally provided
+      if (widget.startDate == null && widget.endDate == null && widget.onDateRangeChanged != null) {
+        final now = DateTime.now();
+        DateTime start;
+        DateTime end = now;
+        if (setting == 'Current Month') {
+          start = DateTime(now.year, now.month, 1);
+        } else if (setting == '90 Days') {
+          start = now.subtract(const Duration(days: 90));
+        } else {
+          start = now.subtract(const Duration(days: 30));
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          widget.onDateRangeChanged!(start, end);
+        });
+      }
     }
   }
 
@@ -85,6 +105,20 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
       return;
     }
 
+    final now = DateTime.now();
+    DateTime? effectiveStart = widget.startDate;
+    DateTime? effectiveEnd = widget.endDate;
+
+    if (effectiveStart == null && effectiveEnd == null) {
+      if (_dateRangeSetting == 'Current Month') {
+        effectiveStart = DateTime(now.year, now.month, 1);
+      } else if (_dateRangeSetting == '90 Days') {
+        effectiveStart = now.subtract(const Duration(days: 90));
+      } else {
+        effectiveStart = now.subtract(const Duration(days: 30));
+      }
+    }
+
     final filteredTransactions = widget.transactions.where((tx) {
       if (tx.isConfirmed != 1) return false;
       if (widget.selectedOwner != null && tx.owner != widget.selectedOwner) {
@@ -96,14 +130,14 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
         }
       }
       final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
-      if (widget.startDate != null && txDate.isBefore(widget.startDate!)) {
+      if (effectiveStart != null && txDate.isBefore(effectiveStart)) {
         return false;
       }
-      if (widget.endDate != null) {
+      if (effectiveEnd != null) {
         final endOfDay = DateTime(
-          widget.endDate!.year,
-          widget.endDate!.month,
-          widget.endDate!.day,
+          effectiveEnd.year,
+          effectiveEnd.month,
+          effectiveEnd.day,
           23,
           59,
           59,
@@ -234,14 +268,30 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: const Text(
-                        'SANKEY FLOW TREND',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF582F95),
-                          letterSpacing: 0.8,
-                        ),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'SANKEY FLOW TREND',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF582F95),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              hasDateFilter ? 'Custom' : _dateRangeSetting,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

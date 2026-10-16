@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 
 class MonthlyCashflowTrendCard extends StatefulWidget {
@@ -41,7 +42,6 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
   String _selectedTimeframe = 'All time';
   bool _showNetTrendLine = true;
 
-  // --- Memoization Cache Fields ---
   List<BarChartGroupData> _cachedBarGroups = [];
   List<FlSpot> _cachedNetSpots = [];
   List<String> _cachedSortedKeys = [];
@@ -54,6 +54,49 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
   String? _lastOwner;
   String? _lastPool;
   String? _lastTimeframe;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _selectedTimeframe = prefs.getString('set_cashFlow_range') ?? 'All time';
+      });
+    }
+  }
+
+  void _showInfoDialog(BuildContext context, String title, String description) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded, color: Color(0xFF582F95), size: 22),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+          ],
+        ),
+        content: Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4)),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF582F95),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _computeChartDataIfNeeded() {
     if (_lastTxLength == widget.transactions.length &&
@@ -78,9 +121,16 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
 
       if (_selectedTimeframe == 'This Year') {
         if (txDate.year != DateTime.now().year) return false;
-      } else if (_selectedTimeframe == 'Last 12 Months') {
-        final twelveMonthsAgo = DateTime.now().subtract(const Duration(days: 365));
-        if (txDate.isBefore(twelveMonthsAgo)) return false;
+      } else if (_selectedTimeframe == 'Last 12 Months' || _selectedTimeframe == '90 Days') {
+        final days = _selectedTimeframe == '90 Days' ? 90 : 365;
+        final cutoff = DateTime.now().subtract(Duration(days: days));
+        if (txDate.isBefore(cutoff)) return false;
+      } else if (_selectedTimeframe == 'Current Month') {
+        final now = DateTime.now();
+        if (txDate.year != now.year || txDate.month != now.month) return false;
+      } else if (_selectedTimeframe == 'Last 30 Days') {
+        final cutoff = DateTime.now().subtract(const Duration(days: 30));
+        if (txDate.isBefore(cutoff)) return false;
       }
       return true;
     }).toList();
@@ -198,7 +248,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'CASHFLOW TREND',
+                    'CASH FLOW TREND',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -309,7 +359,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                                 isDense: true,
                                 isExpanded: true,
                                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: ['All time', 'This Year', 'Last 12 Months']
+                                items: ['All time', 'Current Month', 'Last 30 Days', 'This Year', 'Last 12 Months']
                                     .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                                     .toList(),
                                 onChanged: (val) {
@@ -326,87 +376,200 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
               ),
               const SizedBox(height: 12),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: SizedBox(
-                      height: 40,
-                      child: FilterChip(
-                        label: const Text('Net Trend Line', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                        selected: _showNetTrendLine,
-                        selectedColor: const Color(0xFF582F95).withValues(alpha: 0.2),
-                        checkmarkColor: const Color(0xFF582F95),
-                        onSelected: (val) => setState(() => _showNetTrendLine = val),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.account_balance_wallet_outlined, size: 16, color: Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: widget.selectedPool,
-                                isDense: true,
-                                isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
-                                items: [
-                                  const DropdownMenuItem<String>(value: null, child: Text('All Pools')),
-                                  ...widget.pools.map((p) => DropdownMenuItem<String>(value: p, child: Text(p.toUpperCase()))),
+              LayoutBuilder(
+                builder: (context, rowConstraints) {
+                  final double rowWidth = rowConstraints.maxWidth;
+                  final double w25 = (rowWidth - 16) * 0.24;
+                  final double w50 = (rowWidth - 16) * 0.48;
+
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      SizedBox(
+                        width: w25,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              height: 48,
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _cachedSavingsRate >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: _cachedSavingsRate >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.savings_outlined,
+                                        size: 11,
+                                        color: _cachedSavingsRate >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                      ),
+                                      const SizedBox(width: 3),
+                                      const Text(
+                                        'Savings',
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF334155),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 1),
+                                  Text(
+                                    'rate: ${_cachedSavingsRate.toStringAsFixed(1)}%',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: _cachedSavingsRate >= 0 ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                                    ),
+                                  ),
                                 ],
-                                onChanged: widget.onPoolChanged,
                               ),
                             ),
-                          ),
-                        ],
+                            Positioned(
+                              top: -6,
+                              right: -4,
+                              child: InkWell(
+                                onTap: () => _showInfoDialog(
+                                  context,
+                                  'Savings Rate',
+                                  'Savings rate calculates the percentage of total income that is retained as net savings ((Total Income - Total Expenses) / Total Income) over the selected timeframe.',
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFF582F95)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
 
-              // Savings Rate Badge Indicator
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _cachedSavingsRate >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _cachedSavingsRate >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.savings_outlined,
-                      size: 14,
-                      color: _cachedSavingsRate >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Savings Rate: ${_cachedSavingsRate.toStringAsFixed(1)}%',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: _cachedSavingsRate >= 0 ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                      SizedBox(
+                        width: w25,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            InkWell(
+                              onTap: () => setState(() => _showNetTrendLine = !_showNetTrendLine),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                height: 48,
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _showNetTrendLine ? const Color(0xFF582F95).withValues(alpha: 0.15) : const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: _showNetTrendLine ? const Color(0xFF582F95) : const Color(0xFFCBD5E1)),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.show_chart_rounded,
+                                          size: 11,
+                                          color: _showNetTrendLine ? const Color(0xFF582F95) : const Color(0xFF64748B),
+                                        ),
+                                        const SizedBox(width: 3),
+                                        const Text(
+                                          'Net Line',
+                                          style: TextStyle(
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF334155),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      _showNetTrendLine ? 'Visible' : 'Hidden',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: _showNetTrendLine ? const Color(0xFF582F95) : const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              top: -6,
+                              right: -4,
+                              child: InkWell(
+                                onTap: () => _showInfoDialog(
+                                  context,
+                                  'Net Trend Line',
+                                  'The net trend line connects monthly net cashflow points (Income minus Expenses), providing a visual trajectory of whether your monthly savings balance is expanding or contracting over time.',
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFF582F95)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+
+                      SizedBox(
+                        width: w50,
+                        child: Container(
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.account_balance_wallet_outlined, size: 16, color: Color(0xFF582F95)),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: widget.selectedPool,
+                                    isDense: true,
+                                    isExpanded: true,
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                    hint: const Text('All Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                    items: [
+                                      const DropdownMenuItem<String>(value: null, child: Text('All Pools')),
+                                      ...widget.pools.map((p) => DropdownMenuItem<String>(value: p, child: Text(p.toUpperCase()))),
+                                    ],
+                                    onChanged: widget.onPoolChanged,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 16),
 

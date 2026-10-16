@@ -861,7 +861,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ],
               const SizedBox(height: 16),
 
-              // Save Zaznam Action Button with Z logo integration
+              // Save Zaznam Action Button with Z logo asset integration
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -907,21 +907,20 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Text(
-                          'Z',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
+                      Image.asset(
+                        'assets/ZaznamityLogo_onlyZwhite.png',
+                        height: 27,
+                        width: 27,
+                        fit: BoxFit.contain,
                       ),
                       const SizedBox(width: 8),
-                      const Text('Save Zaznam', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      const Text('Save Zaznam  ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      Image.asset(
+                        'assets/ZaznamityLogo_onlyZwhite.png',
+                        height: 27,
+                        width: 27,
+                        fit: BoxFit.contain,
+                      ),
                     ],
                   ),
                 ),

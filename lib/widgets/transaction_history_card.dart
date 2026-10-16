@@ -81,7 +81,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
   final TextEditingController _minAmountController = TextEditingController();
   final TextEditingController _maxAmountController = TextEditingController();
   
-  // Internal state fallbacks for seamless dropdown interactivity & clear all functionality
   late Set<int> _localSelectedLabels = {};
   late Set<String> _localSelectedPools = {};
   String? _localOwner;
@@ -91,6 +90,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
   DateTime? _localEndDate;
   bool _isInitialized = false;
   List<String> _activeCurrencies = ['USD'];
+  String _dateRangeSetting = '15 Days';
 
   final Map<String, String> _currencyFlags = {
     'USD': '🇺🇸',
@@ -108,11 +108,11 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
   @override
   void initState() {
     super.initState();
-    _loadCurrencyPrefs();
+    _loadPrefs();
     _initDefaults();
   }
 
-  Future<void> _loadCurrencyPrefs() async {
+  Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     final sec1 = prefs.getString('secondaryCurrency1');
@@ -127,6 +127,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     if (mounted) {
       setState(() {
         _activeCurrencies = currencies.toSet().toList();
+        _dateRangeSetting = prefs.getString('set_allZaznams_range') ?? '15 Days';
       });
     }
   }
@@ -184,7 +185,9 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     if (widget.onPoolsChanged != null) widget.onPoolsChanged!(_localSelectedPools);
     if (widget.onCurrencyChanged != null) widget.onCurrencyChanged!(null);
     if (widget.onTypeChanged != null) widget.onTypeChanged!(null);
-    if (widget.onClearDateFilter != null) widget.onClearDateFilter!();
+    if (widget.onClearDateFilter != null) {
+      widget.onClearDateFilter!();
+    }
     if (widget.onLabelsChanged != null) widget.onLabelsChanged!(_localSelectedLabels);
     if (widget.onLabelChanged != null) widget.onLabelChanged!(null);
   }
@@ -203,8 +206,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Delete Transaction'),
-          content: const Text('Are you sure you want to delete this transaction?'),
+          title: const Text('Delete Zaznam'),
+          content: const Text('Are you sure you want to delete this zaznam?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -371,9 +374,24 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
   @override
   Widget build(BuildContext context) {
-    final activeStartDate = widget.startDate ?? _localStartDate;
-    final activeEndDate = widget.endDate ?? _localEndDate;
-    final bool hasDateFilter = activeStartDate != null || activeEndDate != null;
+    final now = DateTime.now();
+    DateTime? activeStartDate = widget.startDate ?? _localStartDate;
+    DateTime? activeEndDate = widget.endDate ?? _localEndDate;
+
+    // Fully linked setting for default date range if no date filter is actively applied
+    if (activeStartDate == null && activeEndDate == null) {
+      if (_dateRangeSetting == '7 Days') {
+        activeStartDate = now.subtract(const Duration(days: 7));
+      } else if (_dateRangeSetting == '15 Days') {
+        activeStartDate = now.subtract(const Duration(days: 15));
+      } else if (_dateRangeSetting == '30 Days') {
+        activeStartDate = now.subtract(const Duration(days: 30));
+      } else if (_dateRangeSetting == 'Current Month') {
+        activeStartDate = DateTime(now.year, now.month, 1);
+      }
+    }
+
+    final bool hasDateFilter = widget.startDate != null || widget.endDate != null || _localStartDate != null;
 
     final activeOwner = widget.selectedOwner ?? _localOwner;
     final activeCurrency = widget.selectedCurrency ?? _localCurrency;
@@ -382,9 +400,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     final double? minAmount = double.tryParse(_minAmountController.text);
     final double? maxAmount = double.tryParse(_maxAmountController.text);
 
-    // Filter transactions based on selected criteria
     final filteredTransactions = widget.transactions.where((tx) {
-      if (activeOwner != null && tx.owner != activeOwner) return false;
+      if (activeOwner != null && activeOwner.isNotEmpty && activeOwner != 'All Owners' && tx.owner != activeOwner) return false;
       if (_localSelectedPools.isNotEmpty && !_localSelectedPools.contains(tx.pool)) return false;
       if (activeCurrency != null && tx.currencyCode != activeCurrency && (tx.currencyCode.isNotEmpty || activeCurrency != 'USD')) return false;
       if (activeType != null && tx.type != activeType) return false;
@@ -425,7 +442,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
         final double availableWidth = constraints.maxWidth;
         final double fullWidth = availableWidth - 48;
         final double boxWidth = (fullWidth - 12) / 2;
-        final double subBoxWidth = (boxWidth - 8) / 2;
 
         return Container(
           padding: const EdgeInsets.all(24),
@@ -443,7 +459,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Card Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -451,14 +466,30 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: const Text(
-                        'ALL ZAZNAMS',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 88, 47, 149),
-                          letterSpacing: 0.8,
-                        ),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'ALL ZAZNAMS',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color.fromARGB(255, 88, 47, 149),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              hasDateFilter ? 'Custom' : _dateRangeSetting,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -513,7 +544,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 20),
 
-              // Row 1: Owners (Left) & Date Range Picker (Right)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -633,11 +663,14 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                             child: Material(
                               color: Colors.transparent,
                               child: InkWell(
-                                onTap: widget.onClearDateFilter ?? () {
+                                onTap: () {
                                   setState(() {
                                     _localStartDate = null;
                                     _localEndDate = null;
                                   });
+                                  if (widget.onClearDateFilter != null) {
+                                    widget.onClearDateFilter!();
+                                  }
                                 },
                                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
                                 child: const Center(
@@ -654,7 +687,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: All Labels (Multi-select checkmarks) & All Pools (Multi-select checkmarks)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -746,7 +778,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 3: All Currencies & All Types
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -845,12 +876,11 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 4: Min Amount, Max Amount (equal box widths) & Clear All Button
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   SizedBox(
-                    width: boxWidth,
+                    width: fullWidth * 0.4,
                     child: TextField(
                       controller: _minAmountController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -858,7 +888,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                       decoration: InputDecoration(
                         isDense: true,
                         prefixIcon: const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
-                        hintText: 'Min Amount',
+                        hintText: 'Min',
                         hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
@@ -869,51 +899,42 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                     ),
                   ),
                   SizedBox(
-                    width: boxWidth,
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: subBoxWidth,
-                          child: TextField(
-                            controller: _maxAmountController,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            onChanged: (val) => setState(() {}),
-                            decoration: InputDecoration(
-                              isDense: true,
-                              prefixIcon: const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
-                              hintText: 'Max Amount',
-                              hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                              filled: true,
-                              fillColor: const Color(0xFFF8FAFC),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: subBoxWidth,
-                          height: 42,
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFDC2626),
-                              side: const BorderSide(color: Color(0xFFFCA5A5)),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              padding: const EdgeInsets.symmetric(horizontal: 6),
-                            ),
-                            onPressed: _clearAllFilters,
-                            child: const Text('Clear All', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-                          ),
-                        ),
-                      ],
+                    width: fullWidth * 0.4,
+                    child: TextField(
+                      controller: _maxAmountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (val) => setState(() {}),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
+                        hintText: 'Max',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: fullWidth * 0.2,
+                    height: 42,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFDC2626),
+                        side: const BorderSide(color: Color(0xFFFCA5A5)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                      ),
+                      onPressed: _clearAllFilters,
+                      child: const Text('Clear Filters', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 14),
 
-              // Unboxed Results Count & Limit Header (Matched to Search Card style)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -951,7 +972,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               const SizedBox(height: 8),
               const Divider(color: Color(0xFFE2E8F0)),
               
-              // Transactions ListView
               displayedTransactions.isEmpty
                   ? const Padding(
                       padding: EdgeInsets.symmetric(vertical: 32),
@@ -981,12 +1001,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
                         final isIncome = tx.type == 'income';
                         final amountString = '${isIncome ? '+' : '-'}$symbol${tx.amount.toStringAsFixed(2)}';
-                        final isConfirmed = tx.isConfirmed == 1;
-                        final isFuture = txDate.isAfter(DateTime.now());
+                        
+                        final bool timePassed = txDate.isBefore(DateTime.now());
+                        final bool isFuture = txDate.isAfter(DateTime.now());
 
                         return Container(
                           decoration: BoxDecoration(
-                            color: isFuture ? const Color(0xFFF1F5F9) : Colors.transparent,
+                            color: isFuture && !timePassed ? const Color(0xFFF1F5F9) : Colors.transparent,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
@@ -1050,15 +1071,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    isFuture
-                                        ? 'PENDING'
-                                        : (isConfirmed ? 'CONFIRMED' : 'PENDING'),
+                                    isFuture && !timePassed ? 'PENDING' : 'CONFIRMED',
                                     style: TextStyle(
                                       fontSize: 8,
                                       fontWeight: FontWeight.bold,
-                                      color: isFuture
+                                      color: isFuture && !timePassed
                                           ? const Color(0xFF64748B)
-                                          : (isConfirmed ? const Color(0xFF10B981) : const Color(0xFFD97706)),
+                                          : const Color(0xFF10B981),
                                       letterSpacing: 0.5,
                                     ),
                                   ),
@@ -1088,21 +1107,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                       ),
                                     ],
                                   ),
-                                  if (!isConfirmed) ...[
-                                    const SizedBox(height: 4),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFFD1FAE5),
-                                        foregroundColor: const Color(0xFF047857),
-                                        elevation: 0,
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        minimumSize: Size.zero,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                      ),
-                                      onPressed: () => widget.onConfirmTransaction(tx),
-                                      child: const Text('Confirm', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                                    ),
-                                  ],
                                 ],
                               ),
                             ],

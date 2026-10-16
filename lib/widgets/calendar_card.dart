@@ -64,6 +64,8 @@ class _CalendarCardState extends State<CalendarCard> {
   }
 
   void _handleDateTap(DateTime currentDate) {
+    // Passes the selected date back to the parent container/dashboard 
+    // to clear other filters and set start/end date range to this single day.
     widget.onDateSelected(currentDate);
 
     if (widget.historyKey != null && widget.historyKey!.currentContext != null) {
@@ -78,13 +80,12 @@ class _CalendarCardState extends State<CalendarCard> {
   @override
   Widget build(BuildContext context) {
     final filteredTransactions = widget.transactions.where((tx) {
-      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty) {
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners') {
         return tx.owner == widget.selectedOwner;
       }
       return true;
     }).toList();
 
-    // Group transactions by local date key to avoid timezone shifts
     final Map<String, double> incomeByDate = {};
     final Map<String, double> expenseByDate = {};
     final Map<String, List<TransactionModel>> txByDate = {};
@@ -108,8 +109,7 @@ class _CalendarCardState extends State<CalendarCard> {
     final firstDayOfMonth = DateTime(_displayedMonth.year, _displayedMonth.month, 1);
     final lastDayOfMonth = DateTime(_displayedMonth.year, _displayedMonth.month + 1, 0);
     
-    // Calculate starting offset based on whether week starts on Monday or Sunday
-    int rawWeekday = firstDayOfMonth.weekday; // 1 = Mon, 7 = Sun
+    int rawWeekday = firstDayOfMonth.weekday;
     int startingWeekday;
     List<String> weekdays;
 
@@ -155,12 +155,9 @@ class _CalendarCardState extends State<CalendarCard> {
       final dateKey = '${currentDate.year}-${currentDate.month.toString().padLeft(2, '0')}-${currentDate.day.toString().padLeft(2, '0')}';
       
       final hasTx = txByDate.containsKey(dateKey);
-
       final isToday = currentDate.year == now.year &&
           currentDate.month == now.month &&
           currentDate.day == now.day;
-
-      // Check if day is Saturday (6) or Sunday (7)
       final isWeekend = currentDate.weekday == DateTime.saturday || currentDate.weekday == DateTime.sunday;
 
       final double dayIncome = incomeByDate[dateKey] ?? 0.0;
@@ -349,7 +346,6 @@ class _CalendarCardState extends State<CalendarCard> {
                 ],
               ),
               const SizedBox(height: 16),
-
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

@@ -44,6 +44,9 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   String? _secondaryCurrency1;
   String? _secondaryCurrency2;
   String? _secondaryCurrency3;
+
+  // Linked liquid net pool preferences from settings
+  final Map<String, bool> _liquidNetPools = {};
   
   final Map<String, String> _currencyFlags = {
     'USD': '🇺🇸',
@@ -62,16 +65,29 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   void initState() {
     super.initState();
     _selectedOwner = widget.selectedOwner ?? 'All Owners';
-    _loadCurrencyPrefs();
+    _loadPrefs();
   }
 
-  Future<void> _loadCurrencyPrefs() async {
+  Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    
+    // Gather all unique pool names from widget data to load their liquid net inclusion preferences
+    Set<String> allPools = {};
+    widget.totalPoolTotalsByCurrency.values.forEach((map) {
+      allPools.addAll(map.keys);
+    });
+
+    Map<String, bool> loadedPools = {};
+    for (var pool in allPools) {
+      loadedPools[pool] = prefs.getBool('set_liquidNet_pool_$pool') ?? true;
+    }
+
     setState(() {
       _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
       _secondaryCurrency1 = prefs.getString('secondaryCurrency1');
       _secondaryCurrency2 = prefs.getString('secondaryCurrency2');
       _secondaryCurrency3 = prefs.getString('secondaryCurrency3');
+      _liquidNetPools.addAll(loadedPools);
     });
   }
 
@@ -123,6 +139,9 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       if (curr != currencyCode) continue;
       if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
 
+      // Exclude pools toggled off for liquid net/metrics if desired
+      if (_liquidNetPools[tx.pool] == false) continue;
+
       final dt = DateTime.tryParse(tx.createdAt) ?? now;
       if (dt.isAfter(pastLimit)) {
         totalExpense += tx.amount;
@@ -167,23 +186,27 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     
     final totalPoolsForCurr = widget.totalPoolTotalsByCurrency[currencyCode] ?? {};
     final ownerPoolsMap = widget.poolTotalsByCurrencyAndOwner[currencyCode] ?? {};
-    final liquidNetCurrMap = widget.liquidNetByCurrencyAndOwner[currencyCode] ?? {};
     final breakdownCurrMap = widget.ownerBreakdownByCurrency[currencyCode] ?? {};
 
     Map<String, double> currentPools;
-    double currentLiquidNet;
     List<Widget> wrapSubtitles = [];
 
     if (_selectedOwner == 'All Owners') {
       currentPools = Map.fromEntries(
         totalPoolsForCurr.entries.where((e) => e.value != 0.0)
       );
-      currentLiquidNet = widget.totalLiquidNetByCurrency[currencyCode]?['total'] ?? 0.0;
       
       wrapSubtitles = breakdownCurrMap.entries.map((e) {
-        final val = e.value['liquidNet'] ?? 0;
+        final ownerName = e.key;
+        final ownerPools = ownerPoolsMap[ownerName] ?? {};
+        double ownerLiquidNet = 0;
+        ownerPools.forEach((poolName, balance) {
+          if (_liquidNetPools[poolName] ?? true) {
+            ownerLiquidNet += balance;
+          }
+        });
         return Text(
-          '${e.key}: ${_formatCurrency(val, currencyCode)}',
+          '$ownerName: ${_formatCurrency(ownerLiquidNet, currencyCode)}',
           style: TextStyle(
             fontSize: 12,
             color: Colors.grey.shade700,
@@ -196,8 +219,15 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       currentPools = Map.fromEntries(
         ownerPools.entries.where((e) => e.value != 0.0)
       );
-      currentLiquidNet = liquidNetCurrMap[_selectedOwner] ?? 0.0;
     }
+
+    // Recalculate Liquid Net dynamically applying the settings toggle for each pool
+    double currentLiquidNet = 0;
+    currentPools.forEach((poolName, balance) {
+      if (_liquidNetPools[poolName] ?? true) {
+        currentLiquidNet += balance;
+      }
+    });
 
     final monthlyBurn = _calculateMonthlyExpenses(currencyCode);
     final emergencyRunwayMonths = monthlyBurn > 0 ? (currentLiquidNet / monthlyBurn) : 0.0;
@@ -311,7 +341,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    '🛡️ Emergency Runway: ${emergencyRunwayMonths.toStringAsFixed(1)} mos',
+                    'Emergency Runway: ${emergencyRunwayMonths.toStringAsFixed(1)} mos',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
@@ -327,7 +357,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(2.0),
-                      child: Icon(Icons.info_outline_rounded, size: 13, color: Colors.grey.shade500),
+                      child: Icon(Icons.info_outline_rounded, size: 13, color: Color.fromARGB(255, 158, 158, 158)),
                     ),
                   ),
                 ],

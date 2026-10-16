@@ -45,6 +45,9 @@ class PoolsAnalyticsCard extends StatefulWidget {
 class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
   late Map<String, bool> _visiblePools;
   String _primaryCurrency = 'USD';
+  String _dateRangeSetting = '30 Days';
+  bool _showOnlyFunded = false;
+  bool _showFuture = false;
 
   @override
   void initState() {
@@ -59,17 +62,20 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
+      _dateRangeSetting = prefs.getString('set_poolsTrends_range') ?? '30 Days';
+      _showOnlyFunded = prefs.getBool('set_poolsTrends_funded_only') ?? false;
+      _showFuture = prefs.getBool('set_poolsTrends_show_future') ?? false;
+
+      for (var key in widget.pools.keys) {
+        _visiblePools[key] = prefs.getBool('set_poolsTrends_pool_visible_$key') ?? true;
+      }
     });
   }
 
   @override
   void didUpdateWidget(covariant PoolsAnalyticsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    for (var key in widget.pools.keys) {
-      if (!_visiblePools.containsKey(key)) {
-        _visiblePools[key] = true;
-      }
-    }
+    _loadPrefs();
   }
 
   String _formatCurrency(double amount, String currencyCode) {
@@ -82,53 +88,10 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
     return format.format(amount);
   }
 
-  void _showPoolsFilterMenu(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setStateModal) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Show Pools', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: widget.pools.keys.map((poolKey) {
-                final isChecked = _visiblePools[poolKey] ?? true;
-                return CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(poolKey.toUpperCase(), style: const TextStyle(fontSize: 13, color: Color(0xFF334155), fontWeight: FontWeight.w600)),
-                  value: isChecked,
-                  activeColor: const Color(0xFF582F95),
-                  onChanged: (val) {
-                    setStateModal(() {
-                      _visiblePools[poolKey] = val ?? true;
-                    });
-                    setState(() {});
-                  },
-                );
-              }).toList(),
-            ),
-          ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF582F95),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Done'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
+    final now = DateTime.now();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -159,14 +122,30 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: const Text(
-                        'POOLS TRENDS',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF582F95),
-                          letterSpacing: 0.8,
-                        ),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'POOLS TRENDS',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF582F95),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              hasDateFilter ? 'Custom' : _dateRangeSetting,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -340,34 +319,6 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-
-              InkWell(
-                onTap: () => _showPoolsFilterMenu(context),
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  height: 44,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.layers_outlined, size: 16, color: Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          const Text('Show Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
-                        ],
-                      ),
-                      const Icon(Icons.arrow_drop_down, color: Color(0xFF64748B)),
-                    ],
-                  ),
-                ),
-              ),
               const SizedBox(height: 16),
               const Divider(color: Color(0xFFE2E8F0)),
               const SizedBox(height: 12),
@@ -377,10 +328,34 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                   : ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: widget.pools.keys.where((k) => _visiblePools[k] ?? true).length,
+                      itemCount: widget.pools.keys.where((k) {
+                        if (_visiblePools[k] == false) return false;
+                        if (_showOnlyFunded) {
+                          double bal = 0;
+                          for (var tx in widget.transactions) {
+                            if (tx.pool.toLowerCase() == k.toLowerCase() && tx.isConfirmed == 1) {
+                              bal += (tx.type == 'income' ? tx.amount : -tx.amount);
+                            }
+                          }
+                          if (bal <= 0) return false;
+                        }
+                        return true;
+                      }).length,
                       itemBuilder: (context, index) {
-                        String poolKey = widget.pools.keys.where((k) => _visiblePools[k] ?? true).toList()[index];
-                        return _buildPoolMiniSection(poolKey);
+                        String poolKey = widget.pools.keys.where((k) {
+                          if (_visiblePools[k] == false) return false;
+                          if (_showOnlyFunded) {
+                            double bal = 0;
+                            for (var tx in widget.transactions) {
+                              if (tx.pool.toLowerCase() == k.toLowerCase() && tx.isConfirmed == 1) {
+                                bal += (tx.type == 'income' ? tx.amount : -tx.amount);
+                              }
+                            }
+                            if (bal <= 0) return false;
+                          }
+                          return true;
+                        }).toList()[index];
+                        return _buildPoolMiniSection(poolKey, now);
                       },
                     ),
             ],
@@ -390,7 +365,17 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
     );
   }
 
-  Widget _buildPoolMiniSection(String poolKey) {
+  Widget _buildPoolMiniSection(String poolKey, DateTime now) {
+    // Fully linked setting for effective start date if widget.startDate is not explicitly provided
+    DateTime? effectiveStartDate = widget.startDate;
+    if (effectiveStartDate == null) {
+      if (_dateRangeSetting == '90 Days') {
+        effectiveStartDate = now.subtract(const Duration(days: 90));
+      } else {
+        effectiveStartDate = now.subtract(const Duration(days: 30));
+      }
+    }
+
     final poolTxs = widget.transactions.where((tx) {
       if (tx.pool.toLowerCase() != poolKey.toLowerCase()) return false;
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && tx.owner != widget.selectedOwner) {
@@ -398,8 +383,12 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
       }
       final txDate = DateTime.tryParse(tx.createdAt);
       if (txDate == null) return true;
-      if (widget.startDate != null) {
-        final startClean = DateTime(widget.startDate!.year, widget.startDate!.month, widget.startDate!.day);
+
+      // Fully linked setting for future zaznams visibility toggle
+      if (!_showFuture && txDate.isAfter(now)) return false;
+
+      if (effectiveStartDate != null) {
+        final startClean = DateTime(effectiveStartDate.year, effectiveStartDate.month, effectiveStartDate.day);
         if (txDate.isBefore(startClean)) return false;
       }
       if (widget.endDate != null) {
@@ -410,8 +399,8 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
     }).toList();
 
     double initialBalance = 0;
-    if (widget.startDate != null) {
-      final startClean = DateTime(widget.startDate!.year, widget.startDate!.month, widget.startDate!.day);
+    if (effectiveStartDate != null) {
+      final startClean = DateTime(effectiveStartDate.year, effectiveStartDate.month, effectiveStartDate.day);
       for (var tx in widget.transactions) {
         if (tx.pool.toLowerCase() != poolKey.toLowerCase()) continue;
         if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && tx.owner != widget.selectedOwner) continue;
@@ -440,7 +429,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
       if (t.isConfirmed == 1) {
         runningTotal += (t.type == 'income' ? t.amount : -t.amount);
       }
-      final txDate = DateTime.tryParse(t.createdAt) ?? DateTime.now();
+      final txDate = DateTime.tryParse(t.createdAt) ?? now;
       spots.add(FlSpot(i.toDouble(), runningTotal));
       spotDates.add(txDate);
     }
@@ -450,7 +439,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
       spotDates.insert(0, spotDates[0].subtract(const Duration(days: 1)));
     } else if (spots.isEmpty) {
       spots.add(const FlSpot(0, 0));
-      spotDates.add(DateTime.now());
+      spotDates.add(now);
     }
 
     double poolBalance = runningTotal;
