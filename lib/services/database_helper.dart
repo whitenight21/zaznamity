@@ -3,6 +3,7 @@ import 'package:path/path.dart';
 import '../models/label.dart';
 import '../models/transaction_model.dart';
 import '../models/savings_goal_model.dart';
+import '../models/liability_model.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -23,7 +24,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 5, // Upgraded to version 5 to add owner column to budgets and savings_goals
+      version: 6, // Upgraded to version 6 to add liabilities table
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -65,6 +66,18 @@ class DatabaseHelper {
         limit_amount REAL NOT NULL,
         owner TEXT DEFAULT 'Shared',
         FOREIGN KEY (label_id) REFERENCES labels (id) ON DELETE CASCADE
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE liabilities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        remaining_balance REAL NOT NULL,
+        monthly_installment REAL NOT NULL,
+        interest_rate REAL NOT NULL,
+        due_day INTEGER,
+        owner TEXT DEFAULT 'Shared'
       );
     ''');
 
@@ -123,8 +136,45 @@ class DatabaseHelper {
       await db.execute('ALTER TABLE budgets ADD COLUMN owner TEXT DEFAULT "Shared";');
       await db.execute('ALTER TABLE savings_goals ADD COLUMN owner TEXT DEFAULT "Shared";');
     }
+
+    if (oldVersion < 6) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS liabilities (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          remaining_balance REAL NOT NULL,
+          monthly_installment REAL NOT NULL,
+          interest_rate REAL NOT NULL,
+          due_day INTEGER,
+          owner TEXT DEFAULT 'Shared'
+        );
+      ''');
+    }
   }
 
+// Liabilities Methods
+  Future<List<LiabilityModel>> getLiabilities() async {
+    final db = await instance.database;
+    final result = await db.query('liabilities', orderBy: 'name ASC');
+    return result.map((json) => LiabilityModel.fromMap(json)).toList();
+  }
+
+  Future<int> insertLiability(LiabilityModel liability) async {
+    final db = await instance.database;
+    return await db.insert('liabilities', liability.toMap());
+  }
+
+  Future<int> updateLiability(LiabilityModel liability) async {
+    final db = await instance.database;
+    return await db.update('liabilities', liability.toMap(), where: 'id = ?', whereArgs: [liability.id]);
+  }
+
+  Future<int> deleteLiability(int id) async {
+    final db = await instance.database;
+    return await db.delete('liabilities', where: 'id = ?', whereArgs: [id]);
+  }
+
+// labels Methods
   Future<List<LabelModel>> getLabels() async {
     final db = await instance.database;
     final result = await db.query('labels', orderBy: 'name ASC');
@@ -146,6 +196,7 @@ class DatabaseHelper {
     return await db.delete('labels', where: 'id = ?', whereArgs: [id]);
   }
 
+// budgets Methods
   Future<List<Map<String, dynamic>>> getBudgets() async {
     final db = await instance.database;
     return await db.rawQuery('''

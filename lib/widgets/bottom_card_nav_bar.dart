@@ -458,6 +458,10 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
         iconData = Icons.calendar_month_outlined;
         tooltip = 'Calendar';
         break;
+      case 'liabilities_card':
+        iconData = Icons.account_balance_wallet_outlined;
+        tooltip = 'Liabilities & Loans';
+        break;
       case 'income_expenses_labels':
         iconData = Icons.bar_chart_outlined;
         tooltip = 'Label Analytics';

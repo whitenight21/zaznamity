@@ -7,6 +7,7 @@ import 'package:zaznamity/models/card_config.dart';
 import 'package:zaznamity/models/label.dart';
 import 'package:zaznamity/models/transaction_model.dart';
 import 'package:zaznamity/models/savings_goal_model.dart';
+import 'package:zaznamity/models/liability_model.dart'; // <-- Imported Liability model
 import 'package:zaznamity/services/database_helper.dart';
 import 'package:intl/intl.dart';
 
@@ -28,7 +29,8 @@ import '../widgets/sankey_flow_card.dart';
 import '../widgets/pools_analytics_card.dart';
 import '../widgets/monthly_cashflow_trend_card.dart';
 import '../widgets/savings_goals_card.dart';
-import '../widgets/title_card.dart'; // <-- Imported Title Card widget
+import '../widgets/title_card.dart';
+import '../widgets/liabilities_card.dart'; // <-- Imported Liabilities Card widget
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -51,6 +53,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   List<LabelModel> _labels = [];
   List<Map<String, dynamic>> _budgets = [];
   List<SavingsGoalModel> _goals = [];
+  List<LiabilityModel> _liabilities = []; // <-- State list for liabilities
   bool _isLoading = true;
 
   String? _globalSelectedOwner;
@@ -146,14 +149,16 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   List<String> _owners = ['Mathias', 'Julia', 'Shared'];
 
-  // Title Card config state wrapper
+  // Title Card & Liabilities Card config state wrappers
   final CardConfig _titleCardConfig = CardConfig(id: 'title_card', title: 'Title Card', key: GlobalKey());
 
+  // Stack manager cards : 
   late final List<CardConfig> _cards = [
     CardConfig(id: 'settings', title: 'Zaznamity Settings', key: GlobalKey(), isVisible: false),
     CardConfig(id: 'metrics', title: 'Metrics', key: GlobalKey()),
-    CardConfig(id: 'savings_goals', title: 'Savings Goals', key: GlobalKey()),
     CardConfig(id: 'future_metrics', title: 'Future Metrics', key: GlobalKey()),
+    CardConfig(id: 'liabilities_card', title: 'Liabilities', key: GlobalKey()),    
+    CardConfig(id: 'savings_goals', title: 'Savings Goals', key: GlobalKey()),
     CardConfig(id: 'label_focus', title: 'Single-Label Analysis', key: GlobalKey()),
     CardConfig(id: 'income_expenses_labels', title: 'Multi-Label Analytics', key: GlobalKey()),
     CardConfig(id: 'transaction_search', title: 'Search Zaznams', key: GlobalKey()),
@@ -315,7 +320,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     });
 
     int targetTab = 0;
-    if (['metrics', 'savings_goals', 'future_metrics', 'budget'].contains(cardId)) {
+    if (['metrics', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(cardId)) {
       targetTab = 0;
     } else if (['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(cardId)) {
       targetTab = 1;
@@ -400,7 +405,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: StatefulBuilder(
           builder: (stateContext, setModalState) {
-            final metricsCards = cards.where((c) => ['metrics', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
+            final metricsCards = cards.where((c) => ['metrics', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(c.id)).toList();
             final trendsCards = cards.where((c) => ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
             final analyticsCards = cards.where((c) => ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
             final actionsCards = cards.where((c) => ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
@@ -524,15 +529,125 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final lbls = await DatabaseHelper.instance.getLabels();
     final bdgs = await DatabaseHelper.instance.getBudgets();
     final gls = await DatabaseHelper.instance.getSavingsGoals();
+    final liabs = await DatabaseHelper.instance.getLiabilities(); // <-- Fetch liabilities
 
     setState(() {
       _transactions = txs;
       _labels = lbls;
       _budgets = List<Map<String, dynamic>>.from(bdgs);
       _goals = List<SavingsGoalModel>.from(gls);
+      _liabilities = List<LiabilityModel>.from(liabs); // <-- Set liabilities state
       calculateMetrics();
       _isLoading = false;
     });
+  }
+
+  // --- Liability Management Handlers ---
+  Future<void> _handleSaveLiability(LiabilityModel liability) async {
+    await DatabaseHelper.instance.insertLiability(liability);
+    await Future.delayed(const Duration(milliseconds: 150));
+    await loadData();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Liability added successfully!')));
+  }
+
+  Future<void> _deleteLiability(int id) async {
+    await DatabaseHelper.instance.deleteLiability(id);
+    await Future.delayed(const Duration(milliseconds: 150));
+    await loadData();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Liability removed!')));
+  }
+
+  void _showAddLiabilityDialog() {
+    final nameController = TextEditingController();
+    final balanceController = TextEditingController();
+    final installmentController = TextEditingController();
+    final interestController = TextEditingController(text: '0.0');
+    final dueDayController = TextEditingController(text: '1');
+    String selectedOwner = _owners.first;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Liability / Loan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Liability Name (e.g., Car Loan)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: balanceController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Remaining Balance'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: installmentController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Monthly Installment'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: interestController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Interest Rate (% APR)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: dueDayController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Due Day of Month (1-31)'),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: selectedOwner,
+                items: _owners.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+                onChanged: (val) {
+                  if (val != null) selectedOwner = val;
+                },
+                decoration: const InputDecoration(labelText: 'Owner'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
+            onPressed: () async {
+              final name = nameController.text.trim();
+              final balance = double.tryParse(balanceController.text) ?? 0.0;
+              final installment = double.tryParse(installmentController.text) ?? 0.0;
+              final apr = double.tryParse(interestController.text) ?? 0.0;
+              final dueDay = int.tryParse(dueDayController.text) ?? 1;
+
+              if (name.isEmpty || balance <= 0) return;
+
+              final newLiability = LiabilityModel(
+                name: name,
+                remainingBalance: balance,
+                monthlyInstallment: installment,
+                interestRate: apr,
+                dueDay: dueDay,
+                owner: selectedOwner,
+              );
+
+              Navigator.pop(ctx);
+              await _handleSaveLiability(newLiability);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _handleSaveGoal(SavingsGoalModel goal) async {
@@ -1731,6 +1846,41 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _jumpToHistoryForDate(selectedDate);
           },
         );
+      case 'liabilities_card':
+        return LiabilitiesCard(
+          liabilities: _liabilities.map((item) => LiabilityItem(
+            id: item.id.toString(),
+            name: item.name,
+            remainingBalance: item.remainingBalance,
+            monthlyInstallment: item.monthlyInstallment,
+            interestRate: item.interestRate,
+            dueDay: item.dueDay ?? 1,
+            owner: item.owner,
+          )).toList(),
+          owners: _owners,
+          selectedOwner: _globalSelectedOwner,
+          currencySymbol: '€',
+          onSaveLiability: (item) {
+            final model = LiabilityModel(
+              name: item.name,
+              remainingBalance: item.remainingBalance,
+              monthlyInstallment: item.monthlyInstallment,
+              interestRate: item.interestRate,
+              dueDay: item.dueDay,
+              owner: item.owner,
+            );
+            _handleSaveLiability(model);
+          },
+          onDeleteLiability: (idStr) {
+            final id = int.tryParse(idStr);
+            if (id != null) {
+              _deleteLiability(id);
+            }
+          },
+          isWide: card.isWide,
+          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
+          onHide: () => setState(() => card.isVisible = false),
+        );
       case 'sankey_flow':
         return SankeyFlowCard(
           transactions: _transactions,
@@ -1839,7 +1989,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   void _showZoomOutSnapshotModal() {
-    final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
+    final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(c.id)).toList();
     final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
     final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
     final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
@@ -2042,7 +2192,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       padding: const EdgeInsets.fromLTRB(2, 50, 2, 140),
       child: Column(
         children: [
-          // Inject the Title Card right at the top of the Metrics tab before other metric cards
+          // Inject the Title Card & Liabilities Card right at the top of the Metrics tab
           if (isMetricsTab) ...[
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
@@ -2053,9 +2203,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   owners: _owners,
                   isWide: _titleCardConfig.isWide,
                   onToggleWidth: () => setState(() => _titleCardConfig.isWide = !_titleCardConfig.isWide),
-                  onHide: () {
-                    // Optional hide handler
-                  },
+                  onHide: () {},
                 ),
               ),
             ),
@@ -2133,7 +2281,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                         builder: (context, constraints) {
                           final screenWidth = constraints.maxWidth;
 
-                          final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
+                          final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'liabilities_card', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
                           final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
                           final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
                           final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
@@ -2141,7 +2289,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                           return TabBarView(
                             controller: _tabController,
                             children: [
-                              _buildCardTabContent(metricsCards, screenWidth, isMetricsTab: true), // <-- Flags the Metrics tab for Title Card injection
+                              _buildCardTabContent(metricsCards, screenWidth, isMetricsTab: true),
                               _buildCardTabContent(trendsCards, screenWidth),
                               _buildCardTabContent(analyticsCards, screenWidth),
                               _buildCardTabContent(actionsCards, screenWidth),
