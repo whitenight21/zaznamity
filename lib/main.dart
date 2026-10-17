@@ -76,7 +76,7 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _initializeApp() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // Load preferences
+    // Load preferences[cite: 10]
     _isDarkMode = prefs.getBool('isDarkMode') ?? false;
     _pinEnabled = prefs.getBool('biometricsEnabled') ?? false;
     _savedPin = prefs.getString('savedPin') ?? "1234";
@@ -84,8 +84,8 @@ class _SplashScreenState extends State<SplashScreen> {
     // Initialize the database instance on startup
     await DatabaseHelper.instance.database;
 
-    // Optional short delay for a smooth logo viewing experience
-    await Future.delayed(const Duration(seconds: 1));
+    // Optional short delay for a smooth startup view
+    await Future.delayed(const Duration(seconds: 2));
 
     if (!mounted) return;
 
@@ -129,7 +129,7 @@ class _SplashScreenState extends State<SplashScreen> {
             _navigateToDashboard();
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Incorrect PIN! Try 1234')),
+              const SnackBar(content: Text('Incorrect PIN')),
             );
             _enteredPin = "";
           }
@@ -141,7 +141,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 88, 47, 149),
+      backgroundColor: const Color.fromARGB(255, 59, 30, 99),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -152,7 +152,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 // Logo Asset
                 ClipOval(
                   child: Image.asset(
-                    'assets/ZaznamityLogo_onlyZwhite.png', 
+                    'assets/ZaznamityLogoFULL.jpg', 
                     width: 240,
                     height: 240,
                     fit: BoxFit.cover,
@@ -170,39 +170,52 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Secure Financial Ledger',
+                  'RECORD • TRACK • FOCUS',
                   style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white70,
+                    fontSize: 12,
+                    color: Color.fromARGB(255, 157, 101, 255),
                     letterSpacing: 1.0,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 24),
 
-                // Show loader while setting up, or PIN pad if security is enabled
-// Show loader while setting up, or PIN pad if security is enabled
-                if (!_isInitialized)
-                  const CircularProgressIndicator(color: Colors.white)
-                else if (_pinEnabled) ...[
-                  const Text(
-                    'Enter PIN to Unlock',
-                    style: TextStyle(fontSize: 14, color: Colors.white70),
+                // Fixed-height container prevents any vertical shifting/dropping when loader disappears
+                SizedBox(
+                  height: 120,
+                  child: Center(
+                    child: !_isInitialized
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : (_pinEnabled
+                            ? Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    'Enter Passcode',
+                                    style: TextStyle(fontSize: 14, color: Colors.white70),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: List.generate(4, (index) => Container(
+                                      margin: const EdgeInsets.symmetric(horizontal: 8),
+                                      width: 14,
+                                      height: 14,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: index < _enteredPin.length ? Colors.white : Colors.white.withValues(alpha: 0.3),
+                                      ),
+                                    )),
+                                  ),
+                                ],
+                              )
+                            : const SizedBox.shrink()),
                   ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(4, (index) => Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      width: 14,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: index < _enteredPin.length ? Colors.white : Colors.white.withValues(alpha: 0.3),
-                      ),
-                    )),
-                  ),
-                  const SizedBox(height: 24),
+                ),
+
+                // PIN pad rows if initialized and enabled
+                if (_isInitialized && _pinEnabled) ...[
+                  const SizedBox(height: 12),
                   for (var row in [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['', '0', '⌫']])
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -233,8 +246,7 @@ class _SplashScreenState extends State<SplashScreen> {
                         );
                       }).toList(),
                     ),
-                ] else
-                  const SizedBox.shrink(), // Replaced redundant CircularProgressIndicator with nothing
+                ],
               ],
             ),
           ),

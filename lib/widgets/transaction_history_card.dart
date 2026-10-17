@@ -207,7 +207,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Delete Zaznam'),
-          content: const Text('Are you sure you want to delete this zaznam?'),
+          content: const Text('Really delete this zaznam?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),

@@ -11,7 +11,6 @@ import 'package:open_file/open_file.dart';
 import 'package:intl/intl.dart';
 import 'package:zaznamity/models/card_config.dart';
 import 'package:zaznamity/models/label.dart';
-import 'package:zaznamity/models/transaction_model.dart';
 import 'package:zaznamity/services/database_helper.dart';
 import 'package:zaznamity/services/notification_service.dart';
 import 'package:zaznamity/widgets/settings/owner_management_modal.dart';
@@ -104,8 +103,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   String _calendarStartDay = 'Monday';
   String _defaultOpenCard = 'history';
 
-  // Title Card configuration state variables
-  bool _titleCardShowMessage = true;
+  // Title Card configuration state variables (Linked to TitleCard widget)
+  bool _titleCardVisible = true;
   final TextEditingController _titleCardMessageController = TextEditingController();
 
   // Card-specific settings state variables (Non-date range parameters)
@@ -206,9 +205,9 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       _calendarStartDay = prefs.getString('calendarStartDay') ?? 'Monday';
       _defaultOpenCard = prefs.getString('defaultOpenCard') ?? 'history';
 
-      // Load Title Card preferences
-      _titleCardShowMessage = prefs.getBool('titleCardShowMessage') ?? true;
-      final savedMsg = prefs.getString('titleCardCustomMessage');
+      // Load Title Card preferences (Linked with TitleCard widget keys)
+      _titleCardVisible = prefs.getBool('titleCardVisible') ?? true;
+      final savedMsg = prefs.getString('titleCardCustomMessage') ?? prefs.getString('custom_display_name');
       if (savedMsg != null && savedMsg.isNotEmpty) {
         _titleCardMessageController.text = savedMsg;
       } else {
@@ -1402,17 +1401,17 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 children: [
                   _buildSubSectionCard(
                     title: 'Title Card',
-                    subtitle: 'Dashboard header badge & personal greeting message',
+                    subtitle: 'Dashboard header card visibility & custom display name',
                     children: [
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('Show Personal Message / Name', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                        subtitle: const Text('Display your custom greeting or name badge on the dashboard title card', style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
-                        value: _titleCardShowMessage,
+                        title: const Text('Show Title Card', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        subtitle: const Text('Toggle visibility of the Title Card on the dashboard', style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+                        value: _titleCardVisible,
                         onChanged: (val) async {
-                          setState(() => _titleCardShowMessage = val);
+                          setState(() => _titleCardVisible = val);
                           final prefs = await SharedPreferences.getInstance();
-                          await prefs.setBool('titleCardShowMessage', val);
+                          await prefs.setBool('titleCardVisible', val);
                         },
                       ),
                       const SizedBox(height: 12),
@@ -1431,6 +1430,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                               onChanged: (val) async {
                                 final prefs = await SharedPreferences.getInstance();
                                 await prefs.setString('titleCardCustomMessage', val.trim());
+                                await prefs.setString('custom_display_name', val.trim());
                               },
                             ),
                           ),
@@ -1445,7 +1445,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             onPressed: () async {
                               final prefs = await SharedPreferences.getInstance();
                               await prefs.setString('titleCardCustomMessage', _titleCardMessageController.text.trim());
-                              await prefs.setBool('titleCardShowMessage', _titleCardShowMessage);
+                              await prefs.setString('custom_display_name', _titleCardMessageController.text.trim());
+                              await prefs.setBool('titleCardVisible', _titleCardVisible);
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(content: Text('Title card settings saved successfully!')),
@@ -1943,7 +1944,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           items: const [
                             DropdownMenuItem(value: 'PIN', child: Text('4-Digit PIN Code')),
                             DropdownMenuItem(value: 'Face ID', child: Text('Face ID (Biometrics)')),
-                            DropdownMenuItem(value: 'Touch ID', child: Text('Touch ID / Fingerprint')),
+                            DropdownMenuItem(value: 'Touch ID', child: Text('Touch ID (Fingerprint)')),
                           ],
                           onChanged: (val) async {
                             if (val != null) {

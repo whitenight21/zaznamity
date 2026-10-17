@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+/* import 'package:flutter/material.dart';
 import 'dashboard_screen.dart';
 import '../services/database_helper.dart';
 
@@ -21,7 +21,7 @@ class _SplashScreenState extends State<SplashScreen> {
     await DatabaseHelper.instance.database;
 
     // Optional short delay for a smooth logo viewing experience
-    await Future.delayed(const Duration(seconds: 0));
+    await Future.delayed(const Duration(seconds: 2));
 
     if (!mounted) return;
 
@@ -44,20 +44,20 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 88, 47, 149),
+      backgroundColor: const Color.fromARGB(255, 59, 30, 99),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             // Display your custom logo asset matching pubspec.yaml
-            ClipOval(
+            /* ClipOval(
               child: Image.asset(
-                'assets/ZaznamityLogo_onlyZwhite.png', 
+                'assets/ZaznamityLogoFULL.jpg', 
                 width: 180,
                 height: 180,
                 fit: BoxFit.cover,
               ),
-            ),
+            ), */
             const SizedBox(height: 36),
             const CircularProgressIndicator(
               color: Colors.white,
@@ -67,4 +67,4 @@ class _SplashScreenState extends State<SplashScreen> {
       ),
     );
   }
-}
+} */

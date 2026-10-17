@@ -47,12 +47,10 @@ flutter_icons:
   min_sdk_android: 21
 
 flutter_native_splash:
-  color: "582F95"
-  image: "assets/ZaznamityLogo_onlyZwhite.png"
-  branding_mode: bottom
+  color: "3B1E63"
   fullscreen: true
   
   android_12:
-    color: "582F95"
-    image: "assets/ZaznamityLogo_onlyZwhite.png"
-    icon_background_color: "582F95"
+    color: "3B1E63"
+    image: "assets/solid_purple.png"
+    icon_background_color: "3B1E63"
