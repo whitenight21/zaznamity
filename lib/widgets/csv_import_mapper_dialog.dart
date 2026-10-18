@@ -148,7 +148,6 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
 
     setState(() => _isProcessing = true);
 
-    // Load primary currency preference to use as default if not specified in CSV
     final prefs = await SharedPreferences.getInstance();
     final primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
 
@@ -161,9 +160,6 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
     int poolIndex = _mapPool != null ? widget.headers.indexOf(_mapPool!) : -1;
     int labelIndex = _mapLabel != null ? widget.headers.indexOf(_mapLabel!) : -1;
     int currencyIndex = _mapCurrency != null ? widget.headers.indexOf(_mapCurrency!) : -1;
-
-    int isSavingsIndex = widget.headers.indexWhere((h) => h.toLowerCase() == 'is_savings');
-    int isLoanIndex = widget.headers.indexWhere((h) => h.toLowerCase() == 'is_loan');
 
     List<String> activeOwners = List.from(widget.owners);
     List<LabelModel> activeLabels = List.from(widget.labels);
@@ -180,15 +176,21 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
         String dateStr = cols[dateIndex].trim();
         DateTime parsedDate = DateTime.tryParse(dateStr) ?? DateTime.now();
 
-        String rawAmount = cols[amountIndex].replaceAll(RegExp(r'[^0-9.\-]'), '').trim();
+        // 🛠️ Robust amount cleaning (handles currency symbols, commas as decimals, spaces)
+        String rawAmount = cols[amountIndex]
+            .replaceAll(RegExp(r'[^0-9.,\-]'), '')
+            .replaceAll(',', '.')
+            .trim();
         double amount = double.tryParse(rawAmount) ?? 0.0;
 
-        String description = descIndex != -1 && cols.length > descIndex ? cols[descIndex].trim() : 'Imported transaction';
+        String description = (descIndex != -1 && cols.length > descIndex && cols[descIndex].isNotEmpty) 
+            ? cols[descIndex].trim() 
+            : 'Imported transaction';
 
         String type = 'expense';
         if (typeIndex != -1 && cols.length > typeIndex) {
           String val = cols[typeIndex].toLowerCase();
-          if (val.contains('inc') || val.contains('deposit') || amount > 0) {
+          if (val.contains('inc') || val.contains('deposit') || val.contains('príjem') || amount > 0) {
             type = 'income';
           }
         } else if (amount > 0) {
@@ -196,7 +198,6 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
         }
         amount = amount.abs();
 
-        // Currency Handling with Primary Default Fallback
         String currencyCode = primaryCurrency;
         if (currencyIndex != -1 && cols.length > currencyIndex) {
           String val = cols[currencyIndex].trim().toUpperCase();
@@ -205,7 +206,6 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
           }
         }
 
-        // Owner Handling & Auto-Creation
         String owner = activeOwners.isNotEmpty ? activeOwners.first : 'Shared';
         if (ownerIndex != -1 && cols.length > ownerIndex) {
           String val = cols[ownerIndex].trim();
@@ -219,7 +219,6 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
           }
         }
 
-        // Pool Handling & Auto-Creation
         String pool = 'checking';
         if (poolIndex != -1 && cols.length > poolIndex) {
           String val = cols[poolIndex].trim().toLowerCase();
@@ -231,16 +230,8 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
               pool = val;
             }
           }
-        } else {
-          if (isSavingsIndex != -1 && cols.length > isSavingsIndex) {
-            if (cols[isSavingsIndex].trim().toLowerCase() == 'true') pool = 'savings';
-          }
-          if (isLoanIndex != -1 && cols.length > isLoanIndex) {
-            if (cols[isLoanIndex].trim().toLowerCase() == 'true') pool = 'loan';
-          }
         }
 
-        // Label Handling & Auto-Creation
         int labelId = activeLabels.isNotEmpty ? activeLabels.first.id : 1;
         if (labelIndex != -1 && cols.length > labelIndex) {
           String labelName = cols[labelIndex].trim();
@@ -282,12 +273,14 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
           pool: pool,
           isConfirmed: confirmedValue,
           isSavings: pool == 'savings' ? 1 : 0,
-          // currencyCode: currencyCode, // Uncomment if TransactionModel supports currency tagging
+          currencyCode: currencyCode,
         );
 
         await DatabaseHelper.instance.insertTransaction(newTx);
         importedCount++;
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('Skipped row due to parse error: $e');
+      }
     }
 
     if (!context.mounted) return;
@@ -295,7 +288,7 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
     widget.onImportCompleted();
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Successfully imported $importedCount transactions with currency tagging!')),
+      SnackBar(content: Text('Successfully imported $importedCount transactions!')),
     );
   }
 

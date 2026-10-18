@@ -87,7 +87,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     double totalExpense = 0;
     final now = DateTime.now();
     
-    // Linked to settings date range or default rolling baseline
     int baselineDays = 90;
     if (_dateRangeSetting == '30 Days') baselineDays = 30;
     else if (_dateRangeSetting == '1 Year' || _dateRangeSetting == 'Next 1 Year') baselineDays = 365;
@@ -224,34 +223,18 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
+                  const Expanded(
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: Row(
-                        children: [
-                          const Text(
-                            'FUTURE METRICS',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF582F95),
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              hasDateFilter ? 'Custom' : _dateRangeSetting,
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'FUTURE METRICS',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF582F95),
+                          letterSpacing: 0.8,
+                        ),
                       ),
                     ),
                   ),
@@ -464,7 +447,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       amount: monthlyBurn,
                       amountColor: const Color(0xFFDC2626),
                       width: boxWidth,
-                      infoExplanation: 'Monthly Burn Rate represents your average monthly baseline spending calculated over your configured timeframe setting ($_dateRangeSetting).',
+                      infoExplanation: 'Monthly Burn Rate represents your average monthly baseline spending calculated over your configured timeframe setting.',
                     ),
                   ),
                   SizedBox(
@@ -473,7 +456,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       title: 'SAVINGS RATE',
                       savingsRate: savingsRate,
                       width: boxWidth,
-                      infoExplanation: 'Savings Rate shows the exact percentage of your monthly income that you successfully retain rather than spend, based on your configured timeframe setting ($_dateRangeSetting).',
+                      infoExplanation: 'Savings Rate shows the exact percentage of your monthly income that you successfully retain rather than spend, based on your configured timeframe setting.',
                     ),
                   ),
                 ],
@@ -583,7 +566,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
-                color: savingsRate >= 20 ? const Color.fromARGB(255, 3, 138, 16) : const Color.fromARGB(255, 255, 127, 39),
+                color: savingsRate >= 20 ? const Color.fromARGB(255, 3, 138, 16) : const Color.fromARGB(255, 255, 3, 3),
               ),
             ),
           ),

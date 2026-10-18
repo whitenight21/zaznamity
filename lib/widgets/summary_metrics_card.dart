@@ -45,6 +45,8 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   String? _secondaryCurrency2;
   String? _secondaryCurrency3;
 
+  bool _isZaznamityMode = true;
+
   // Linked liquid net pool preferences from settings
   final Map<String, bool> _liquidNetPools = {};
   
@@ -71,6 +73,8 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
+    
     // Gather all unique pool names from widget data to load their liquid net inclusion preferences
     Set<String> allPools = {};
     widget.totalPoolTotalsByCurrency.values.forEach((map) {
@@ -82,13 +86,16 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       loadedPools[pool] = prefs.getBool('set_liquidNet_pool_$pool') ?? true;
     }
 
-    setState(() {
-      _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
-      _secondaryCurrency1 = prefs.getString('secondaryCurrency1');
-      _secondaryCurrency2 = prefs.getString('secondaryCurrency2');
-      _secondaryCurrency3 = prefs.getString('secondaryCurrency3');
-      _liquidNetPools.addAll(loadedPools);
-    });
+    if (mounted) {
+      setState(() {
+        _isZaznamityMode = (savedTheme == 'zaznamity');
+        _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
+        _secondaryCurrency1 = prefs.getString('secondaryCurrency1');
+        _secondaryCurrency2 = prefs.getString('secondaryCurrency2');
+        _secondaryCurrency3 = prefs.getString('secondaryCurrency3');
+        _liquidNetPools.addAll(loadedPools);
+      });
+    }
   }
 
   @override
@@ -99,6 +106,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         _selectedOwner = widget.selectedOwner ?? 'All Owners';
       });
     }
+    _loadPrefs();
   }
 
   String _formatCurrency(double amount, String currencyCode) {
@@ -114,14 +122,14 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   Color _getPoolColor(String poolName) {
     switch (poolName.toLowerCase()) {
       case 'checking':
-        return const Color.fromARGB(255, 0, 132, 184);
+        return _isZaznamityMode ? const Color(0xFF38BDF8) : const Color.fromARGB(255, 0, 132, 184);
       case 'cash':
-        return const Color(0xFF56C435);
+        return _isZaznamityMode ? const Color(0xFF4ADE80) : const Color(0xFF56C435);
       case 'savings':
-        return const Color(0xFFFF7F27);
+        return _isZaznamityMode ? const Color(0xFFFB923C) : const Color(0xFFFF7F27);
       case 'loan':
       case 'loans':
-        return const Color.fromARGB(255, 105, 105, 105);
+        return _isZaznamityMode ? const Color(0xFF94A3B8) : const Color.fromARGB(255, 105, 105, 105);
       default:
         return Colors.primaries[poolName.hashCode % Colors.primaries.length];
     }
@@ -139,7 +147,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       if (curr != currencyCode) continue;
       if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
 
-      // Exclude pools toggled off for liquid net/metrics if desired
       if (_liquidNetPools[tx.pool] == false) continue;
 
       final dt = DateTime.tryParse(tx.createdAt) ?? now;
@@ -154,22 +161,23 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.info_outline_rounded, color: Color(0xFF582F95)),
+            Icon(Icons.info_outline_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
             const SizedBox(width: 8),
-            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)))),
+            Expanded(child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)))),
           ],
         ),
         content: Text(
           explanation,
-          style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+          style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.4),
         ),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF582F95),
+              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
@@ -209,7 +217,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
           '$ownerName: ${_formatCurrency(ownerLiquidNet, currencyCode)}',
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey.shade700,
+            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
             fontWeight: FontWeight.w700,
           ),
         );
@@ -221,7 +229,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       );
     }
 
-    // Recalculate Liquid Net dynamically applying the settings toggle for each pool
     double currentLiquidNet = 0;
     currentPools.forEach((poolName, balance) {
       if (_liquidNetPools[poolName] ?? true) {
@@ -255,13 +262,13 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                 height: 48,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.person_outline_rounded, size: 20, color: Color(0xFF582F95)),
+                    Icon(Icons.person_outline_rounded, size: 20, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: DropdownButtonHideUnderline(
@@ -269,10 +276,11 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                           value: _selectedOwner,
                           isDense: true,
                           isExpanded: true,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                           items: [
-                            const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
-                            ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                            DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                            ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
                           ],
                           onChanged: (val) {
                             if (val != null) setState(() => _selectedOwner = val);
@@ -300,10 +308,10 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                     const SizedBox(width: 8),
                     Text(
                       currencyCode,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF582F95),
+                        color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
                       ),
                     ),
                   ],
@@ -323,17 +331,17 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
-                  color: Colors.grey.shade600,
+                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
                   letterSpacing: 0.8,
                 ),
               ),
               const SizedBox(height: 3),
               Text(
                 _formatCurrency(currentLiquidNet, currencyCode),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF582F95),
+                  color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                 ),
               ),
               const SizedBox(height: 6),
@@ -357,7 +365,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(2.0),
-                      child: Icon(Icons.info_outline_rounded, size: 13, color: Color.fromARGB(255, 158, 158, 158)),
+                      child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF9EA3A3)),
                     ),
                   ),
                 ],
@@ -373,7 +381,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
               _selectedOwner.toUpperCase(),
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.grey.shade700,
+                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -431,13 +439,14 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: _isZaznamityMode ? Border.all(color: Colors.white12) : null,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
+                color: Colors.black.withValues(alpha: _isZaznamityMode ? 0.2 : 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -448,12 +457,12 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'METRICS',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF582F95),
+                      color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                       letterSpacing: 0.8,
                     ),
                   ),
@@ -468,8 +477,8 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                             width: 28,
                             child: IconButton(
                               style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFFF1F5F9),
-                                foregroundColor: const Color(0xFF64748B),
+                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                                 padding: EdgeInsets.zero,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                               ),
@@ -488,8 +497,8 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                           width: 28,
                           child: IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                             ),
@@ -509,9 +518,9 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
 
               for (int i = 0; i < activeCurrencies.length; i++) ...[
                 if (i > 0) ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16.0),
-                    child: Divider(color: Color(0xFF582F95), thickness: 1.5),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    child: Divider(color: _isZaznamityMode ? Colors.white24 : const Color(0xFF582F95), thickness: 1.5),
                   ),
                 ],
                 _buildCurrencySection(activeCurrencies[i], availableWidth, boxWidth, fullWidth),
@@ -540,7 +549,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w900,
-              color: Colors.grey.shade600,
+              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
               letterSpacing: 0.6,
             ),
           ),

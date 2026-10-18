@@ -1,3 +1,5 @@
+// ignore_for_file: depend_on_referenced_packages, avoid_print
+
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/label.dart';
@@ -24,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 6, // Upgraded to version 6 to add liabilities table
+      version: 7, // 🚀 Bumped to version 7 to patch the missing columns
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -70,15 +72,16 @@ class DatabaseHelper {
     ''');
 
     await db.execute('''
-      CREATE TABLE liabilities (
+      CREATE TABLE liabilities(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        remaining_balance REAL NOT NULL,
-        monthly_installment REAL NOT NULL,
-        interest_rate REAL NOT NULL,
+        name TEXT,
+        remaining_balance REAL,
+        monthly_installment REAL,
+        interest_rate REAL,
         due_day INTEGER,
-        owner TEXT DEFAULT 'Shared'
-      );
+        owner TEXT,
+        last_processed_date TEXT
+      )
     ''');
 
     await db.execute('''
@@ -136,7 +139,6 @@ class DatabaseHelper {
       await db.execute('ALTER TABLE budgets ADD COLUMN owner TEXT DEFAULT "Shared";');
       await db.execute('ALTER TABLE savings_goals ADD COLUMN owner TEXT DEFAULT "Shared";');
     }
-
     if (oldVersion < 6) {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS liabilities (
@@ -146,32 +148,169 @@ class DatabaseHelper {
           monthly_installment REAL NOT NULL,
           interest_rate REAL NOT NULL,
           due_day INTEGER,
-          owner TEXT DEFAULT 'Shared'
+          owner TEXT DEFAULT 'Shared',
+          last_processed_date TEXT
         );
       ''');
+    }
+    if (oldVersion < 7) {
+      try {
+        await db.execute('ALTER TABLE liabilities ADD COLUMN last_processed_date TEXT;');
+      } catch (_) {}
     }
   }
 
 // Liabilities Methods
   Future<List<LiabilityModel>> getLiabilities() async {
-    final db = await instance.database;
-    final result = await db.query('liabilities', orderBy: 'name ASC');
-    return result.map((json) => LiabilityModel.fromMap(json)).toList();
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('liabilities');
+    return List.generate(maps.length, (i) => LiabilityModel.fromMap(maps[i]));
   }
 
   Future<int> insertLiability(LiabilityModel liability) async {
-    final db = await instance.database;
-    return await db.insert('liabilities', liability.toMap());
-  }
+    final db = await database;
+    final map = liability.toMap();
+    
+    if (map['last_processed_date'] == null) {
+      map['last_processed_date'] = DateTime.now().toIso8601String();
+    }
+    
+    map.remove('lastProcessedDate');
 
-  Future<int> updateLiability(LiabilityModel liability) async {
-    final db = await instance.database;
-    return await db.update('liabilities', liability.toMap(), where: 'id = ?', whereArgs: [liability.id]);
+    return await db.insert(
+      'liabilities',
+      map,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<int> deleteLiability(int id) async {
-    final db = await instance.database;
-    return await db.delete('liabilities', where: 'id = ?', whereArgs: [id]);
+    final db = await database;
+    return await db.delete(
+      'liabilities',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Cleans up pending/future transactions tied to a deleted liability label or description pattern
+  Future<void> deleteTransactionsByLabelOrDescription(String labelOrName) async {
+    final db = await database;
+    
+    final labelResult = await db.query(
+      'labels',
+      where: 'name = ?',
+      whereArgs: [labelOrName],
+    );
+
+    if (labelResult.isNotEmpty) {
+      final labelId = labelResult.first['id'];
+      await db.delete(
+        'transactions',
+        where: 'label_id = ? AND is_confirmed = 0',
+        whereArgs: [labelId],
+      );
+    }
+
+    // Also clean up by description fallback matching
+    await db.delete(
+      'transactions',
+      where: 'description LIKE ? AND is_confirmed = 0',
+      whereArgs: ['%Automatic Mortgage Payment: $labelOrName%'],
+    );
+  }
+
+  Future<void> checkAndApplyAutomaticLiabilityPayments() async {
+    final db = await database;
+    final liabilities = await db.query('liabilities');
+    final now = DateTime.now();
+    final oneYearFromNow = DateTime(now.year + 1, now.month, now.day);
+
+    for (var row in liabilities) {
+      int id = row['id'] as int;
+      double balance = (row['remaining_balance'] as num).toDouble();
+      double installment = (row['monthly_installment'] as num).toDouble();
+      double apr = (row['interest_rate'] as num).toDouble();
+      int dueDay = (row['due_day'] as int?) ?? 1;
+      String owner = row['owner'] as String? ?? 'Shared';
+      String name = row['name'] as String? ?? 'Loan';
+      
+      String? lastProcessedStr = row['last_processed_date'] as String?;
+      
+      DateTime lastProcessed = lastProcessedStr != null 
+          ? (DateTime.tryParse(lastProcessedStr) ?? DateTime(now.year, now.month - 1, dueDay))
+          : DateTime(now.year, now.month - 1, dueDay);
+
+      DateTime nextDue = DateTime(lastProcessed.year, lastProcessed.month, dueDay);
+      if (!nextDue.isAfter(lastProcessed)) {
+        nextDue = DateTime(nextDue.year, nextDue.month + 1, dueDay);
+      }
+
+      bool updated = false;
+
+      while (!nextDue.isAfter(oneYearFromNow)) {
+        bool isPastOrPresent = !nextDue.isAfter(now);
+
+        if (isPastOrPresent) {
+          double monthlyRate = (apr / 100.0) / 12.0;
+          double interestAmount = balance * monthlyRate;
+          double principalReduction = installment - interestAmount;
+          if (principalReduction < 0) principalReduction = 0.0;
+          
+          balance -= principalReduction;
+          if (balance < 0) balance = 0.0;
+        }
+
+        final existingTx = await db.query(
+          'transactions',
+          where: 'description = ? AND created_at = ?',
+          whereArgs: ['Automatic Mortgage Payment: $name', nextDue.toIso8601String()],
+        );
+
+        if (existingTx.isEmpty) {
+          final labelName = '$name (L)';
+          final labelResult = await db.query('labels', where: 'name = ?', whereArgs: [labelName]);
+          int targetLabelId = 1;
+          if (labelResult.isNotEmpty) {
+            targetLabelId = labelResult.first['id'] as int;
+          }
+
+          final paymentTx = TransactionModel(
+            createdAt: nextDue.toIso8601String(),
+            description: 'Automatic Mortgage Payment: $name',
+            amount: installment,
+            type: 'expense',
+            pool: 'checking', 
+            labelId: targetLabelId, 
+            owner: owner,
+            isConfirmed: isPastOrPresent ? 1 : 0,
+            isSavings: 0,
+            currencyCode: 'EUR',
+          );
+          
+          await insertTransaction(paymentTx);
+        }
+
+        if (isPastOrPresent) {
+          lastProcessed = nextDue;
+          updated = true;
+        }
+
+        nextDue = DateTime(nextDue.year, nextDue.month + 1, dueDay);
+      }
+
+      if (updated) {
+        await db.update(
+          'liabilities',
+          {
+            'remaining_balance': balance,
+            'last_processed_date': lastProcessed.toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      }
+    }
   }
 
 // labels Methods
@@ -194,6 +333,20 @@ class DatabaseHelper {
   Future<int> deleteLabel(int id) async {
     final db = await instance.database;
     return await db.delete('labels', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> bulkUpdateTransactionsPoolByOwnerAndLabel({
+    required String owner,
+    required int labelId,
+    required String targetPool,
+  }) async {
+    final db = await instance.database;
+    return await db.update(
+      'transactions',
+      {'pool': targetPool},
+      where: 'owner = ? AND label_id = ?',
+      whereArgs: [owner, labelId],
+    );
   }
 
 // budgets Methods

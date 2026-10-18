@@ -40,6 +40,7 @@ class AppSettingsCard extends StatefulWidget {
   final VoidCallback? onImportCsv;
   final Function(String, {int? year, int? month}) onDeleteBulkTransactions;
   final Function(String, String) onBulkUpdateTransactionsLabel; 
+  final Function(String, String, String) onBulkUpdateTransactionsPool; // <-- Added callback
   final bool isWide;
   final VoidCallback? onToggleWidth;
   final VoidCallback? onHide;
@@ -68,6 +69,7 @@ class AppSettingsCard extends StatefulWidget {
     this.onImportCsv,
     required this.onDeleteBulkTransactions,
     required this.onBulkUpdateTransactionsLabel,
+    required this.onBulkUpdateTransactionsPool,
     required this.isWide,
     this.onToggleWidth,
     this.onHide,
@@ -1117,6 +1119,73 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     );
   }
 
+  // 🛠️ Bulk Move Transactions by Label to Pool Dialog Implementation
+  void _showBulkMoveLabelToPoolDialog() {
+    String selectedOwner = _owners.isNotEmpty ? _owners.first : 'Shared';
+    String selectedLabelName = widget.labels.isNotEmpty ? widget.labels.first.name : '';
+    String selectedPool = _pools.keys.isNotEmpty ? _pools.keys.first : 'checking';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateModal) => AlertDialog(
+          title: const Text('Bulk Move Zaznams by Label to Pool', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Select Owner:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<String>(
+                initialValue: selectedOwner,
+                isExpanded: true,
+                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
+                items: _owners.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+                onChanged: (val) => setStateModal(() => selectedOwner = val ?? selectedOwner),
+              ),
+              const SizedBox(height: 14),
+              const Text('Select Label / Category:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<String>(
+                initialValue: selectedLabelName.isNotEmpty ? selectedLabelName : null,
+                isExpanded: true,
+                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
+                items: widget.labels.map((l) => DropdownMenuItem(value: l.name, child: Text(l.name))).toList(),
+                onChanged: (val) => setStateModal(() => selectedLabelName = val ?? selectedLabelName),
+              ),
+              const SizedBox(height: 14),
+              const Text('Move to Target Pool:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<String>(
+                initialValue: selectedPool,
+                isExpanded: true,
+                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)))),
+                items: _pools.keys.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))).toList(),
+                onChanged: (val) => setStateModal(() => selectedPool = val ?? selectedPool),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
+              onPressed: () {
+                if (selectedLabelName.isNotEmpty) {
+                  Navigator.pop(ctx);
+                  widget.onBulkUpdateTransactionsPool(selectedOwner, selectedLabelName, selectedPool);
+                }
+              },
+              child: const Text('Execute Move'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -1237,17 +1306,19 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     ],
                   ),
                   _buildSubSectionCard(
-                    title: 'Dark Mode',
-                    subtitle: 'Toggle light or dark theme',
+                    title: 'App User Modes',
+                    subtitle: 'Toggle light mode or Zaznamity mode',
                     children: [
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('Enable Dark Mode', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                        title: const Text('Enable Zaznamity Dark Mode', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
                         value: _isDarkMode,
                         onChanged: (val) async {
                           setState(() => _isDarkMode = val);
+                          
+                          // Save and notify theme change
                           final prefs = await SharedPreferences.getInstance();
-                          await prefs.setBool('isDarkMode', val);
+                          await prefs.setString('app_theme', val ? 'zaznamity' : 'light');
                           if (widget.onThemeChanged != null) {
                             widget.onThemeChanged!(val);
                           }
@@ -1859,6 +1930,29 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           label: const Text('Bulk Edit Labels', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      // 🛠️ New Bulk Move to Pool Action Button Added Here
+                      const Text('Bulk Move Zaznams (Label → Pool)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Move all Zaznams for a specific owner and label into a target pool in batch',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF64748B), height: 1.4),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF582F95),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: _showBulkMoveLabelToPoolDialog,
+                          icon: const Icon(Icons.drive_file_move_outlined, size: 18),
+                          label: const Text('Bulk Move Label to Pool', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ),
                     ],
                   ),
                   _buildSubSectionCard(
@@ -2059,11 +2153,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               ),
 
               // ==========================================
-              // GROUP 5: DATA MANAGEMENT & SYSTEM
+              // GROUP 5: System Tools
               // ==========================================
               _buildMainCategoryGroup(
-                title: 'Data Management & System',
-                subtitle: 'Reports, logs, CSV imports, and zone actions',
+                title: 'System Tools',
+                subtitle: 'Reports and logs, CSV imports, and About',
                 children: [
                   _buildSubSectionCard(
                     title: 'Zaznamity Reports',
@@ -2140,7 +2234,9 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     children: [
                       const Text(
                         'Upload any CSV file, match your columns to Zaznamity fields, choose to create labels, owners and pools, and detect future transactions.\n\n'
-                        'This feature is designed to help you import your financial data from other sources into Zaznamity with ease and efficiency.',
+                        'This feature is designed to help you import your financial data from other sources into Zaznamity with ease and efficiency.\n\n'
+                        'INSTRUCTIONS : Before importing your data, please select in "Currency Preferences" your Primary Currency. Then proceed to importing your data.\n\n'
+                        'After importing, please allow some time for data parsing within the app - more transactions imported, more time to parse data. Also, if you encounter a label or pool discrepency in your imported data, reassign your data with bulk actions in "Labels Management".',
                         style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
                       ),
                       const SizedBox(height: 12),
@@ -2168,31 +2264,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           },
                           icon: const Icon(Icons.alt_route, size: 18),
                           label: const Text('CSV Import Mapper', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                  _buildSubSectionCard(
-                    title: 'Delete Zaznams - DANGER ZONE',
-                    subtitle: 'Delete Zaznams in bulk by month, year, or all',
-                    children: [
-                      const Text(
-                        'Permanently delete zaznams based on time range.',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFDC2626),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          onPressed: _showBulkDeleteDialog,
-                          icon: const Icon(Icons.delete_sweep, size: 18),
-                          label: const Text('Bulk Delete Zaznams', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ],

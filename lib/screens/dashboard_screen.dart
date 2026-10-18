@@ -7,7 +7,7 @@ import 'package:zaznamity/models/card_config.dart';
 import 'package:zaznamity/models/label.dart';
 import 'package:zaznamity/models/transaction_model.dart';
 import 'package:zaznamity/models/savings_goal_model.dart';
-import 'package:zaznamity/models/liability_model.dart'; // <-- Imported Liability model
+import 'package:zaznamity/models/liability_model.dart'; 
 import 'package:zaznamity/services/database_helper.dart';
 import 'package:intl/intl.dart';
 
@@ -30,7 +30,7 @@ import '../widgets/pools_analytics_card.dart';
 import '../widgets/monthly_cashflow_trend_card.dart';
 import '../widgets/savings_goals_card.dart';
 import '../widgets/title_card.dart';
-import '../widgets/liabilities_card.dart'; // <-- Imported Liabilities Card widget
+import '../widgets/liabilities_card.dart'; 
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -53,7 +53,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   List<LabelModel> _labels = [];
   List<Map<String, dynamic>> _budgets = [];
   List<SavingsGoalModel> _goals = [];
-  List<LiabilityModel> _liabilities = []; // <-- State list for liabilities
+  List<LiabilityModel> _liabilities = []; 
   bool _isLoading = true;
 
   String? _globalSelectedOwner;
@@ -149,10 +149,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   List<String> _owners = ['Mathias', 'Julia', 'Shared'];
 
-  // Title Card & Liabilities Card config state wrappers
   final CardConfig _titleCardConfig = CardConfig(id: 'title_card', title: 'Title Card', key: GlobalKey());
 
-  // Stack manager cards : 
   late final List<CardConfig> _cards = [
     CardConfig(id: 'settings', title: 'Zaznamity Settings', key: GlobalKey(), isVisible: false),
     CardConfig(id: 'metrics', title: 'Metrics', key: GlobalKey()),
@@ -213,6 +211,40 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     if (sec2 != null && sec2.isNotEmpty) currencies.add(sec2);
     if (sec3 != null && sec3.isNotEmpty) currencies.add(sec3);
 
+// Load active theme preference
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
+    bool isZaznamity = (savedTheme == 'zaznamity');
+    if (widget.onThemeChanged != null) {
+      widget.onThemeChanged!(isZaznamity);
+    }
+
+    final savedCardOrderStrings = prefs.getStringList('savedCardOrderList');
+    final savedCardVisibilityMap = prefs.getString('savedCardVisibilityMap');
+    
+    if (savedCardOrderStrings != null && savedCardOrderStrings.isNotEmpty) {
+      List<CardConfig> reorderedCards = [];
+      
+      for (var id in savedCardOrderStrings) {
+        final existingCard = _cards.firstWhere((c) => c.id == id, orElse: () => _cards.first);
+        reorderedCards.add(existingCard);
+      }
+      for (var c in _cards) {
+        if (!reorderedCards.any((rc) => rc.id == c.id)) {
+          reorderedCards.add(c);
+        }
+      }
+
+      for (var c in reorderedCards) {
+        c.isVisible = prefs.getBool('card_visible_${c.id}') ?? c.isVisible;
+        c.isWide = prefs.getBool('card_wide_${c.id}') ?? c.isWide;
+      }
+
+      setState(() {
+        _cards.clear();
+        _cards.addAll(reorderedCards);
+      });
+    }
+
     setState(() {
       _availableCurrencies = currencies;
       final leftSaved = prefs.getStringList('leftNavItems');
@@ -235,6 +267,16 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         _pools = loadedPools;
       }
     });
+  }
+
+  Future<void> _saveCardLayoutPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> cardIds = _cards.map((c) => c.id).toList();
+    await prefs.setStringList('savedCardOrderList', cardIds);
+    for (var c in _cards) {
+      await prefs.setBool('card_visible_${c.id}', c.isVisible);
+      await prefs.setBool('card_wide_${c.id}', c.isWide);
+    }
   }
 
   Future<void> _savePoolsPreferences(Map<String, bool> updatedPools) async {
@@ -310,6 +352,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       cardConfig.isVisible = true;
       _highlightedCardId = cardId;
     });
+    _saveCardLayoutPreferences();
 
     Future.delayed(const Duration(milliseconds: 1500), () {
       if (mounted && _highlightedCardId == cardId) {
@@ -359,6 +402,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       historyCard.isVisible = true;
       _highlightedCardId = 'history';
     });
+    _saveCardLayoutPreferences();
 
     Future.delayed(const Duration(milliseconds: 200), () {
       if (mounted && _highlightedCardId == 'history') {
@@ -440,6 +484,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                         cards.insertAll(insertPos, catCards);
                       });
                       setState(() {});
+                      _saveCardLayoutPreferences();
                     },
                     children: catCards.map((card) {
                       return ListTile(
@@ -466,6 +511,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                               onToggleVisibility(card);
                             });
                             setState(() {});
+                            _saveCardLayoutPreferences();
                           },
                         ),
                         onTap: () {
@@ -525,45 +571,83 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       setState(() => _isLoading = true);
     }
     
+    await DatabaseHelper.instance.checkAndApplyAutomaticLiabilityPayments();
+
     final txs = await DatabaseHelper.instance.getTransactions();
     final lbls = await DatabaseHelper.instance.getLabels();
     final bdgs = await DatabaseHelper.instance.getBudgets();
     final gls = await DatabaseHelper.instance.getSavingsGoals();
-    final liabs = await DatabaseHelper.instance.getLiabilities(); // <-- Fetch liabilities
+    final liabs = await DatabaseHelper.instance.getLiabilities(); 
 
     setState(() {
       _transactions = txs;
       _labels = lbls;
       _budgets = List<Map<String, dynamic>>.from(bdgs);
       _goals = List<SavingsGoalModel>.from(gls);
-      _liabilities = List<LiabilityModel>.from(liabs); // <-- Set liabilities state
+      _liabilities = List<LiabilityModel>.from(liabs); 
       calculateMetrics();
       _isLoading = false;
     });
   }
 
-  // --- Liability Management Handlers ---
   Future<void> _handleSaveLiability(LiabilityModel liability) async {
+    final labelName = '${liability.name} (L)';
+
+    // 1. Automatically create the corresponding label if it doesn't already exist
+    int targetLabelId;
+    final existingLabel = _labels
+        .where((l) => l.name.toLowerCase() == labelName.toLowerCase())
+        .firstOrNull;
+    
+    if (existingLabel != null) {
+      targetLabelId = existingLabel.id;
+    } else {
+      await DatabaseHelper.instance.insertLabel(labelName, '#582F95');
+      final updatedLabels = await DatabaseHelper.instance.getLabels();
+      final newlyCreated = updatedLabels.firstWhere(
+        (l) => l.name.toLowerCase() == labelName.toLowerCase(),
+        orElse: () => updatedLabels.first,
+      );
+      targetLabelId = newlyCreated.id;
+    }
+
+    // 2. Save the liability record to database
     await DatabaseHelper.instance.insertLiability(liability);
+
+    // 3. Automatically generate pending amortization payments for future calendar and ledger views[cite: 6]
+    await DatabaseHelper.instance.checkAndApplyAutomaticLiabilityPayments();
+
     await Future.delayed(const Duration(milliseconds: 150));
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Liability added successfully!')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Liability added, label created & future payments scheduled!')),
+    );
   }
 
   Future<void> _deleteLiability(int id) async {
+    // Find the liability name before deleting so we can clean up pending transactions and its label
+    final liabilityToDelete = _liabilities.firstWhere((l) => l.id == id, orElse: () => _liabilities.first);
+    
+    // 1. Delete the liability record
     await DatabaseHelper.instance.deleteLiability(id);
+
+    // 2. Automatically purge pending/future transactions and label associated with this liability
+    if (liabilityToDelete.id != null) {
+      await DatabaseHelper.instance.deleteTransactionsByLabelOrDescription(liabilityToDelete.name);
+    }
+
     await Future.delayed(const Duration(milliseconds: 150));
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Liability removed!')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Liability removed & pending payments cleared!')));
   }
 
   void _showAddLiabilityDialog() {
     final nameController = TextEditingController();
     final balanceController = TextEditingController();
     final installmentController = TextEditingController();
-    final interestController = TextEditingController(text: '0.0');
+    final interestController = TextEditingController(text: '3.0');
     final dueDayController = TextEditingController(text: '1');
     String selectedOwner = _owners.first;
 
@@ -577,25 +661,25 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             children: [
               TextField(
                 controller: nameController,
-                decoration: const InputDecoration(labelText: 'Liability Name (e.g., Car Loan)'),
+                decoration: const InputDecoration(labelText: 'Liability Name (e.g., Mortgage)'),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: balanceController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Remaining Balance'),
+                decoration: const InputDecoration(labelText: 'Remaining Balance (e.g., 112000)'),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: installmentController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Monthly Installment'),
+                decoration: const InputDecoration(labelText: 'Monthly Installment (e.g., 555.78)'),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: interestController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Interest Rate (% APR)'),
+                decoration: const InputDecoration(labelText: 'Interest Rate (% APR, e.g., 3.0)'),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -621,26 +705,59 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF582F95),
+              foregroundColor: Colors.white,
+            ),
             onPressed: () async {
-              final name = nameController.text.trim();
-              final balance = double.tryParse(balanceController.text) ?? 0.0;
-              final installment = double.tryParse(installmentController.text) ?? 0.0;
-              final apr = double.tryParse(interestController.text) ?? 0.0;
-              final dueDay = int.tryParse(dueDayController.text) ?? 1;
+              final rawName = nameController.text.trim();
+              
+              String cleanBalance = balanceController.text.replaceAll(' ', '').replaceAll(',', '.');
+              String cleanInstallment = installmentController.text.replaceAll(' ', '').replaceAll(',', '.');
+              String cleanInterest = interestController.text.replaceAll(' ', '').replaceAll(',', '.');
 
-              if (name.isEmpty || balance <= 0) return;
+              final balance = double.tryParse(cleanBalance) ?? 0.0;
+              final installment = double.tryParse(cleanInstallment) ?? 0.0;
+              final apr = double.tryParse(cleanInterest) ?? 3.0;
+              final dueDay = int.tryParse(dueDayController.text.trim()) ?? 1;
+
+              if (rawName.isEmpty || balance <= 0) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a valid name and remaining balance.')),
+                );
+                return;
+              }
+
+              final labelName = '$rawName (L)';
+
+              int targetLabelId;
+              final existingLabel = _labels
+                  .where((l) => l.name.toLowerCase() == labelName.toLowerCase())
+                  .firstOrNull;
+              
+              if (existingLabel != null) {
+                targetLabelId = existingLabel.id;
+              } else {
+                await DatabaseHelper.instance.insertLabel(labelName, '#582F95');
+                final updatedLabels = await DatabaseHelper.instance.getLabels();
+                final newlyCreated = updatedLabels.firstWhere(
+                  (l) => l.name.toLowerCase() == labelName.toLowerCase(),
+                  orElse: () => updatedLabels.first,
+                );
+                targetLabelId = newlyCreated.id;
+              }
 
               final newLiability = LiabilityModel(
-                name: name,
+                name: rawName,
                 remainingBalance: balance,
                 monthlyInstallment: installment,
                 interestRate: apr,
                 dueDay: dueDay,
                 owner: selectedOwner,
+                lastProcessedDate: DateTime.now().toIso8601String(),
               );
 
-              Navigator.pop(ctx);
+              Navigator.of(ctx).pop();
               await _handleSaveLiability(newLiability);
             },
             child: const Text('Save'),
@@ -1510,8 +1627,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           onDeleteGoal: _deleteSavingsGoal,
           onCompleteGoal: _completeSavingsGoal,
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'settings':
         return AppSettingsCard(
@@ -1555,6 +1678,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               _cards.clear();
               _cards.addAll(newCardsOrder);
             });
+            _saveCardLayoutPreferences();
           },
           onAddLabel: (name) => _addLabel(name),
           onUpdateLabel: (id, name) => _updateLabel(id, name),
@@ -1562,9 +1686,33 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           onImportCsv: () => _importCsvFile(context),
           onDeleteBulkTransactions: _deleteBulkTransactions,
           onBulkUpdateTransactionsLabel: _bulkUpdateTransactionsLabel,
+          onBulkUpdateTransactionsPool: (owner, labelName, targetPool) async {
+            final labelObj = _labels.firstWhere(
+              (l) => l.name.toLowerCase() == labelName.toLowerCase(),
+              orElse: () => _labels.first,
+            );
+
+            int count = await DatabaseHelper.instance.bulkUpdateTransactionsPoolByOwnerAndLabel(
+              owner: owner,
+              labelId: labelObj.id,
+              targetPool: targetPool,
+            );
+
+            await loadData(showLoading: false);
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Successfully moved $count zaznams for "$owner" labeled "$labelName" to pool "$targetPool"!')),
+            );
+          },
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'metrics':
         return SummaryMetricsCard(
@@ -1577,8 +1725,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           ownerBreakdownByCurrency: _ownerBreakdownByCurrency,
           transactions: _transactions,
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'label_focus':
         return SelectedLabelFocusCard(
@@ -1613,8 +1767,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _navigateToCard('history');
           },
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'transaction_search':
         return TransactionSearchCard(
@@ -1626,8 +1786,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           onEditTransaction: showEditTransactionDialog,
           onConfirmTransaction: _confirmTransaction,
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'future_metrics':
         return FutureMetricsCard(
@@ -1655,8 +1821,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             });
           },
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'budget':
         return BudgetProgressCard(
@@ -1673,8 +1845,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           },
           onDeleteBudget: _deleteBudget,
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'new_entry':
       return NewZaznamCard(
@@ -1684,8 +1862,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         transactions: _transactions,
         selectedGlobalOwner: _globalSelectedOwner,
         isWide: card.isWide,
-        onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-        onHide: () => setState(() => card.isVisible = false),
+        onToggleWidth: () {
+          setState(() => card.isWide = !card.isWide);
+          _saveCardLayoutPreferences();
+        },
+        onHide: () {
+          setState(() => card.isVisible = false);
+          _saveCardLayoutPreferences();
+        },
         onSubmit: (description, amount, type, labelId, owner, pool, isRecurring, frequency, dayOfMonth, excludedWeekdays, excludedMonths, repeatUntilDate, date, currencyCode) {
           _handleNewZaznamSubmit(
             description: description,
@@ -1711,8 +1895,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           owners: _owners,
           selectedGlobalOwner: _globalSelectedOwner,
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
           onTransfer: (fromPool, toPool, fromOwner, toOwner, amount, description, date, fromCurrency, toCurrency, exchangeRate) {
             _handleTransferFunds(
               fromPool: fromPool,
@@ -1754,8 +1944,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _navigateToCard('history');
           },
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'trend_chart':
         return LiquidTrendChartCard(
@@ -1779,8 +1975,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _trendEndDate = null;
           }),
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'savings_chart':
         return SavingsChartCard(
@@ -1804,8 +2006,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _savingsChartEndDate = null;
           }),
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'pools_analytics':
         return PoolsAnalyticsCard(
@@ -1829,8 +2037,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _savingsChartEndDate = null;
           }),
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'calendar':
         return CalendarCard(
@@ -1839,16 +2053,29 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           selectedOwner: _calendarSelectedOwner ?? _globalSelectedOwner,
           onOwnerChanged: (owner) => setState(() => _calendarSelectedOwner = owner),
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
           historyKey: _cards.firstWhere((c) => c.id == 'history').key,
           onDateSelected: (selectedDate) {
             _jumpToHistoryForDate(selectedDate);
           },
         );
       case 'liabilities_card':
+        final filteredLiabilities = _liabilities.where((item) {
+          if (_globalSelectedOwner == null || _globalSelectedOwner == 'All' || _globalSelectedOwner == 'Shared') {
+            return true;
+          }
+          return item.owner == _globalSelectedOwner || item.owner == 'Shared';
+        }).toList();
+
         return LiabilitiesCard(
-          liabilities: _liabilities.map((item) => LiabilityItem(
+          liabilities: filteredLiabilities.map((item) => LiabilityItem(
             id: item.id.toString(),
             name: item.name,
             remainingBalance: item.remainingBalance,
@@ -1860,6 +2087,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           owners: _owners,
           selectedOwner: _globalSelectedOwner,
           currencySymbol: '€',
+          onAddLiability: _showAddLiabilityDialog,
           onSaveLiability: (item) {
             final model = LiabilityModel(
               name: item.name,
@@ -1868,6 +2096,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               interestRate: item.interestRate,
               dueDay: item.dueDay,
               owner: item.owner,
+              lastProcessedDate: DateTime.now().toIso8601String(),
             );
             _handleSaveLiability(model);
           },
@@ -1878,8 +2107,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             }
           },
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'sankey_flow':
         return SankeyFlowCard(
@@ -1903,8 +2138,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _sankeySelectedPool = null;
           }),
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'income_expenses_labels':
         return IncomeExpensesByLabelsCard(
@@ -1928,8 +2169,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _labelsCardEndDate = null;
           }),
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       case 'history':
         final effectiveHistoryOwner = _historySelectedOwner ?? _globalSelectedOwner;
@@ -1980,8 +2227,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           onEditTransaction: showEditTransactionDialog,
           onConfirmTransaction: _confirmTransaction,
           isWide: card.isWide,
-          onToggleWidth: () => setState(() => card.isWide = !card.isWide),
-          onHide: () => setState(() => card.isVisible = false),
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
+          },
         );
       default:
         return const SizedBox.shrink();
@@ -2192,7 +2445,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       padding: const EdgeInsets.fromLTRB(2, 50, 2, 140),
       child: Column(
         children: [
-          // Inject the Title Card & Liabilities Card right at the top of the Metrics tab
           if (isMetricsTab) ...[
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
@@ -2324,7 +2576,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                       onOpenManager: () => showCardStackManager(
                         context,
                         _cards,
-                        (card) => setState(() => card.isVisible = !card.isVisible),
+                        (card) {
+                          setState(() => card.isVisible = !card.isVisible);
+                          _saveCardLayoutPreferences();
+                        },
                       ),
                       onQuickAdd: () => _navigateToCard('new_entry'),
                       onSelectOwner: _showOwnerSelectionDialog,
@@ -2339,6 +2594,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                         setState(() {
                           card.isVisible = true;
                         });
+                        _saveCardLayoutPreferences();
                       },
                     ),
                   ),

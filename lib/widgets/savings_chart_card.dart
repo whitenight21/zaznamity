@@ -130,7 +130,6 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
 
     final now = DateTime.now();
 
-    // Fully linked setting for effective start date if widget.startDate is not explicitly provided
     DateTime? effectiveStartDate = widget.startDate;
     if (effectiveStartDate == null) {
       if (_dateRangeSetting == '1 Year') {
@@ -138,7 +137,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
       } else if (_dateRangeSetting == 'All Time') {
         effectiveStartDate = null;
       } else {
-        effectiveStartDate = now.subtract(const Duration(days: 180)); // 6 Months default
+        effectiveStartDate = now.subtract(const Duration(days: 180));
       }
     }
 
@@ -427,34 +426,18 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
+                  const Expanded(
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: Row(
-                        children: [
-                          const Text(
-                            'SAVINGS TREND',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color.fromARGB(255, 88, 47, 149),
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              hasDateFilter ? 'Custom' : _dateRangeSetting,
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'SAVINGS TREND',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color.fromARGB(255, 88, 47, 149),
+                          letterSpacing: 0.8,
+                        ),
                       ),
                     ),
                   ),

@@ -76,7 +76,6 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
       setState(() {
         _dateRangeSetting = setting;
       });
-      // Set initial dates based on settings preference if not externally provided
       if (widget.startDate == null && widget.endDate == null && widget.onDateRangeChanged != null) {
         final now = DateTime.now();
         DateTime start;
@@ -264,34 +263,18 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
+                  const Expanded(
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: Row(
-                        children: [
-                          const Text(
-                            'SANKEY FLOW TREND',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF582F95),
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              hasDateFilter ? 'Custom' : _dateRangeSetting,
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'SANKEY FLOW TREND',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF582F95),
+                          letterSpacing: 0.8,
+                        ),
                       ),
                     ),
                   ),

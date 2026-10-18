@@ -118,34 +118,18 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
+                  const Expanded(
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: Row(
-                        children: [
-                          const Text(
-                            'POOLS TRENDS',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF582F95),
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              hasDateFilter ? 'Custom' : _dateRangeSetting,
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'POOLS TRENDS',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF582F95),
+                          letterSpacing: 0.8,
+                        ),
                       ),
                     ),
                   ),
@@ -366,7 +350,6 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
   }
 
   Widget _buildPoolMiniSection(String poolKey, DateTime now) {
-    // Fully linked setting for effective start date if widget.startDate is not explicitly provided
     DateTime? effectiveStartDate = widget.startDate;
     if (effectiveStartDate == null) {
       if (_dateRangeSetting == '90 Days') {
@@ -384,7 +367,6 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
       final txDate = DateTime.tryParse(tx.createdAt);
       if (txDate == null) return true;
 
-      // Fully linked setting for future zaznams visibility toggle
       if (!_showFuture && txDate.isAfter(now)) return false;
 
       if (effectiveStartDate != null) {

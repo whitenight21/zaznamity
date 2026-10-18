@@ -1,3 +1,5 @@
+// ignore_for_file: unnecessary_this
+
 class LiabilityModel {
   final int? id;
   final String name;
@@ -6,6 +8,7 @@ class LiabilityModel {
   final double interestRate;
   final int dueDay;
   final String owner;
+  final String? lastProcessedDate;
 
   LiabilityModel({
     this.id,
@@ -14,7 +17,8 @@ class LiabilityModel {
     required this.monthlyInstallment,
     required this.interestRate,
     required this.dueDay,
-    this.owner = 'Shared',
+    required this.owner,
+    this.lastProcessedDate,
   });
 
   Map<String, dynamic> toMap() {
@@ -26,18 +30,20 @@ class LiabilityModel {
       'interest_rate': interestRate,
       'due_day': dueDay,
       'owner': owner,
+      'last_processed_date': lastProcessedDate,
     };
   }
 
   factory LiabilityModel.fromMap(Map<String, dynamic> map) {
     return LiabilityModel(
       id: map['id'] as int?,
-      name: map['name'] as String,
-      remainingBalance: map['remaining_balance'] as double,
-      monthlyInstallment: map['monthly_installment'] as double,
-      interestRate: map['interest_rate'] as double,
-      dueDay: map['due_day'] as int,
+      name: map['name'] as String? ?? '',
+      remainingBalance: (map['remaining_balance'] as num?)?.toDouble() ?? 0.0,
+      monthlyInstallment: (map['monthly_installment'] as num?)?.toDouble() ?? 0.0,
+      interestRate: (map['interest_rate'] as num?)?.toDouble() ?? 0.0,
+      dueDay: (map['due_day'] as int?) ?? 1,
       owner: map['owner'] as String? ?? 'Shared',
+      lastProcessedDate: map['last_processed_date'] as String?,
     );
   }
 }

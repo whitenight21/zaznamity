@@ -148,12 +148,26 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     _localStartDate = widget.startDate;
     _localEndDate = widget.endDate;
 
+    final allLabelIds = <int>{};
+    for (var l in widget.labels) {
+      allLabelIds.add(l.id);
+    }
+    for (var tx in widget.transactions) {
+      allLabelIds.add(tx.labelId);
+    }
+
     if (widget.selectedLabelIds != null) {
       _localSelectedLabels = Set.from(widget.selectedLabelIds!);
     } else if (widget.selectedLabelId != null) {
       _localSelectedLabels = {widget.selectedLabelId!};
     } else {
-      _localSelectedLabels = widget.labels.map((l) => l.id).toSet();
+      _localSelectedLabels = allLabelIds;
+    }
+
+    // 🚀 Robust pool initialization: include passed pools + all pools found in transactions
+    final allPools = <String>{...widget.pools};
+    for (var tx in widget.transactions) {
+      if (tx.pool.isNotEmpty) allPools.add(tx.pool);
     }
 
     if (widget.selectedPools != null) {
@@ -161,13 +175,26 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     } else if (widget.selectedPool != null) {
       _localSelectedPools = {widget.selectedPool!};
     } else {
-      _localSelectedPools = widget.pools.toSet();
+      _localSelectedPools = allPools;
     }
 
     _isInitialized = true;
   }
 
   void _clearAllFilters() {
+    final allLabelIds = <int>{};
+    for (var l in widget.labels) {
+      allLabelIds.add(l.id);
+    }
+    for (var tx in widget.transactions) {
+      allLabelIds.add(tx.labelId);
+    }
+
+    final allPools = <String>{...widget.pools};
+    for (var tx in widget.transactions) {
+      if (tx.pool.isNotEmpty) allPools.add(tx.pool);
+    }
+
     setState(() {
       _localOwner = null;
       _localCurrency = null;
@@ -176,8 +203,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       _localEndDate = null;
       _minAmountController.clear();
       _maxAmountController.clear();
-      _localSelectedLabels = widget.labels.map((l) => l.id).toSet();
-      _localSelectedPools = widget.pools.toSet();
+      _localSelectedLabels = allLabelIds;
+      _localSelectedPools = allPools;
     });
 
     if (widget.onOwnerChanged != null) widget.onOwnerChanged!(null);
@@ -300,6 +327,10 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
   }
 
   void _showPoolsMultiSelectDialog(BuildContext context) {
+    final availablePoolsList = widget.pools.isNotEmpty 
+        ? widget.pools 
+        : widget.transactions.map((t) => t.pool).where((p) => p.isNotEmpty).toSet().toList();
+
     Set<String> tempSelected = Set.from(_localSelectedPools);
     showDialog(
       context: context,
@@ -316,11 +347,11 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   children: [
                     CheckboxListTile(
                       title: const Text('Select All', style: TextStyle(fontWeight: FontWeight.bold)),
-                      value: tempSelected.length == widget.pools.length,
+                      value: tempSelected.length == availablePoolsList.length,
                       onChanged: (val) {
                         setDialogState(() {
                           if (val == true) {
-                            tempSelected = widget.pools.toSet();
+                            tempSelected = availablePoolsList.toSet();
                           } else {
                             tempSelected.clear();
                           }
@@ -328,7 +359,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                       },
                     ),
                     const Divider(),
-                    ...widget.pools.map((pool) {
+                    ...availablePoolsList.map((pool) {
                       return CheckboxListTile(
                         title: Text(pool.toUpperCase()),
                         value: tempSelected.contains(pool),
@@ -378,7 +409,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     DateTime? activeStartDate = widget.startDate ?? _localStartDate;
     DateTime? activeEndDate = widget.endDate ?? _localEndDate;
 
-    // Fully linked setting for default date range if no date filter is actively applied
     if (activeStartDate == null && activeEndDate == null) {
       if (_dateRangeSetting == '7 Days') {
         activeStartDate = now.subtract(const Duration(days: 7));
@@ -402,7 +432,11 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
     final filteredTransactions = widget.transactions.where((tx) {
       if (activeOwner != null && activeOwner.isNotEmpty && activeOwner != 'All Owners' && tx.owner != activeOwner) return false;
-      if (_localSelectedPools.isNotEmpty && !_localSelectedPools.contains(tx.pool)) return false;
+      
+      if (_localSelectedPools.isNotEmpty && tx.pool.isNotEmpty && !_localSelectedPools.contains(tx.pool)) {
+        return false;
+      }
+
       if (activeCurrency != null && tx.currencyCode != activeCurrency && (tx.currencyCode.isNotEmpty || activeCurrency != 'USD')) return false;
       if (activeType != null && tx.type != activeType) return false;
 
@@ -411,7 +445,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
       final labelObj = widget.labels.firstWhere(
         (l) => l.id == tx.labelId,
-        orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
+        orElse: () => LabelModel(id: tx.labelId, name: 'General', color: '#4338CA'),
       );
       if (_localSelectedLabels.isNotEmpty && !_localSelectedLabels.contains(labelObj.id)) {
         return false;
@@ -436,6 +470,10 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       displayLimit = int.tryParse(_selectedLimit) ?? 50;
     }
     final displayedTransactions = filteredTransactions.take(displayLimit).toList();
+
+    final availablePoolsList = widget.pools.isNotEmpty 
+        ? widget.pools 
+        : widget.transactions.map((t) => t.pool).where((p) => p.isNotEmpty).toSet().toList();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -758,7 +796,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                       fit: BoxFit.scaleDown,
                                       alignment: Alignment.centerLeft,
                                       child: Text(
-                                        _localSelectedPools.length == widget.pools.length
+                                        _localSelectedPools.length == availablePoolsList.length
                                             ? 'All Pools'
                                             : '${_localSelectedPools.length} selected',
                                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
