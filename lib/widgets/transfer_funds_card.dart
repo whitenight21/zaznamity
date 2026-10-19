@@ -50,6 +50,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
   String _fromCurrency = 'USD';
   String _toCurrency = 'USD';
   List<String> _availableCurrencies = ['USD'];
+  bool _isZaznamityMode = true;
   
   final _amountController = TextEditingController();
   final _rateController = TextEditingController(text: '1.0');
@@ -104,6 +105,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
 
   Future<void> _loadCurrencyPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     final sec1 = prefs.getString('secondaryCurrency1');
     final sec2 = prefs.getString('secondaryCurrency2');
@@ -114,11 +116,14 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
     if (sec2 != null) currencies.add(sec2);
     if (sec3 != null) currencies.add(sec3);
 
-    setState(() {
-      _availableCurrencies = currencies;
-      _fromCurrency = primary;
-      _toCurrency = primary;
-    });
+    if (mounted) {
+      setState(() {
+        _isZaznamityMode = (savedTheme == 'zaznamity');
+        _availableCurrencies = currencies;
+        _fromCurrency = primary;
+        _toCurrency = primary;
+      });
+    }
     _fetchExchangeRate(primary, primary);
   }
 
@@ -222,6 +227,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
       if (!widget.owners.contains(_fromOwner)) _fromOwner = widget.owners.first;
       if (!widget.owners.contains(_toOwner)) _toOwner = widget.owners.first;
     }
+    _loadCurrencyPrefs();
   }
 
   @override
@@ -249,17 +255,42 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
 
         return Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF3B1E63),
+                      Color(0xFF160D25),
+                      Color(0xFF000000),
+                    ],
+                    stops: [0.0, 0.6, 1.0],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -270,12 +301,12 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: const Text(
+                      child: Text(
                         'TRANSFER FUNDS',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF582F95),
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -293,8 +324,8 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                             width: 32,
                             child: IconButton(
                               style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFFF1F5F9),
-                                foregroundColor: const Color(0xFF64748B),
+                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                                 padding: EdgeInsets.zero,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
@@ -313,8 +344,8 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                           width: 32,
                           child: IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -351,18 +382,18 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF582F95)),
+                            Icon(Icons.calendar_today_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 DateFormat('MM/dd/yyyy').format(_selectedDate),
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -386,18 +417,18 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.access_time_rounded, size: 16, color: Color(0xFF582F95)),
+                            Icon(Icons.access_time_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 _selectedTime.format(context),
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -416,12 +447,12 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                 children: [
                   SizedBox(
                     width: boxWidth,
-                    child: const Text('FROM OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                    child: Text('FROM OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                   ),
                   const SizedBox(width: 36),
                   SizedBox(
                     width: boxWidth,
-                    child: const Text('TO OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                    child: Text('TO OWNER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                   ),
                 ],
               ),
@@ -437,13 +468,13 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -451,8 +482,9 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                                 value: _fromOwner,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
                                 onChanged: (val) => setState(() => _fromOwner = val ?? widget.owners.first),
                               ),
                             ),
@@ -461,20 +493,20 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 36, child: Center(child: Icon(Icons.arrow_forward_rounded, size: 18, color: Color(0xFF582F95)))),
+                  SizedBox(width: 36, child: Center(child: Icon(Icons.arrow_forward_rounded, size: 18, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)))),
                   SizedBox(
                     width: boxWidth,
                     child: Container(
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -482,8 +514,9 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                                 value: _toOwner,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
                                 onChanged: (val) => setState(() => _toOwner = val ?? widget.owners.first),
                               ),
                             ),
@@ -506,9 +539,9 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
@@ -520,8 +553,9 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                                 value: _fromCurrency,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: _availableCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                items: _availableCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
                                 onChanged: (val) {
                                   if (val != null) {
                                     setState(() => _fromCurrency = val);
@@ -535,16 +569,16 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 36, child: Center(child: Icon(Icons.currency_exchange, size: 18, color: Color(0xFF582F95)))),
+                  SizedBox(width: 36, child: Center(child: Icon(Icons.currency_exchange, size: 18, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)))),
                   SizedBox(
                     width: boxWidth,
                     child: Container(
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
@@ -556,8 +590,9 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                                 value: _toCurrency,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: _availableCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                items: _availableCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
                                 onChanged: (val) {
                                   if (val != null) {
                                     setState(() => _toCurrency = val);
@@ -585,13 +620,13 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.layers_outlined, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.layers_outlined, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -599,8 +634,9 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                                 value: _fromPool,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))).toList(),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
                                 onChanged: (val) => setState(() => _fromPool = val ?? widget.pools.first),
                               ),
                             ),
@@ -609,20 +645,20 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 36, child: Center(child: Icon(Icons.arrow_forward_rounded, size: 18, color: Color(0xFF582F95)))),
+                  SizedBox(width: 36, child: Center(child: Icon(Icons.arrow_forward_rounded, size: 18, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)))),
                   SizedBox(
                     width: boxWidth,
                     child: Container(
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.layers_outlined, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.layers_outlined, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -630,8 +666,9 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                                 value: _toPool,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))).toList(),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
                                 onChanged: (val) => setState(() => _toPool = val ?? widget.pools.first),
                               ),
                             ),
@@ -650,18 +687,18 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                   Expanded(
                     child: TextField(
                       controller: _feeController,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                       decoration: InputDecoration(
                         isDense: true,
                         labelText: 'Transfer Fee',
-                        labelStyle: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                        labelStyle: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                         hintText: '0.00',
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                       ),
                     ),
                   ),
@@ -669,19 +706,19 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                   Expanded(
                     child: TextField(
                       controller: _rateController,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                       decoration: InputDecoration(
                         isDense: true,
                         labelText: _isFetchingRate ? 'Fetching rate...' : 'Exchange Rate',
-                        labelStyle: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                        labelStyle: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                         counterText: 'As of: $_rateTimestamp',
-                        counterStyle: const TextStyle(fontSize: 7.5, color: Color(0xFF94A3B8)),
+                        counterStyle: TextStyle(fontSize: 7.5, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                       ),
                     ),
                   ),
@@ -691,19 +728,19 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       decoration: InputDecoration(
                         isDense: true,
                         labelText: 'NET PREVIEW',
-                        labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                        labelStyle: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                       ),
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
                         child: Text(
                           '${_getCurrencySymbol(_toCurrency)}${netDestinationAmount.toStringAsFixed(2)}',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF34D399)),
                         ),
                       ),
                     ),
@@ -719,17 +756,17 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                     flex: 4,
                     child: TextField(
                       controller: _amountController,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                       decoration: InputDecoration(
                         isDense: true,
                         hintText: '0.00 (${_getCurrencySymbol(_fromCurrency)})',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        hintStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 11),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                       ),
                     ),
                   ),
@@ -738,16 +775,16 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                     flex: 6,
                     child: TextField(
                       controller: _descController,
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+                      style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                       decoration: InputDecoration(
                         isDense: true,
                         hintText: 'Description',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                        hintStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 12),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                       ),
                     ),
                   ),
@@ -755,12 +792,12 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
               ),
               const SizedBox(height: 16),
 
-              // Row 7: Transfer Funds Action Button with white transfer symbols
+              // Row 7: Transfer Funds Action Button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF582F95),
+                    backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

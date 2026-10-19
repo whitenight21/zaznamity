@@ -14,7 +14,6 @@ class FutureMetricsCard extends StatefulWidget {
   final double totalPrognosis;
   final List<TransactionModel> transactions;
   
-  // Date filter parameters
   final DateTime? startDate;
   final DateTime? endDate;
   final Function(DateTime?, DateTime?)? onDateRangeChanged;
@@ -49,7 +48,7 @@ class FutureMetricsCard extends StatefulWidget {
 class _FutureMetricsCardState extends State<FutureMetricsCard> {
   late String _selectedOwner;
   String _dateRangeSetting = '90 Days';
-  final Map<String, bool> _prognosisPools = {};
+  bool _isZaznamityMode = true;
 
   @override
   void initState() {
@@ -60,8 +59,10 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     if (mounted) {
       setState(() {
+        _isZaznamityMode = (savedTheme == 'zaznamity');
         _dateRangeSetting = prefs.getString('set_futureMetrics_range') ?? '90 Days';
       });
     }
@@ -75,6 +76,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         _selectedOwner = widget.selectedOwner ?? 'All Owners';
       });
     }
+    _loadPrefs();
   }
 
   String _formatCurrency(double amount) {
@@ -121,22 +123,23 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.info_outline_rounded, color: Color(0xFF582F95)),
+            Icon(Icons.info_outline_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
             const SizedBox(width: 8),
-            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)))),
+            Expanded(child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)))),
           ],
         ),
         content: Text(
           explanation,
-          style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+          style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.4),
         ),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF582F95),
+              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
@@ -205,17 +208,42 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
 
         return Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF3B1E63),
+                      Color(0xFF160D25),
+                      Color(0xFF000000),
+                    ],
+                    stops: [0.0, 0.6, 1.0],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -223,7 +251,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
@@ -232,7 +260,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF582F95),
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -249,8 +277,8 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                             width: 28,
                             child: IconButton(
                               style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFFF1F5F9),
-                                foregroundColor: const Color(0xFF64748B),
+                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                                 padding: EdgeInsets.zero,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                               ),
@@ -269,8 +297,8 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                           width: 28,
                           child: IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                             ),
@@ -297,13 +325,13 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -311,10 +339,11 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                                 value: _selectedOwner,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 items: [
-                                  const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
-                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                                  DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
                                 ],
                                 onChanged: (val) {
                                   if (val != null) setState(() => _selectedOwner = val);
@@ -334,12 +363,12 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                           child: Container(
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.horizontal(
                                 left: const Radius.circular(10),
                                 right: hasDateFilter ? Radius.zero : const Radius.circular(10),
                               ),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -353,7 +382,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
@@ -363,8 +392,8 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: hasDateFilter
-                                                ? const Color(0xFF1E293B)
-                                                : const Color(0xFF64748B),
+                                                ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
+                                                : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                             fontWeight: hasDateFilter
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
@@ -373,7 +402,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                                         ),
                                       ),
                                       if (!hasDateFilter)
-                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                        Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                                     ],
                                   ),
                                 ),
@@ -387,9 +416,9 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                             height: 44,
                             width: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE2E8F0),
+                              color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
                               borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -418,7 +447,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                     child: _buildMetricBox(
                       title: 'FUTURE FLOW',
                       amount: currentFutureFlow,
-                      amountColor: currentFutureFlow >= 0 ? const Color(0xFF10B981) : const Color(0xFFDC2626),
+                      amountColor: currentFutureFlow >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                       width: boxWidth,
                       infoExplanation: 'Future Flow calculates the net sum of all scheduled incoming and outgoing transactions (income minus expenses) dated after today.',
                     ),
@@ -428,7 +457,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                     child: _buildMetricBox(
                       title: 'PROGNOSIS',
                       amount: currentPrognosis,
-                      amountColor: const Color(0xFF000000),
+                      amountColor: _isZaznamityMode ? Colors.white : const Color(0xFF000000),
                       width: boxWidth,
                       infoExplanation: 'Prognosis estimates your projected balance trajectory over time by combining current liquid funds with upcoming future cashflows.',
                     ),
@@ -445,7 +474,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                     child: _buildMetricBox(
                       title: 'MONTHLY BURN RATE',
                       amount: monthlyBurn,
-                      amountColor: const Color(0xFFDC2626),
+                      amountColor: const Color(0xFFF87171),
                       width: boxWidth,
                       infoExplanation: 'Monthly Burn Rate represents your average monthly baseline spending calculated over your configured timeframe setting.',
                     ),
@@ -489,7 +518,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w900,
-                    color: Colors.grey.shade600,
+                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
                     letterSpacing: 0.6,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -499,7 +528,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                 onTap: () => _showMetricInfo(context, title, infoExplanation),
                 child: Padding(
                   padding: const EdgeInsets.all(2.0),
-                  child: Icon(Icons.info_outline_rounded, size: 13, color: Colors.grey.shade500),
+                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
                 ),
               ),
             ],
@@ -542,7 +571,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w900,
-                    color: Colors.grey.shade600,
+                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
                     letterSpacing: 0.6,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -552,7 +581,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                 onTap: () => _showMetricInfo(context, title, infoExplanation),
                 child: Padding(
                   padding: const EdgeInsets.all(2.0),
-                  child: Icon(Icons.info_outline_rounded, size: 13, color: Colors.grey.shade500),
+                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
                 ),
               ),
             ],
@@ -566,7 +595,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
-                color: savingsRate >= 20 ? const Color.fromARGB(255, 3, 138, 16) : const Color.fromARGB(255, 255, 3, 3),
+                color: savingsRate >= 20 ? const Color(0xFF34D399) : const Color(0xFFF87171),
               ),
             ),
           ),

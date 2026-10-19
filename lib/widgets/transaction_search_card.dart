@@ -49,13 +49,14 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
   String? _selectedOwner;
   String? _selectedType;
   String? _selectedPool;
-  String? _selectedCurrency; // null means 'All Currencies'
+  String? _selectedCurrency;
   List<String> _availableCurrencies = ['USD'];
 
   DateTime? _startDate;
   DateTime? _endDate;
   String _selectedLimit = '50';
   String _debouncedQuery = '';
+  bool _isZaznamityMode = true;
 
   final Map<String, String> _currencyFlags = {
     'USD': '🇺🇸',
@@ -87,6 +88,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
 
   Future<void> _loadCurrencyPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     final sec1 = prefs.getString('secondaryCurrency1');
     final sec2 = prefs.getString('secondaryCurrency2');
@@ -97,9 +99,12 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
     if (sec2 != null) currencies.add(sec2);
     if (sec3 != null) currencies.add(sec3);
 
-    setState(() {
-      _availableCurrencies = currencies;
-    });
+    if (mounted) {
+      setState(() {
+        _isZaznamityMode = (savedTheme == 'zaznamity');
+        _availableCurrencies = currencies;
+      });
+    }
   }
 
   @override
@@ -187,21 +192,45 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
 
         return Container(
           padding: const EdgeInsets.all(24.0),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20.0),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF3B1E63),
+                      Color(0xFF160D25),
+                      Color(0xFF000000),
+                    ],
+                    stops: [0.0, 0.6, 1.0],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20.0),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -209,12 +238,12 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: const Text(
+                      child: Text(
                         'SEARCH ZAZNAMS',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF582F95),
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -231,8 +260,8 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                           width: 32,
                           child: IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -250,8 +279,8 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                         width: 32,
                         child: IconButton(
                           style: IconButton.styleFrom(
-                            backgroundColor: const Color(0xFFF1F5F9),
-                            foregroundColor: const Color(0xFF64748B),
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
@@ -279,13 +308,13 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -293,11 +322,12 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                 value: _selectedOwner,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                hint: Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                                 items: [
-                                  const DropdownMenuItem<String?>(value: null, child: Text('All Owners')),
-                                  ...widget.owners.map((o) => DropdownMenuItem<String?>(value: o, child: Text(o))),
+                                  DropdownMenuItem<String?>(value: null, child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  ...widget.owners.map((o) => DropdownMenuItem<String?>(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
                                 ],
                                 onChanged: (val) => setState(() => _selectedOwner = val),
                               ),
@@ -313,13 +343,13 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.swap_vert_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.swap_vert_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -327,12 +357,13 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                 value: _selectedType,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Types', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
-                                items: const [
-                                  DropdownMenuItem<String?>(value: null, child: Text('All Types')),
-                                  DropdownMenuItem<String?>(value: 'income', child: Text('Income')),
-                                  DropdownMenuItem<String?>(value: 'expense', child: Text('Expense')),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                hint: Text('All Types', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                items: [
+                                  DropdownMenuItem<String?>(value: null, child: Text('All Types', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  DropdownMenuItem<String?>(value: 'income', child: Text('Income', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  DropdownMenuItem<String?>(value: 'expense', child: Text('Expense', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
                                 ],
                                 onChanged: (val) => setState(() => _selectedType = val),
                               ),
@@ -356,13 +387,13 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.label_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -370,11 +401,12 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                 value: _selectedLabelId,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                hint: Text('All Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                                 items: [
-                                  const DropdownMenuItem<int?>(value: null, child: Text('All Labels')),
-                                  ...widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))),
+                                  DropdownMenuItem<int?>(value: null, child: Text('All Labels', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  ...widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
                                 ],
                                 onChanged: (val) => setState(() => _selectedLabelId = val),
                               ),
@@ -390,13 +422,13 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.layers_outlined, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.layers_outlined, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -404,11 +436,12 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                 value: _selectedPool,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                hint: Text('All Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                                 items: [
-                                  const DropdownMenuItem<String?>(value: null, child: Text('All Pools')),
-                                  ...widget.pools.map((p) => DropdownMenuItem<String?>(value: p, child: Text(p))),
+                                  DropdownMenuItem<String?>(value: null, child: Text('All Pools', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  ...widget.pools.map((p) => DropdownMenuItem<String?>(value: p, child: Text(p, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
                                 ],
                                 onChanged: (val) => setState(() => _selectedPool = val),
                               ),
@@ -432,31 +465,32 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String?>(
                           value: _selectedCurrency,
                           isDense: true,
                           isExpanded: true,
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                          hint: const Row(
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                          hint: Row(
                             children: [
-                              Icon(Icons.public, size: 14, color: Color(0xFF582F95)),
-                              SizedBox(width: 6),
-                              Text('All Currencies', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                              Icon(Icons.public, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                              const SizedBox(width: 6),
+                              Text('All Currencies', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                             ],
                           ),
                           items: [
-                            const DropdownMenuItem<String?>(
+                            DropdownMenuItem<String?>(
                               value: null, 
                               child: Row(
                                 children: [
-                                  Icon(Icons.public, size: 14, color: Color(0xFF582F95)),
-                                  SizedBox(width: 6),
-                                  Text('All Currencies'),
+                                  Icon(Icons.public, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                  const SizedBox(width: 6),
+                                  Text('All Currencies', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                 ],
                               ),
                             ),
@@ -466,7 +500,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                 children: [
                                   Text(_currencyFlags[c] ?? '💵', style: const TextStyle(fontSize: 14)),
                                   const SizedBox(width: 6),
-                                  Text(c),
+                                  Text(c, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                 ],
                               ),
                             )),
@@ -484,12 +518,12 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                           child: Container(
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.horizontal(
                                 left: const Radius.circular(10),
                                 right: hasDateFilter ? Radius.zero : const Radius.circular(10),
                               ),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -518,7 +552,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
@@ -528,8 +562,8 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: hasDateFilter
-                                                ? const Color(0xFF1E293B)
-                                                : const Color(0xFF64748B),
+                                                ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
+                                                : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                             fontWeight: hasDateFilter
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
@@ -538,7 +572,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                         ),
                                       ),
                                       if (!hasDateFilter)
-                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                        Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                                     ],
                                   ),
                                 ),
@@ -552,9 +586,9 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                             height: 44,
                             width: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE2E8F0),
+                              color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
                               borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -586,18 +620,19 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                     width: boxWidth,
                     child: TextField(
                       controller: _minAmountController,
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       onChanged: (val) => setState(() {}),
                       decoration: InputDecoration(
                         isDense: true,
-                        prefixIcon: const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
+                        prefixIcon: Icon(Icons.attach_money_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                         hintText: 'Min Amount',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        hintStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 11),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                       ),
                     ),
                   ),
@@ -605,18 +640,19 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                     width: boxWidth,
                     child: TextField(
                       controller: _maxAmountController,
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       onChanged: (val) => setState(() {}),
                       decoration: InputDecoration(
                         isDense: true,
-                        prefixIcon: const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
+                        prefixIcon: Icon(Icons.attach_money_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                         hintText: 'Max Amount',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        hintStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 11),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                       ),
                     ),
                   ),
@@ -628,16 +664,17 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
               TextField(
                 controller: _searchController,
                 onChanged: _onSearchChanged,
+                style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: 'Search description keywords...',
-                  hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                  prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
+                  hintStyle: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
+                  prefixIcon: Icon(Icons.search, size: 18, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF64748B)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                   filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
+                  fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                 ),
               ),
               const SizedBox(height: 12),
@@ -648,18 +685,19 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                 children: [
                   Text(
                     'Showing ${displayedTransactions.length} of $totalFound found',
-                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), letterSpacing: 0.5),
                   ),
                   Row(
                     children: [
-                      const Text('Show: ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                      Text('Show: ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                       DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: _selectedLimit,
                           isDense: true,
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF475569)),
                           items: ['50', '100', '150', '200', 'All']
-                              .map((lim) => DropdownMenuItem(value: lim, child: Text(lim)))
+                              .map((lim) => DropdownMenuItem(value: lim, child: Text(lim, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))))
                               .toList(),
                           onChanged: (val) {
                             if (val != null) setState(() => _selectedLimit = val);
@@ -676,28 +714,28 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
               Container(
                 height: 240,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
                 ),
                 child: !hasActiveFilter
-                    ? const Center(
+                    ? Center(
                         child: Text(
                           'Select filters or type keywords above to show results.',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                          style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                         ),
                       )
                     : displayedTransactions.isEmpty
-                        ? const Center(
+                        ? Center(
                             child: Text(
                               'No matching transactions found.',
-                              style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                              style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                             ),
                           )
                         : ListView.separated(
                             cacheExtent: 1000,
                             itemCount: displayedTransactions.length,
-                            separatorBuilder: (context, index) => const Divider(color: Color(0xFFE2E8F0), height: 1),
+                            separatorBuilder: (context, index) => Divider(color: _isZaznamityMode ? Colors.white10 : const Color(0xFFE2E8F0), height: 1),
                             itemBuilder: (context, index) {
                               final tx = displayedTransactions[index];
                               final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
@@ -719,7 +757,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
 
                               return Container(
                                 decoration: BoxDecoration(
-                                  color: isFuture ? const Color(0xFFF1F5F9) : Colors.transparent,
+                                  color: isFuture ? (_isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF1F5F9)) : Colors.transparent,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -733,7 +771,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                         children: [
                                           Text(
                                             tx.description.isNotEmpty ? tx.description : 'Unnamed Transaction',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF1E293B)),
+                                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -743,23 +781,23 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                             runSpacing: 2,
                                             crossAxisAlignment: WrapCrossAlignment.center,
                                             children: [
-                                              Text(formattedDate, style: const TextStyle(fontSize: 9, color: Color(0xFF64748B))),
-                                              const Text('•', style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8))),
-                                              Text(tx.owner, style: const TextStyle(fontSize: 9, color: Color(0xFF4338CA), fontWeight: FontWeight.w500)),
-                                              const Text('•', style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8))),
+                                              Text(formattedDate, style: TextStyle(fontSize: 9, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                              Text('•', style: TextStyle(fontSize: 9, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
+                                              Text(tx.owner, style: TextStyle(fontSize: 9, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF4338CA), fontWeight: FontWeight.w500)),
+                                              Text('•', style: TextStyle(fontSize: 9, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                                 decoration: BoxDecoration(
-                                                  color: const Color(0xFFFEF3C7),
+                                                  color: _isZaznamityMode ? const Color(0xFF3F2F17) : const Color(0xFFFEF3C7),
                                                   borderRadius: BorderRadius.circular(4),
                                                 ),
                                                 child: Text(
                                                   labelObj.name,
-                                                  style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFFD97706)),
+                                                  style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFFCD34D) : const Color(0xFFD97706)),
                                                 ),
                                               ),
-                                              const Text('•', style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8))),
-                                              Text('$flag $currencyCode', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                                              Text('•', style: TextStyle(fontSize: 9, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
+                                              Text('$flag $currencyCode', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                                             ],
                                           ),
                                         ],
@@ -774,7 +812,7 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 12,
-                                            color: isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                                            color: isIncome ? const Color(0xFF34D399) : const Color(0xFFF87171),
                                           ),
                                         ),
                                         const SizedBox(height: 2),
@@ -784,8 +822,8 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                             fontSize: 7,
                                             fontWeight: FontWeight.bold,
                                             color: isFuture
-                                                ? const Color(0xFF64748B)
-                                                : (isConfirmed ? const Color(0xFF10B981) : const Color(0xFFD97706)),
+                                                ? (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))
+                                                : (isConfirmed ? const Color(0xFF34D399) : const Color(0xFFFCD34D)),
                                           ),
                                         ),
                                       ],
@@ -799,8 +837,8 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                         if (!isConfirmed)
                                           ElevatedButton(
                                             style: ElevatedButton.styleFrom(
-                                              backgroundColor: const Color(0xFFD1FAE5),
-                                              foregroundColor: const Color(0xFF047857),
+                                              backgroundColor: _isZaznamityMode ? const Color(0xFF064E3B) : const Color(0xFFD1FAE5),
+                                              foregroundColor: _isZaznamityMode ? const Color(0xFFA7F3D0) : const Color(0xFF047857),
                                               elevation: 0,
                                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                                               minimumSize: Size.zero,
@@ -812,14 +850,14 @@ class _TransactionSearchCardState extends State<TransactionSearchCard> {
                                         IconButton(
                                           constraints: const BoxConstraints(),
                                           padding: const EdgeInsets.all(4),
-                                          icon: const Icon(Icons.edit, size: 14, color: Color(0xFF64748B)),
+                                          icon: Icon(Icons.edit, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                           tooltip: 'Edit',
                                           onPressed: () => widget.onEditTransaction(tx),
                                         ),
                                         IconButton(
                                           constraints: const BoxConstraints(),
                                           padding: const EdgeInsets.all(4),
-                                          icon: const Icon(Icons.delete, size: 14, color: Color(0xFFDC2626)),
+                                          icon: const Icon(Icons.delete, size: 14, color: Color(0xFFEF4444)),
                                           tooltip: 'Delete',
                                           onPressed: () => widget.onDeleteTransaction(tx.id!),
                                         ),

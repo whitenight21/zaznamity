@@ -2519,7 +2519,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1E1333),
+      backgroundColor: Colors.black, // Changed from Color(0xFF1E1333) to pure black
       resizeToAvoidBottomInset: false,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

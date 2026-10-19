@@ -46,6 +46,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
   String _selectedCurrency = 'USD';
   List<String> _availableCurrencies = ['USD'];
   String _budgetDefaultRange = 'Current Month';
+  bool _isZaznamityMode = true;
 
   final Map<String, String> _currencyFlags = {
     'USD': '🇺🇸',
@@ -68,6 +69,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     final sec1 = prefs.getString('secondaryCurrency1');
     final sec2 = prefs.getString('secondaryCurrency2');
@@ -78,12 +80,15 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
     if (sec2 != null && sec2.isNotEmpty) currencies.add(sec2);
     if (sec3 != null && sec3.isNotEmpty) currencies.add(sec3);
 
-    setState(() {
-      _availableCurrencies = currencies;
-      _selectedCurrency = primary;
-      _enableRollover = prefs.getBool('set_budget_rollover') ?? false;
-      _budgetDefaultRange = prefs.getString('set_budget_range') ?? 'Current Month';
-    });
+    if (mounted) {
+      setState(() {
+        _isZaznamityMode = (savedTheme == 'zaznamity');
+        _availableCurrencies = currencies;
+        _selectedCurrency = primary;
+        _enableRollover = prefs.getBool('set_budget_rollover') ?? false;
+        _budgetDefaultRange = prefs.getString('set_budget_range') ?? 'Current Month';
+      });
+    }
   }
 
   String _getCurrencySymbol(String code) {
@@ -125,25 +130,30 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Add Budget Limit', style: TextStyle(color: Color.fromARGB(255, 88, 47, 149), fontWeight: FontWeight.bold)),
+          title: Text('Add Budget Limit', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95), fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<int>(
                 initialValue: selectedLabelId,
+                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87),
                 decoration: InputDecoration(
                   labelText: 'Select Category / Label',
-                  labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                  labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                  filled: true,
+                  fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                 ),
                 items: widget.labels.map((label) {
                   return DropdownMenuItem<int>(
                     value: label.id,
-                    child: Text(label.name, style: const TextStyle(fontSize: 13)),
+                    child: Text(label.name, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                   );
                 }).toList(),
                 onChanged: (val) {
@@ -153,18 +163,22 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
                 initialValue: widget.owners.contains(selectedDialogOwner) ? selectedDialogOwner : (widget.owners.isNotEmpty ? widget.owners.first : null),
+                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87),
                 decoration: InputDecoration(
                   labelText: 'Select Owner',
-                  labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                  labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                  filled: true,
+                  fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                 ),
                 items: widget.owners.map((owner) {
                   return DropdownMenuItem<String>(
                     value: owner,
-                    child: Text(owner, style: const TextStyle(fontSize: 13)),
+                    child: Text(owner, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                   );
                 }).toList(),
                 onChanged: (val) {
@@ -176,14 +190,17 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
               const SizedBox(height: 14),
               TextField(
                 controller: limitController,
+                style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
                   labelText: 'Monthly Limit (${_getCurrencySymbol(_selectedCurrency)})',
-                  labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                  labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                  filled: true,
+                  fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                 ),
               ),
             ],
@@ -191,12 +208,12 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+              child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFF1F5F9),
-                foregroundColor: const Color(0xFF334155),
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFFF1F5F9),
+                foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
               ),
@@ -260,7 +277,6 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
               spent += tx.amount;
             }
           } else {
-            // Rolling 30 Days window checking
             if (txDate.isAfter(rollingStart) && txDate.isBefore(now.add(const Duration(days: 1)))) {
               spent += tx.amount;
             }
@@ -318,17 +334,42 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
 
         return Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF3B1E63),
+                      Color(0xFF160D25),
+                      Color(0xFF000000),
+                    ],
+                    stops: [0.0, 0.6, 1.0],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -339,12 +380,12 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: const Text(
+                      child: Text(
                         'BUDGETS',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 88, 47, 149),
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -361,8 +402,8 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                           width: 32,
                           child: IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -380,8 +421,8 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                         width: 32,
                         child: IconButton(
                           style: IconButton.styleFrom(
-                            backgroundColor: const Color(0xFFF1F5F9),
-                            foregroundColor: const Color(0xFF64748B),
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
@@ -408,13 +449,13 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -422,10 +463,11 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                                 value: widget.selectedOwner ?? 'All Owners',
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 items: [
-                                  const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
-                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                                  DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
                                 ],
                                 onChanged: (val) {
                                   if (val != null) {
@@ -449,18 +491,18 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                           height: 44,
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF582F95)),
+                              Icon(Icons.calendar_today_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
                                   DateFormat('MMM yyyy').format(_selectedMonth),
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -476,18 +518,18 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                         height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.update_rounded, size: 16, color: Color(0xFF582F95)),
+                            Icon(Icons.update_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 '${DateFormat('MMM d').format(rollingStart)} - ${DateFormat('MMM d').format(now)}',
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -508,9 +550,9 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                       height: 40,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
@@ -522,8 +564,9 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                                 value: _selectedCurrency,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: _availableCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                items: _availableCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
                                 onChanged: (val) {
                                   if (val != null) setState(() => _selectedCurrency = val);
                                 },
@@ -540,8 +583,8 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                       height: 40,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFF1F5F9),
-                          foregroundColor: const Color(0xFF334155),
+                          backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFFF1F5F9),
+                          foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -555,7 +598,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 ],
               ),
               const SizedBox(height: 16),
-              const Divider(color: Color(0xFFE2E8F0)),
+              Divider(color: _isZaznamityMode ? Colors.white24 : const Color(0xFFE2E8F0)),
               const SizedBox(height: 8),
 
               Row(
@@ -563,14 +606,14 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 children: [
                   Text(
                     'Total: ${currencyFormat.format(totalSpentAll)} / ${currencyFormat.format(totalLimitAll)}',
-                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500),
+                    style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                   Text(
                     overallRemaining >= 1 
                         ? 'Left: ${currencyFormat.format(overallRemaining)}' 
                         : 'Over: ${currencyFormat.format(overallRemaining.abs())}',
                     style: TextStyle(
-                      color: overallRemaining < 0 ? Colors.red.shade700 : Colors.green.shade700,
+                      color: overallRemaining < 0 ? Colors.red.shade400 : const Color(0xFF34D399),
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                     ),
@@ -583,21 +626,21 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 child: LinearProgressIndicator(
                   value: overallProgress,
                   minHeight: 8,
-                  backgroundColor: const Color(0xFFF1F5F9),
+                  backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    overallProgress > 0.9 ? Colors.red.shade700 : const Color.fromARGB(255, 88, 47, 149),
+                    overallProgress > 0.9 ? Colors.red.shade400 : (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
 
               processedBudgets.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24.0),
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24.0),
                       child: Center(
                         child: Text(
                           'No budget limits set for this selection.',
-                          style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                          style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 13),
                         ),
                       ),
                     )
@@ -617,10 +660,10 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                                 children: [
                                   Text(
                                     owner.toUpperCase(),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
-                                      color: Color(0xFF582F95),
+                                      color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
                                       letterSpacing: 0.5,
                                     ),
                                   ),
@@ -670,17 +713,17 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                       const SizedBox(width: 8),
                       Text(
                         b['label_name'],
-                        style: const TextStyle(color: Color(0xFF334155), fontSize: 13, fontWeight: FontWeight.w600),
+                        style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF334155), fontSize: 13, fontWeight: FontWeight.w600),
                       ),
                       if (isOverBudget) ...[
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                           decoration: BoxDecoration(
-                            color: Colors.red.shade100,
+                            color: Colors.red.shade900,
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Text('OVER', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.red.shade800)),
+                          child: Text('OVER', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.red.shade100)),
                         ),
                       ],
                     ],
@@ -693,7 +736,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                           Text(
                             '${currencyFormat.format(spent)} / ${currencyFormat.format(limit)}',
                             style: TextStyle(
-                              color: isOverBudget ? Colors.red.shade700 : const Color(0xFF64748B),
+                              color: isOverBudget ? Colors.red.shade400 : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                               fontSize: 12,
                               fontWeight: isOverBudget ? FontWeight.bold : FontWeight.normal,
                             ),
@@ -703,7 +746,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: remaining >= 0 ? const Color(0xFF10B981) : Colors.red.shade600,
+                              color: remaining >= 0 ? const Color(0xFF34D399) : Colors.red.shade400,
                             ),
                           ),
                         ],
@@ -711,7 +754,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                       const SizedBox(width: 8),
                       InkWell(
                         onTap: () => widget.onDeleteBudget(b['id']),
-                        child: const Icon(Icons.close, color: Color(0xFF94A3B8), size: 16),
+                        child: Icon(Icons.close, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), size: 16),
                       ),
                     ],
                   ),
@@ -723,9 +766,9 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 child: LinearProgressIndicator(
                   value: progress,
                   minHeight: 5,
-                  backgroundColor: const Color(0xFFF1F5F9),
+                  backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    isOverBudget ? Colors.red.shade700 : cardColor,
+                    isOverBudget ? Colors.red.shade400 : cardColor,
                   ),
                 ),
               ),

@@ -177,6 +177,17 @@ class DatabaseHelper {
     
     map.remove('lastProcessedDate');
 
+    // 🚀 Automatically ensure dedicated label "[Name (L)]" exists in labels table
+    final labelName = '${liability.name} (L)';
+    final existingLabel = await db.query('labels', where: 'name = ?', whereArgs: [labelName]);
+    if (existingLabel.isEmpty) {
+      await db.insert(
+        'labels',
+        {'name': labelName, 'color': '#8B5CF6'},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+
     return await db.insert(
       'liabilities',
       map,
@@ -216,7 +227,7 @@ class DatabaseHelper {
     await db.delete(
       'transactions',
       where: 'description LIKE ? AND is_confirmed = 0',
-      whereArgs: ['%Automatic Mortgage Payment: $labelOrName%'],
+      whereArgs: ['%Liability Payment: $labelOrName%'],
     );
   }
 
@@ -264,20 +275,23 @@ class DatabaseHelper {
         final existingTx = await db.query(
           'transactions',
           where: 'description = ? AND created_at = ?',
-          whereArgs: ['Automatic Mortgage Payment: $name', nextDue.toIso8601String()],
+          whereArgs: ['Liability Payment: $name', nextDue.toIso8601String()],
         );
 
         if (existingTx.isEmpty) {
+          // 🚀 Assign liability payment transactions directly to the dedicated "[Name (L)]" label
           final labelName = '$name (L)';
           final labelResult = await db.query('labels', where: 'name = ?', whereArgs: [labelName]);
           int targetLabelId = 1;
           if (labelResult.isNotEmpty) {
             targetLabelId = labelResult.first['id'] as int;
+          } else {
+            targetLabelId = await db.insert('labels', {'name': labelName, 'color': '#8B5CF6'});
           }
 
           final paymentTx = TransactionModel(
             createdAt: nextDue.toIso8601String(),
-            description: 'Automatic Mortgage Payment: $name',
+            description: 'Liability Payment: $name',
             amount: installment,
             type: 'expense',
             pool: 'checking', 

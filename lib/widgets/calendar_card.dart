@@ -15,6 +15,7 @@ class CalendarCard extends StatefulWidget {
   final VoidCallback onHide;
   final Function(DateTime) onDateSelected;
   final GlobalKey? historyKey;
+  final VoidCallback? onClearFilters;
 
   const CalendarCard({
     super.key,
@@ -27,6 +28,7 @@ class CalendarCard extends StatefulWidget {
     required this.onHide,
     required this.onDateSelected,
     this.historyKey,
+    this.onClearFilters,
   });
 
   @override
@@ -36,6 +38,7 @@ class CalendarCard extends StatefulWidget {
 class _CalendarCardState extends State<CalendarCard> {
   late DateTime _displayedMonth;
   String _calendarStartDay = 'Monday';
+  bool _isZaznamityMode = true;
 
   @override
   void initState() {
@@ -48,6 +51,8 @@ class _CalendarCardState extends State<CalendarCard> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _calendarStartDay = prefs.getString('calendarStartDay') ?? 'Monday';
+      final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
+      _isZaznamityMode = (themeStr == 'zaznamity');
     });
   }
 
@@ -64,8 +69,10 @@ class _CalendarCardState extends State<CalendarCard> {
   }
 
   void _handleDateTap(DateTime currentDate) {
-    // Passes the selected date back to the parent container/dashboard 
-    // to clear other filters and set start/end date range to this single day.
+    if (widget.onClearFilters != null) {
+      widget.onClearFilters!();
+    }
+
     widget.onDateSelected(currentDate);
 
     if (widget.historyKey != null && widget.historyKey!.currentContext != null) {
@@ -79,6 +86,17 @@ class _CalendarCardState extends State<CalendarCard> {
 
   @override
   Widget build(BuildContext context) {
+    Future.microtask(() async {
+      final prefs = await SharedPreferences.getInstance();
+      final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
+      final zaznamityActive = (themeStr == 'zaznamity');
+      if (zaznamityActive != _isZaznamityMode && mounted) {
+        setState(() {
+          _isZaznamityMode = zaznamityActive;
+        });
+      }
+    });
+
     final filteredTransactions = widget.transactions.where((tx) {
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners') {
         return tx.owner == widget.selectedOwner;
@@ -131,10 +149,10 @@ class _CalendarCardState extends State<CalendarCard> {
               fit: BoxFit.scaleDown,
               child: Text(
                 day,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF64748B),
+                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                 ),
               ),
             ),
@@ -173,18 +191,26 @@ class _CalendarCardState extends State<CalendarCard> {
               height: 52,
               decoration: BoxDecoration(
                 gradient: isWeekend
-                    ? const LinearGradient(
-                        colors: [Color(0xFFF3E8FF), Color(0xFFFAF5FF)],
+                    ? LinearGradient(
+                        colors: _isZaznamityMode
+                            ? [const Color(0xFF2A1E3C), const Color(0xFF1E142B)]
+                            : [const Color(0xFFF3E8FF), const Color(0xFFFAF5FF)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       )
                     : null,
-                color: isWeekend ? null : (hasTx ? const Color(0xFFF8FAFC) : Colors.transparent),
+                color: isWeekend
+                    ? null
+                    : (hasTx
+                        ? (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC))
+                        : Colors.transparent),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: isToday
-                      ? const Color.fromARGB(255, 88, 47, 149)
-                      : (hasTx ? const Color(0xFFE2E8F0) : Colors.transparent),
+                      ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                      : (hasTx
+                          ? (_isZaznamityMode ? const Color(0xFF3B1E63) : const Color(0xFFE2E8F0))
+                          : Colors.transparent),
                   width: isToday ? 1.5 : 1.0,
                 ),
               ),
@@ -200,8 +226,10 @@ class _CalendarCardState extends State<CalendarCard> {
                         fontSize: 11,
                         fontWeight: (hasTx || isToday) ? FontWeight.bold : FontWeight.normal,
                         color: isToday
-                            ? const Color.fromARGB(255, 88, 47, 149)
-                            : (hasTx ? const Color(0xFF1E293B) : const Color(0xFF94A3B8)),
+                            ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                            : (hasTx
+                                ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
+                                : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8))),
                       ),
                     ),
                   ),
@@ -254,22 +282,47 @@ class _CalendarCardState extends State<CalendarCard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48;
+        final double fullWidth = availableWidth - 32;
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+          padding: const EdgeInsets.all(16),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF3B1E63),
+                      Color(0xFF160D25),
+                      Color(0xFF000000),
+                    ],
+                    stops: [0.0, 0.6, 1.0],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -281,12 +334,12 @@ class _CalendarCardState extends State<CalendarCard> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: const Text(
+                      child: Text(
                         'CALENDAR',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 88, 47, 149),
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -297,17 +350,17 @@ class _CalendarCardState extends State<CalendarCard> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.only(right: 6.0),
+                        padding: const EdgeInsets.only(right: 4.0),
                         child: SizedBox(
-                          height: 32,
-                          width: 32,
+                          height: 28,
+                          width: 28,
                           child: IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(6),
                               ),
                             ),
                             onPressed: widget.onToggleWidth,
@@ -315,28 +368,28 @@ class _CalendarCardState extends State<CalendarCard> {
                               widget.isWide
                                   ? Icons.fullscreen_exit
                                   : Icons.fullscreen,
-                              size: 18,
+                              size: 16,
                             ),
                             tooltip: widget.isWide ? 'Narrow' : 'Wide',
                           ),
                         ),
                       ),
                       SizedBox(
-                        height: 32,
-                        width: 32,
+                        height: 28,
+                        width: 28,
                         child: IconButton(
                           style: IconButton.styleFrom(
-                            backgroundColor: const Color(0xFFF1F5F9),
-                            foregroundColor: const Color(0xFF64748B),
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(6),
                             ),
                           ),
                           onPressed: widget.onHide,
                           icon: const Icon(
                             Icons.visibility_off_outlined,
-                            size: 16,
+                            size: 14,
                           ),
                           tooltip: 'Hide',
                         ),
@@ -345,34 +398,35 @@ class _CalendarCardState extends State<CalendarCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   SizedBox(
                     width: boxWidth,
                     child: Container(
-                      height: 44,
+                      height: 48,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
-                          const SizedBox(width: 6),
+                          Icon(Icons.person_outline_rounded, size: 20, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
                                 value: widget.selectedOwner ?? 'All Owners',
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 items: [
-                                  const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
-                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                                  DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
                                 ],
                                 onChanged: (val) {
                                   if (val != null) {
@@ -389,23 +443,23 @@ class _CalendarCardState extends State<CalendarCard> {
                   SizedBox(
                     width: boxWidth,
                     child: Container(
-                      height: 44,
+                      height: 48,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF582F95)),
+                              Icon(Icons.calendar_today_rounded, size: 18, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                               const SizedBox(width: 6),
                               Text(
                                 DateFormat('MMM yyyy').format(_displayedMonth),
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                               ),
                             ],
                           ),
@@ -414,16 +468,16 @@ class _CalendarCardState extends State<CalendarCard> {
                             children: [
                               InkWell(
                                 onTap: _previousMonth,
-                                child: const Padding(
-                                  padding: EdgeInsets.all(4.0),
-                                  child: Icon(Icons.chevron_left, size: 18, color: Color(0xFF64748B)),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4.0),
+                                  child: Icon(Icons.chevron_left, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                 ),
                               ),
                               InkWell(
                                 onTap: _nextMonth,
-                                child: const Padding(
-                                  padding: EdgeInsets.all(4.0),
-                                  child: Icon(Icons.chevron_right, size: 18, color: Color(0xFF64748B)),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4.0),
+                                  child: Icon(Icons.chevron_right, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                 ),
                               ),
                             ],

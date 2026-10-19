@@ -438,18 +438,42 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
 
         return Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: _isZaznamityMode ? Border.all(color: Colors.white12) : null,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: _isZaznamityMode ? 0.2 : 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF3B1E63), // Dark Purple
+                      Color(0xFF160D25), // Deep Dark Shade
+                      Color(0xFF000000), // Solid Black
+                    ],
+                    stops: [0.0, 0.6, 1.0],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,

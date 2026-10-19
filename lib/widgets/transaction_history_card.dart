@@ -90,7 +90,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
   DateTime? _localEndDate;
   bool _isInitialized = false;
   List<String> _activeCurrencies = ['USD'];
-  String _dateRangeSetting = '15 Days';
+  bool _isZaznamityMode = true;
 
   final Map<String, String> _currencyFlags = {
     'USD': '🇺🇸',
@@ -114,6 +114,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     final sec1 = prefs.getString('secondaryCurrency1');
     final sec2 = prefs.getString('secondaryCurrency2');
@@ -126,8 +127,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
     if (mounted) {
       setState(() {
+        _isZaznamityMode = (savedTheme == 'zaznamity');
         _activeCurrencies = currencies.toSet().toList();
-        _dateRangeSetting = prefs.getString('set_allZaznams_range') ?? '15 Days';
       });
     }
   }
@@ -145,6 +146,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     _localCurrency = widget.selectedCurrency;
     _localType = widget.selectedType;
     
+    // Default to null so the date range box starts completely empty
     _localStartDate = widget.startDate;
     _localEndDate = widget.endDate;
 
@@ -164,7 +166,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       _localSelectedLabels = allLabelIds;
     }
 
-    // 🚀 Robust pool initialization: include passed pools + all pools found in transactions
     final allPools = <String>{...widget.pools};
     for (var tx in widget.transactions) {
       if (tx.pool.isNotEmpty) allPools.add(tx.pool);
@@ -233,12 +234,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Delete Zaznam'),
-          content: const Text('Really delete this zaznam?'),
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          title: Text('Delete Zaznam', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+          content: Text('Really delete this zaznam?', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
             ),
             TextButton(
               onPressed: () {
@@ -261,16 +263,19 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
+              backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Text('Select Labels', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              title: Text('Select Labels', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
               content: SizedBox(
                 width: 300,
                 child: ListView(
                   shrinkWrap: true,
                   children: [
                     CheckboxListTile(
-                      title: const Text('Select All', style: TextStyle(fontWeight: FontWeight.bold)),
+                      title: Text('Select All', style: TextStyle(fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                       value: tempSelected.length == widget.labels.length,
+                      checkColor: _isZaznamityMode ? Colors.white : null,
+                      activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : null,
                       onChanged: (val) {
                         setDialogState(() {
                           if (val == true) {
@@ -281,11 +286,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                         });
                       },
                     ),
-                    const Divider(),
+                    Divider(color: _isZaznamityMode ? Colors.white24 : const Color(0xFFE2E8F0)),
                     ...widget.labels.map((label) {
                       return CheckboxListTile(
-                        title: Text(label.name),
+                        title: Text(label.name, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                         value: tempSelected.contains(label.id),
+                        checkColor: _isZaznamityMode ? Colors.white : null,
+                        activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : null,
                         onChanged: (val) {
                           setDialogState(() {
                             if (val == true) {
@@ -303,10 +310,10 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), foregroundColor: Colors.white),
                   onPressed: () {
                     setState(() {
                       _localSelectedLabels = tempSelected;
@@ -338,16 +345,19 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
+              backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Text('Select Pools', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              title: Text('Select Pools', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
               content: SizedBox(
                 width: 300,
                 child: ListView(
                   shrinkWrap: true,
                   children: [
                     CheckboxListTile(
-                      title: const Text('Select All', style: TextStyle(fontWeight: FontWeight.bold)),
+                      title: Text('Select All', style: TextStyle(fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                       value: tempSelected.length == availablePoolsList.length,
+                      checkColor: _isZaznamityMode ? Colors.white : null,
+                      activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : null,
                       onChanged: (val) {
                         setDialogState(() {
                           if (val == true) {
@@ -358,11 +368,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                         });
                       },
                     ),
-                    const Divider(),
+                    Divider(color: _isZaznamityMode ? Colors.white24 : const Color(0xFFE2E8F0)),
                     ...availablePoolsList.map((pool) {
                       return CheckboxListTile(
-                        title: Text(pool.toUpperCase()),
+                        title: Text(pool.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                         value: tempSelected.contains(pool),
+                        checkColor: _isZaznamityMode ? Colors.white : null,
+                        activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : null,
                         onChanged: (val) {
                           setDialogState(() {
                             if (val == true) {
@@ -380,10 +392,10 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), foregroundColor: Colors.white),
                   onPressed: () {
                     setState(() {
                       _localSelectedPools = tempSelected;
@@ -405,21 +417,9 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
+    // Unrestricted date bounds (defaults to null/empty if not explicitly filtered)
     DateTime? activeStartDate = widget.startDate ?? _localStartDate;
     DateTime? activeEndDate = widget.endDate ?? _localEndDate;
-
-    if (activeStartDate == null && activeEndDate == null) {
-      if (_dateRangeSetting == '7 Days') {
-        activeStartDate = now.subtract(const Duration(days: 7));
-      } else if (_dateRangeSetting == '15 Days') {
-        activeStartDate = now.subtract(const Duration(days: 15));
-      } else if (_dateRangeSetting == '30 Days') {
-        activeStartDate = now.subtract(const Duration(days: 30));
-      } else if (_dateRangeSetting == 'Current Month') {
-        activeStartDate = DateTime(now.year, now.month, 1);
-      }
-    }
 
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null || _localStartDate != null;
 
@@ -483,17 +483,42 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
         return Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF3B1E63),
+                      Color(0xFF160D25),
+                      Color(0xFF000000),
+                    ],
+                    stops: [0.0, 0.6, 1.0],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -504,30 +529,14 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: Row(
-                        children: [
-                          const Text(
-                            'ALL ZAZNAMS',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color.fromARGB(255, 88, 47, 149),
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              hasDateFilter ? 'Custom' : _dateRangeSetting,
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'ALL ZAZNAMS',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                          letterSpacing: 0.8,
+                        ),
                       ),
                     ),
                   ),
@@ -543,8 +552,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                             width: 32,
                             child: IconButton(
                               style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFFF1F5F9),
-                                foregroundColor: const Color(0xFF64748B),
+                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                                 padding: EdgeInsets.zero,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
@@ -563,8 +572,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                           width: 32,
                           child: IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -591,13 +600,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -605,11 +614,12 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                 value: activeOwner,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                hint: Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                                 items: [
-                                  const DropdownMenuItem<String?>(value: null, child: Text('All Owners')),
-                                  ...widget.owners.map((o) => DropdownMenuItem<String?>(value: o, child: Text(o))),
+                                  DropdownMenuItem<String?>(value: null, child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  ...widget.owners.map((o) => DropdownMenuItem<String?>(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
                                 ],
                                 onChanged: (val) {
                                   setState(() => _localOwner = val);
@@ -630,12 +640,12 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                           child: Container(
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.horizontal(
                                 left: const Radius.circular(10),
                                 right: hasDateFilter ? Radius.zero : const Radius.circular(10),
                               ),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -664,7 +674,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
@@ -673,14 +683,14 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                               : 'Select Date Range',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: hasDateFilter ? const Color(0xFF1E293B) : const Color(0xFF64748B),
+                                            color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B)) : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                             fontWeight: hasDateFilter ? FontWeight.bold : FontWeight.normal,
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                       if (!hasDateFilter)
-                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                        Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                                     ],
                                   ),
                                 ),
@@ -694,9 +704,9 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                             height: 44,
                             width: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE2E8F0),
+                              color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
                               borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -737,9 +747,9 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                         height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -747,7 +757,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                             Expanded(
                               child: Row(
                                 children: [
-                                  const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                                  Icon(Icons.label_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: FittedBox(
@@ -757,14 +767,14 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                         _localSelectedLabels.length == widget.labels.length
                                             ? 'All Labels'
                                             : '${_localSelectedLabels.length} selected',
-                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
+                            Icon(Icons.arrow_drop_down, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                           ],
                         ),
                       ),
@@ -779,9 +789,9 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                         height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -789,7 +799,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                             Expanded(
                               child: Row(
                                 children: [
-                                  const Icon(Icons.layers_outlined, size: 16, color: Color(0xFF582F95)),
+                                  Icon(Icons.layers_outlined, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: FittedBox(
@@ -799,14 +809,14 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                         _localSelectedPools.length == availablePoolsList.length
                                             ? 'All Pools'
                                             : '${_localSelectedPools.length} selected',
-                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
+                            Icon(Icons.arrow_drop_down, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                           ],
                         ),
                       ),
@@ -825,31 +835,32 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String?>(
                           value: activeCurrency,
                           isDense: true,
                           isExpanded: true,
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                          hint: const Row(
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                          hint: Row(
                             children: [
-                              Icon(Icons.public, size: 14, color: Color(0xFF582F95)),
-                              SizedBox(width: 6),
-                              Text('All Currencies', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                              Icon(Icons.public, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                              const SizedBox(width: 6),
+                              Text('All Currencies', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                             ],
                           ),
                           items: [
-                            const DropdownMenuItem<String?>(
+                            DropdownMenuItem<String?>(
                               value: null, 
                               child: Row(
                                 children: [
-                                  Icon(Icons.public, size: 14, color: Color(0xFF582F95)),
-                                  SizedBox(width: 6),
-                                  Text('All Currencies'),
+                                  Icon(Icons.public, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                  const SizedBox(width: 6),
+                                  Text('All Currencies', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                 ],
                               ),
                             ),
@@ -859,7 +870,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                 children: [
                                   Text(_currencyFlags[c] ?? '💵', style: const TextStyle(fontSize: 14)),
                                   const SizedBox(width: 6),
-                                  Text(c),
+                                  Text(c, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                 ],
                               ),
                             )),
@@ -878,13 +889,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.swap_vert_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.swap_vert_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -892,12 +903,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                 value: activeType,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Types', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
-                                items: const [
-                                  DropdownMenuItem<String?>(value: null, child: Text('All Types')),
-                                  DropdownMenuItem<String?>(value: 'income', child: Text('Income')),
-                                  DropdownMenuItem<String?>(value: 'expense', child: Text('Expense')),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                hint: Text('All Types', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                items: [
+                                  DropdownMenuItem<String?>(value: null, child: Text('All Types', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  DropdownMenuItem<String?>(value: 'income', child: Text('Income', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  DropdownMenuItem<String?>(value: 'expense', child: Text('Expense', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
                                 ],
                                 onChanged: (val) {
                                   setState(() => _localType = val);
@@ -921,18 +933,19 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                     width: fullWidth * 0.4,
                     child: TextField(
                       controller: _minAmountController,
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       onChanged: (val) => setState(() {}),
                       decoration: InputDecoration(
                         isDense: true,
-                        prefixIcon: const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
+                        prefixIcon: Icon(Icons.attach_money_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                         hintText: 'Min',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        hintStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 11),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                       ),
                     ),
                   ),
@@ -940,18 +953,19 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                     width: fullWidth * 0.4,
                     child: TextField(
                       controller: _maxAmountController,
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       onChanged: (val) => setState(() {}),
                       decoration: InputDecoration(
                         isDense: true,
-                        prefixIcon: const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF582F95)),
+                        prefixIcon: Icon(Icons.attach_money_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                         hintText: 'Max',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        hintStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 11),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                       ),
                     ),
                   ),
@@ -961,7 +975,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFFDC2626),
-                        side: const BorderSide(color: Color(0xFFFCA5A5)),
+                        side: BorderSide(color: _isZaznamityMode ? Colors.red.shade800 : const Color(0xFFFCA5A5)),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                       ),
@@ -978,24 +992,24 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                 children: [
                   Text(
                     'Showing ${displayedTransactions.length} of $totalCount found',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF64748B),
+                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                       letterSpacing: 0.5,
                     ),
                   ),
                   Row(
                     children: [
-                      const Text('Show: ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                      Text('Show: ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                       DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: _selectedLimit,
                           isDense: true,
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
-                          dropdownColor: Colors.white,
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF475569)),
                           items: ['25', '50', '100', '150', '200', 'All']
-                              .map((lim) => DropdownMenuItem(value: lim, child: Text(lim)))
+                              .map((lim) => DropdownMenuItem(value: lim, child: Text(lim, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))))
                               .toList(),
                           onChanged: (val) {
                             if (val != null) setState(() => _selectedLimit = val);
@@ -1008,13 +1022,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
 
               const SizedBox(height: 8),
-              const Divider(color: Color(0xFFE2E8F0)),
+              Divider(color: _isZaznamityMode ? Colors.white24 : const Color(0xFFE2E8F0)),
               
               displayedTransactions.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 32),
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 32),
                       child: Center(
-                        child: Text('No transactions found.', style: TextStyle(color: Color(0xFF94A3B8))),
+                        child: Text('No transactions found.', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8))),
                       ),
                     )
                   : ListView.separated(
@@ -1022,7 +1036,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                       physics: const NeverScrollableScrollPhysics(),
                       cacheExtent: 1000,
                       itemCount: displayedTransactions.length,
-                      separatorBuilder: (context, index) => const Divider(color: Color(0xFFF1F5F9), height: 1),
+                      separatorBuilder: (context, index) => Divider(color: _isZaznamityMode ? Colors.white10 : const Color(0xFFF1F5F9), height: 1),
                       itemBuilder: (context, index) {
                         final tx = displayedTransactions[index];
                         final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
@@ -1045,7 +1059,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
                         return Container(
                           decoration: BoxDecoration(
-                            color: isFuture && !timePassed ? const Color(0xFFF1F5F9) : Colors.transparent,
+                            color: isFuture && !timePassed ? (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9)) : Colors.transparent,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
@@ -1059,7 +1073,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                   children: [
                                     Text(
                                       tx.description.isNotEmpty ? tx.description : 'Unnamed Transaction',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B)),
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -1069,23 +1083,23 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                       runSpacing: 2,
                                       crossAxisAlignment: WrapCrossAlignment.center,
                                       children: [
-                                        Text(formattedDate, style: const TextStyle(fontSize: 10, color: Color(0xFF64748B))),
-                                        const Text('•', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                        Text(tx.owner, style: const TextStyle(fontSize: 10, color: Color(0xFF4338CA), fontWeight: FontWeight.w500)),
-                                        const Text('•', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                                        Text(formattedDate, style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                        Text('•', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
+                                        Text(tx.owner, style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF4338CA), fontWeight: FontWeight.w500)),
+                                        Text('•', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                           decoration: BoxDecoration(
-                                            color: const Color(0xFFFEF3C7),
+                                            color: _isZaznamityMode ? const Color(0xFF3F2F17) : const Color(0xFFFEF3C7),
                                             borderRadius: BorderRadius.circular(4),
                                           ),
                                           child: Text(
                                             labelObj.name,
-                                            style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFFD97706)),
+                                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFFCD34D) : const Color(0xFFD97706)),
                                           ),
                                         ),
-                                        const Text('•', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                        Text('$flag $currencyCode', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF582F95))),
+                                        Text('•', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
+                                        Text('$flag $currencyCode', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                                       ],
                                     ),
                                   ],
@@ -1103,7 +1117,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 14,
-                                        color: isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                                        color: isIncome ? const Color(0xFF34D399) : const Color(0xFFF87171),
                                       ),
                                     ),
                                   ),
@@ -1114,8 +1128,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                       fontSize: 8,
                                       fontWeight: FontWeight.bold,
                                       color: isFuture && !timePassed
-                                          ? const Color(0xFF64748B)
-                                          : const Color(0xFF10B981),
+                                          ? (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))
+                                          : const Color(0xFF34D399),
                                       letterSpacing: 0.5,
                                     ),
                                   ),
@@ -1131,15 +1145,14 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                       IconButton(
                                         constraints: const BoxConstraints(),
                                         padding: const EdgeInsets.all(1),
-                                        icon: const Icon(Icons.edit, size: 16, color: Color(0xFF64748B)),
+                                        icon: Icon(Icons.edit, size: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                         tooltip: 'Edit',
                                         onPressed: () => widget.onEditTransaction(tx),
                                       ),
-                                      const SizedBox(width: 0),
                                       IconButton(
                                         constraints: const BoxConstraints(),
                                         padding: const EdgeInsets.all(1),
-                                        icon: const Icon(Icons.delete, size: 16, color: Color(0xFFDC2626)),
+                                        icon: const Icon(Icons.delete, size: 16, color: Color(0xFFEF4444)),
                                         tooltip: 'Delete',
                                         onPressed: () => _showDeleteConfirmation(context, tx.id!),
                                       ),

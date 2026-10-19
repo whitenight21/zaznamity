@@ -90,19 +90,20 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2D1B4E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.info_outline, color: Color(0xFF582F95)),
+            const Icon(Icons.info_outline, color: Color(0xFFA855F7)),
             const SizedBox(width: 8),
-            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white))),
           ],
         ),
-        content: Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4)),
+        content: Text(description, style: const TextStyle(fontSize: 13, color: Colors.white70, height: 1.4)),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF582F95),
+              backgroundColor: const Color(0xFFA855F7),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
@@ -196,11 +197,12 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
         return Container(
           padding: const EdgeInsets.all(24.0),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFF1E1333),
             borderRadius: BorderRadius.circular(20.0),
+            border: Border.all(color: Colors.white10),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -221,7 +223,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 88, 47, 149),
+                          color: Color(0xFFA855F7),
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -238,8 +240,8 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                           width: 32,
                           child: IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
+                              backgroundColor: const Color(0xFF2D1B4E),
+                              foregroundColor: Colors.white70,
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -257,8 +259,8 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         width: 32,
                         child: IconButton(
                           style: IconButton.styleFrom(
-                            backgroundColor: const Color(0xFFF1F5F9),
-                            foregroundColor: const Color(0xFF64748B),
+                            backgroundColor: const Color(0xFF2D1B4E),
+                            foregroundColor: Colors.white70,
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
@@ -284,22 +286,23 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: const Color(0xFF2D1B4E),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: Colors.white12),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFFA855F7)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String?>(
                                 value: widget.selectedOwner,
+                                dropdownColor: const Color(0xFF2D1B4E),
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Colors.white54)),
                                 items: [
                                   const DropdownMenuItem<String?>(value: null, child: Text('All Owners')),
                                   ...widget.owners.map((o) => DropdownMenuItem<String?>(value: o, child: Text(o))),
@@ -320,12 +323,12 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                           child: Container(
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: const Color(0xFF2D1B4E),
                               borderRadius: BorderRadius.horizontal(
                                 left: const Radius.circular(10),
                                 right: hasDateFilter ? Radius.zero : const Radius.circular(10),
                               ),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: Colors.white12),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -339,21 +342,21 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFFA855F7)),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
                                           '${DateFormat('MM/dd').format(effectiveStartDate)} - ${DateFormat('MM/dd').format(effectiveEndDate)}',
                                           style: const TextStyle(
                                             fontSize: 11,
-                                            color: Color(0xFF1E293B),
+                                            color: Colors.white,
                                             fontWeight: FontWeight.bold,
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                       if (!hasDateFilter)
-                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Colors.white38),
                                     ],
                                   ),
                                 ),
@@ -367,9 +370,9 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                             height: 44,
                             width: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE2E8F0),
+                              color: const Color(0xFF3D256B),
                               borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: Colors.white12),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -377,7 +380,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                                 onTap: widget.onClearDateFilter,
                                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
                                 child: const Center(
-                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171)),
                                 ),
                               ),
                             ),
@@ -398,22 +401,23 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: const Color(0xFF2D1B4E),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: Colors.white12),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFFA855F7)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<int?>(
                                 value: widget.selectedLabelId,
+                                dropdownColor: const Color(0xFF2D1B4E),
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                hint: const Text('All Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Colors.white54)),
                                 items: [
                                   const DropdownMenuItem<int?>(value: null, child: Text('All Labels')),
                                   ...widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))),
@@ -444,9 +448,9 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: const Color(0xFF2D1B4E),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                          border: Border.all(color: Colors.white12),
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -455,7 +459,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                             const Text(
                               'Display below all',
                               style: TextStyle(
-                                color: Color(0xFF582F95),
+                                color: Color(0xFFC084FC),
                                 fontSize: 9.5,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -468,13 +472,13 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                                 Text(
                                   '${filteredTxs.length} Zaznams',
                                   style: const TextStyle(
-                                    color: Color(0xFF582F95),
+                                    color: Colors.white,
                                     fontSize: 13,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                                 const SizedBox(width: 3),
-                                const Icon(Icons.arrow_forward_ios, size: 10, color: Color(0xFF582F95)),
+                                const Icon(Icons.arrow_forward_ios, size: 10, color: Color(0xFFA855F7)),
                               ],
                             ),
                           ],
@@ -496,7 +500,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         const Text(
                           'NET BALANCE',
                           style: TextStyle(
-                            color: Color(0xFF582F95),
+                            color: Color(0xFFA855F7),
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 0.5,
@@ -509,7 +513,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                             'Net Balance Mechanics',
                             'The net cash flow resulting from total inflows minus total outflows filtered for the selected single label and date range.',
                           ),
-                          child: const Icon(Icons.info_outline, size: 13, color: Color(0xFF64748B)),
+                          child: const Icon(Icons.info_outline, size: 13, color: Colors.white54),
                         ),
                       ],
                     ),
@@ -519,7 +523,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF582F95),
+                        color: Colors.white,
                       ),
                     ),
                   ],
@@ -534,7 +538,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('INFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                          const Text('INFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white70, letterSpacing: 0.5)),
                           const SizedBox(width: 3),
                           InkWell(
                             onTap: () => _showInfoModal(
@@ -542,23 +546,23 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                               'Inflows & Share',
                               'Total incoming transaction amounts associated with this label, accompanied by its percentage share of global inflows.',
                             ),
-                            child: const Icon(Icons.info_outline, size: 12, color: Color(0xFF64748B)),
+                            child: const Icon(Icons.info_outline, size: 12, color: Colors.white54),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('+\$${inflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
+                      Text('+\$${inflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
                       const SizedBox(height: 2),
-                      Text('${inflowPercentage.toStringAsFixed(1)}% of total', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                      Text('${inflowPercentage.toStringAsFixed(1)}% of total', style: const TextStyle(fontSize: 11, color: Colors.white54)),
                     ],
                   ),
-                  Container(height: 35, width: 1, color: const Color(0xFFE2E8F0)),
+                  Container(height: 35, width: 1, color: Colors.white12),
                   Column(
                     children: [
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('OUTFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                          const Text('OUTFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white70, letterSpacing: 0.5)),
                           const SizedBox(width: 3),
                           InkWell(
                             onTap: () => _showInfoModal(
@@ -566,14 +570,14 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                               'Outflows & Share',
                               'Total outgoing spending associated with this label, alongside its percentage share of global portfolio outflows.',
                             ),
-                            child: const Icon(Icons.info_outline, size: 12, color: Color(0xFF64748B)),
+                            child: const Icon(Icons.info_outline, size: 12, color: Colors.white54),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('-\$${outflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFFDC2626))),
+                      Text('-\$${outflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFFF87171))),
                       const SizedBox(height: 2),
-                      Text('${outflowPercentage.toStringAsFixed(1)}% of total', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                      Text('${outflowPercentage.toStringAsFixed(1)}% of total', style: const TextStyle(fontSize: 11, color: Colors.white54)),
                     ],
                   ),
                 ],
@@ -582,15 +586,15 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 const SizedBox(height: 20),
                 const Text(
                   'LAST 5 ZAZNAMS',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white70, letterSpacing: 0.5),
                 ),
                 const SizedBox(height: 4),
                 Container(
                   height: 150,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: const Color(0xFF2D1B4E),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: Colors.white12),
                   ),
                   child: ListView.builder(
                     cacheExtent: 1000,
@@ -611,13 +615,13 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                                 children: [
                                   Text(
                                     formattedTxDate,
-                                    style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                                    style: const TextStyle(fontSize: 11, color: Colors.white54, fontWeight: FontWeight.w500),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
                                       tx.description.isNotEmpty ? tx.description : 'No description',
-                                      style: const TextStyle(fontSize: 12, color: Color(0xFF334155), fontWeight: FontWeight.w500),
+                                      style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -630,7 +634,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: isIncome ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                color: isIncome ? const Color(0xFF34D399) : const Color(0xFFF87171),
                               ),
                             ),
                           ],

@@ -13,7 +13,6 @@ class SavingsGoalsCard extends StatefulWidget {
   final List<String> pools;
   final String? selectedOwner;
   final Function(SavingsGoalModel) onSaveGoal;
-  // Updated callback to include selectedCurrency
   final Function(int goalId, double amountToAdd, String owner, String fromPool, String goalName, String currency) onAddFundsToGoal;
   final Function(int goalId) onDeleteGoal;
   final Function(int goalId) onCompleteGoal;
@@ -44,6 +43,7 @@ class SavingsGoalsCard extends StatefulWidget {
 class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
   late String _selectedOwner;
   List<String> _userCurrencies = ['USD'];
+  bool _isZaznamityMode = true;
 
   @override
   void initState() {
@@ -54,6 +54,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
 
   Future<void> _loadAllUserCurrencies() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     final sec1 = prefs.getString('secondaryCurrency1');
     final sec2 = prefs.getString('secondaryCurrency2');
@@ -64,9 +65,12 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
     if (sec2 != null && sec2.isNotEmpty) list.add(sec2);
     if (sec3 != null && sec3.isNotEmpty) list.add(sec3);
 
-    setState(() {
-      _userCurrencies = list;
-    });
+    if (mounted) {
+      setState(() {
+        _isZaznamityMode = (savedTheme == 'zaznamity');
+        _userCurrencies = list;
+      });
+    }
   }
 
   String _getCurrencySymbol(String code) {
@@ -92,7 +96,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
       case 'AUD': return '🇦🇺';
       case 'CAD': return '🇨🇦';
       case 'CHF': return '🇨🇭';
-      case 'HKD': return '🇭🇰';
+      case 'HKD': return 'HK🇰';
       case 'SGD': return '🇸🇬';
       case 'CNY': return '🇨🇳';
       default: return '🇺🇸';
@@ -107,6 +111,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
         _selectedOwner = widget.selectedOwner ?? 'All Owners';
       });
     }
+    _loadAllUserCurrencies();
   }
 
   void _showAddFundsDialog(SavingsGoalModel goal) {
@@ -122,27 +127,31 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Add Funds to "${goal.name}"', style: const TextStyle(color: Color.fromARGB(255, 88, 47, 149), fontWeight: FontWeight.bold, fontSize: 16)),
+          title: Text('Add Funds to "${goal.name}"', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95), fontWeight: FontWeight.bold, fontSize: 16)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Row 1: Owner, Currency
               Row(
                 children: [
                   Expanded(
                     flex: 3,
                     child: DropdownButtonFormField<String>(
                       initialValue: widget.owners.contains(selectedDialogOwner) ? selectedDialogOwner : widget.owners.first,
+                      dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                      style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87),
                       decoration: InputDecoration(
                         labelText: 'Owner',
-                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
-                      items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 13)))).toList(),
+                      items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
                       onChanged: (val) {
                         if (val != null) setDialogState(() => selectedDialogOwner = val);
                       },
@@ -155,20 +164,21 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                       height: 42,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: _userCurrencies.contains(selectedCurrency) ? selectedCurrency : _userCurrencies.first,
                           isDense: true,
                           isExpanded: true,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                           items: _userCurrencies.map((c) {
                             return DropdownMenuItem(
                               value: c,
-                              child: Text('$c (${_getCurrencySymbol(c)})', style: const TextStyle(fontSize: 11)),
+                              child: Text('$c (${_getCurrencySymbol(c)})', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                             );
                           }).toList(),
                           onChanged: (val) {
@@ -181,21 +191,23 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                 ],
               ),
               const SizedBox(height: 14),
-              // Row 2: Amount to Add, Source Pool
               Row(
                 children: [
                   Expanded(
                     flex: 2,
                     child: TextField(
                       controller: amountController,
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         labelText: 'Amount to Add',
-                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
                     ),
                   ),
@@ -204,15 +216,19 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                     flex: 3,
                     child: DropdownButtonFormField<String>(
                       initialValue: widget.pools.contains(selectedDialogPool) ? selectedDialogPool : widget.pools.first,
+                      dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                      style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87),
                       decoration: InputDecoration(
                         labelText: 'From Pool',
-                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
-                      items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase(), style: const TextStyle(fontSize: 13)))).toList(),
+                      items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase(), style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
                       onChanged: (val) {
                         if (val != null) setDialogState(() => selectedDialogPool = val);
                       },
@@ -225,11 +241,11 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+              child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 12)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF582F95),
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
@@ -237,7 +253,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
               onPressed: () {
                 final val = double.tryParse(amountController.text);
                 if (val != null && val > 0) {
-                  // Pass selectedCurrency down to parent handler
                   widget.onAddFundsToGoal(goal.id!, val, selectedDialogOwner, selectedDialogPool, goal.name, selectedCurrency);
                   Navigator.pop(context);
                 }
@@ -263,8 +278,9 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Create New Savings Goal', style: TextStyle(color: Color.fromARGB(255, 88, 47, 149), fontWeight: FontWeight.bold, fontSize: 16)),
+          title: Text('Create New Savings Goal', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95), fontWeight: FontWeight.bold, fontSize: 16)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -274,15 +290,19 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                     flex: 3,
                     child: DropdownButtonFormField<String>(
                       initialValue: widget.owners.contains(dialogOwner) ? dialogOwner : widget.owners.first,
+                      dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                      style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87),
                       decoration: InputDecoration(
                         labelText: 'Owner',
-                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
-                      items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 13)))).toList(),
+                      items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
                       onChanged: (val) {
                         if (val != null) setDialogState(() => dialogOwner = val);
                       },
@@ -295,20 +315,21 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                       height: 42,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: _userCurrencies.contains(selectedCurrency) ? selectedCurrency : _userCurrencies.first,
                           isDense: true,
                           isExpanded: true,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                           items: _userCurrencies.map((c) {
                             return DropdownMenuItem(
                               value: c,
-                              child: Text('$c (${_getCurrencySymbol(c)})', style: const TextStyle(fontSize: 11)),
+                              child: Text('$c (${_getCurrencySymbol(c)})', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                             );
                           }).toList(),
                           onChanged: (val) {
@@ -327,14 +348,17 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                     flex: 2,
                     child: TextField(
                       controller: targetController,
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         labelText: 'Target Amount',
-                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
                     ),
                   ),
@@ -343,13 +367,16 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                     flex: 3,
                     child: TextField(
                       controller: nameController,
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                       decoration: InputDecoration(
                         labelText: 'Goal Name (e.g. New Car)',
-                        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
                     ),
                   ),
@@ -360,11 +387,11 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+              child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 12)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF582F95),
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
@@ -409,17 +436,42 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
 
         return Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF3B1E63),
+                      Color(0xFF160D25),
+                      Color(0xFF000000),
+                    ],
+                    stops: [0.0, 0.6, 1.0],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -427,12 +479,12 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'SAVINGS GOALS',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF582F95),
+                      color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                       letterSpacing: 0.8,
                     ),
                   ),
@@ -447,8 +499,8 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                             width: 28,
                             child: IconButton(
                               style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFFF1F5F9),
-                                foregroundColor: const Color(0xFF64748B),
+                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                                 padding: EdgeInsets.zero,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                               ),
@@ -467,8 +519,8 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                           width: 28,
                           child: IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                             ),
@@ -495,13 +547,13 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -509,10 +561,11 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                 value: _selectedOwner,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 items: [
-                                  const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
-                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
+                                  DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
                                 ],
                                 onChanged: (val) {
                                   if (val != null) setState(() => _selectedOwner = val);
@@ -530,8 +583,8 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                       height: 44,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFF1F5F9),
-                          foregroundColor: const Color(0xFF334155),
+                          backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFFF1F5F9),
+                          foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
@@ -546,12 +599,12 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
               const SizedBox(height: 16),
 
               filteredGoals.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Padding(
-                        padding: EdgeInsets.all(24.0),
+                        padding: const EdgeInsets.all(24.0),
                         child: Text(
                           'No savings goals set for this owner.',
-                          style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                          style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 12),
                         ),
                       ),
                     )
@@ -574,9 +627,9 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                         return Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -609,19 +662,19 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                             children: [
                                               Text(
                                                 goal.name,
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 16,
-                                                  color: Color(0xFF1E293B),
+                                                  color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                                                 ),
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                               Text(
                                                 '(${goal.owner})',
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   fontSize: 11,
                                                   fontWeight: FontWeight.w500,
-                                                  color: Color(0xFF64748B),
+                                                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                                                 ),
                                               ),
                                             ],
@@ -634,16 +687,16 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                     children: [
                                       Text(
                                         'Target: ${currencyFormat.format(goal.targetAmount)}',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontWeight: FontWeight.w600,
                                           fontSize: 12,
-                                          color: Color(0xFF64748B),
+                                          color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
                                       InkWell(
                                         onTap: () => widget.onDeleteGoal(goal.id!),
-                                        child: const Icon(Icons.close, color: Color(0xFF94A3B8), size: 16),
+                                        child: Icon(Icons.close, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), size: 16),
                                       ),
                                     ],
                                   ),
@@ -655,8 +708,8 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                 child: LinearProgressIndicator(
                                   value: progress,
                                   minHeight: 10,
-                                  backgroundColor: const Color(0xFFE2E8F0),
-                                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+                                  backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
+                                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF34D399)),
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -670,16 +723,16 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 12,
-                                          color: Color(0xFF059669),
+                                          color: Color(0xFF34D399),
                                         ),
                                       ),
                                       const SizedBox(width: 6),
                                       Text(
                                         '(${(progress * 100).toStringAsFixed(1)}%)',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 12,
-                                          color: Color(0xFF64748B),
+                                          color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                                         ),
                                       ),
                                     ],
@@ -689,7 +742,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                     width: 28,
                                     child: IconButton(
                                       style: IconButton.styleFrom(
-                                        backgroundColor: const Color(0xFF582F95),
+                                        backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
                                         foregroundColor: Colors.white,
                                         padding: EdgeInsets.zero,
                                       ),

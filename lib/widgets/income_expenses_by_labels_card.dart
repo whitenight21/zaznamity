@@ -256,19 +256,20 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2D1B4E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.info_outline, color: Color(0xFF582F95)),
+            const Icon(Icons.info_outline, color: Color(0xFFA855F7)),
             const SizedBox(width: 8),
-            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white))),
           ],
         ),
-        content: Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4)),
+        content: Text(description, style: const TextStyle(fontSize: 13, color: Colors.white70, height: 1.4)),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF582F95),
+              backgroundColor: const Color(0xFFA855F7),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
@@ -296,16 +297,17 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
     final activeOwner = widget.selectedOwner ?? _localOwner;
     
+    // High-visibility chart color palette tailored for Zaznamity dark UI
     final paletteColors = [
-      const Color(0xFF582F95),
-      const Color(0xFFA855F7),
-      const Color(0xFF2563EB),
-      const Color(0xFF0EA5E9),
-      const Color(0xFF10B981),
-      const Color(0xFF22C55E),
-      const Color(0xFFF59E0B),
-      const Color(0xFFF97316),
-      const Color(0xFFEF4444),
+      const Color(0xFFA855F7), // Electric Purple
+      const Color(0xFF38BDF8), // Cyan / Sky Blue
+      const Color(0xFF34D399), // Emerald Green
+      const Color(0xFFFBBF24), // Amber Gold
+      const Color(0xFFF87171), // Coral Red
+      const Color(0xFF818CF8), // Indigo
+      const Color(0xFFFB7185), // Rose Pink
+      const Color(0xFF2DD4BF), // Teal
+      const Color(0xFFC084FC), // Light Purple
     ];
 
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
@@ -323,11 +325,12 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFF1E1333),
             borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white10),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -348,7 +351,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 88, 47, 149),
+                          color: Color(0xFFA855F7),
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -366,8 +369,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             width: 32,
                             child: IconButton(
                               style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFFF1F5F9),
-                                foregroundColor: const Color(0xFF64748B),
+                                backgroundColor: const Color(0xFF2D1B4E),
+                                foregroundColor: Colors.white70,
                                 padding: EdgeInsets.zero,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
@@ -386,8 +389,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           width: 32,
                           child: IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
+                              backgroundColor: const Color(0xFF2D1B4E),
+                              foregroundColor: Colors.white70,
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -414,22 +417,23 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: const Color(0xFF2D1B4E),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: Colors.white12),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFFA855F7)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String?>(
                                 value: activeOwner,
+                                dropdownColor: const Color(0xFF2D1B4E),
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Colors.white54)),
                                 items: [
                                   const DropdownMenuItem<String?>(
                                     value: null,
@@ -459,12 +463,12 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           child: Container(
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: const Color(0xFF2D1B4E),
                               borderRadius: BorderRadius.horizontal(
                                 left: const Radius.circular(10),
                                 right: hasDateFilter ? Radius.zero : const Radius.circular(10),
                               ),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: Colors.white12),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -478,7 +482,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFFA855F7)),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
@@ -488,8 +492,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: hasDateFilter
-                                                ? const Color(0xFF1E293B)
-                                                : const Color(0xFF64748B),
+                                                ? Colors.white
+                                                : Colors.white54,
                                             fontWeight: hasDateFilter
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
@@ -498,7 +502,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                         ),
                                       ),
                                       if (!hasDateFilter)
-                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Colors.white38),
                                     ],
                                   ),
                                 ),
@@ -512,9 +516,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             height: 44,
                             width: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE2E8F0),
+                              color: const Color(0xFF3D256B),
                               borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: Colors.white12),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -522,7 +526,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                 onTap: widget.onClearDateFilter,
                                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
                                 child: const Center(
-                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171)),
                                 ),
                               ),
                             ),
@@ -563,9 +567,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: const Color(0xFF2D1B4E),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                          border: Border.all(color: Colors.white12),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -573,7 +577,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             Expanded(
                               child: Row(
                                 children: [
-                                  const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                                  const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFFA855F7)),
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: FittedBox(
@@ -583,14 +587,14 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                         (chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length) == widget.labels.length
                                             ? 'All Labels'
                                             : '${chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length} selected',
-                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
+                            const Icon(Icons.arrow_drop_down, size: 18, color: Colors.white70),
                           ],
                         ),
                       ),
@@ -602,21 +606,22 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: const Color(0xFF2D1B4E),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: BorderColorHelper.getCachedBorderColor()),
+                        border: Border.all(color: Colors.white12),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.swap_vert_rounded, size: 16, color: Color(0xFF582F95)),
+                          const Icon(Icons.swap_vert_rounded, size: 16, color: Color(0xFFA855F7)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
                                 value: chartDisplayMode,
+                                dropdownColor: const Color(0xFF2D1B4E),
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
                                 items: const [
                                   DropdownMenuItem(value: 'Show Expenses', child: Text('Expense')),
                                   DropdownMenuItem(value: 'Show Income', child: Text('Income')),
@@ -645,16 +650,16 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
+                      color: const Color(0xFF2D1B4E),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: Colors.white12),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'FIXED VS DISCRETIONARY',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white70, letterSpacing: 0.5),
                         ),
                         const SizedBox(height: 8),
                         Row(
@@ -664,7 +669,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                               child: Container(
                                 height: 8,
                                 decoration: const BoxDecoration(
-                                  color: Color(0xFF2563EB),
+                                  color: Color(0xFF38BDF8),
                                   borderRadius: BorderRadius.horizontal(left: Radius.circular(4)),
                                 ),
                               ),
@@ -675,7 +680,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                               child: Container(
                                 height: 8,
                                 decoration: const BoxDecoration(
-                                  color: Color(0xFFF59E0B),
+                                  color: Color(0xFFFBBF24),
                                   borderRadius: BorderRadius.horizontal(right: Radius.circular(4)),
                                 ),
                               ),
@@ -688,11 +693,11 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           children: [
                             Text(
                               'Fixed: ${currencyFormat.format(_cachedFixedExpenses)} (${fixedRatio.toStringAsFixed(1)}%)',
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2563EB)),
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF38BDF8)),
                             ),
                             Text(
                               'Discretionary: ${currencyFormat.format(_cachedDiscretionaryExpenses)} (${discRatio.toStringAsFixed(1)}%)',
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFD97706)),
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFFBBF24)),
                             ),
                           ],
                         ),
@@ -711,10 +716,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       child: Container(
                         padding: const EdgeInsets.all(2),
                         decoration: const BoxDecoration(
-                          color: Colors.white,
+                          color: Color(0xFF1E1333),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.info_outline_rounded, size: 13, color: Color.fromARGB(255, 158, 158, 158)),
+                        child: const Icon(Icons.info_outline_rounded, size: 13, color: Colors.white54),
                       ),
                     ),
                   ),
@@ -730,21 +735,21 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFECFDF5),
+                          color: const Color(0xFF1A332A),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFA7F3D0)),
+                          border: Border.all(color: const Color(0xFF047857).withValues(alpha: 0.4)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('TOTAL INCOME', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF047857), letterSpacing: 0.5)),
+                            const Text('TOTAL INCOME', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF34D399), letterSpacing: 0.5)),
                             const SizedBox(height: 8),
                             ClipRRect(
                               borderRadius: BorderRadius.circular(4),
                               child: LinearProgressIndicator(
                                 value: (_cachedTotalIncome / _cachedMaxTopAmount).clamp(0.0, 1.0),
-                                backgroundColor: const Color(0xDDA7F3D0),
-                                color: const Color(0xFF10B981),
+                                backgroundColor: const Color(0xFF064E3B),
+                                color: const Color(0xFF34D399),
                                 minHeight: 10,
                               ),
                             ),
@@ -755,7 +760,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                 fit: BoxFit.scaleDown,
                                 child: Text(
                                   currencyFormat.format(_cachedTotalIncome),
-                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF34D399)),
                                 ),
                               ),
                             ),
@@ -773,8 +778,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           ),
                           child: Container(
                             padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                            child: const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFF047857)),
+                            decoration: const BoxDecoration(color: Color(0xFF1E1333), shape: BoxShape.circle),
+                            child: const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFF34D399)),
                           ),
                         ),
                       ),
@@ -787,21 +792,21 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFEF2F2),
+                          color: const Color(0xFF3B1F23),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFFECACA)),
+                          border: Border.all(color: const Color(0xFFB91C1C).withValues(alpha: 0.4)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('TOTAL EXPENSES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFB91C1C), letterSpacing: 0.5)),
+                            const Text('TOTAL EXPENSES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFF87171), letterSpacing: 0.5)),
                             const SizedBox(height: 8),
                             ClipRRect(
                               borderRadius: BorderRadius.circular(4),
                               child: LinearProgressIndicator(
                                 value: (_cachedTotalExpenses / _cachedMaxTopAmount).clamp(0.0, 1.0),
-                                backgroundColor: const Color(0xDDFECACA),
-                                color: const Color(0xFFEF4444),
+                                backgroundColor: const Color(0xFF7F1D1D),
+                                color: const Color(0xFFF87171),
                                 minHeight: 10,
                               ),
                             ),
@@ -812,7 +817,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                 fit: BoxFit.scaleDown,
                                 child: Text(
                                   currencyFormat.format(_cachedTotalExpenses),
-                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFFF87171)),
                                 ),
                               ),
                             ),
@@ -830,8 +835,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           ),
                           child: Container(
                             padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                            child: const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFFB91C1C)),
+                            decoration: const BoxDecoration(color: Color(0xFF1E1333), shape: BoxShape.circle),
+                            child: const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFFF87171)),
                           ),
                         ),
                       ),
@@ -844,7 +849,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               Container(
                 height: 38,
                 decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                  color: const Color(0xFF2D1B4E),
+                  border: Border.all(color: Colors.white12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -855,7 +861,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         child: Container(
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: chartType == 'Bar' ? const Color(0xFFF3E8FF) : Colors.white,
+                            color: chartType == 'Bar' ? const Color(0xFFA855F7) : Colors.transparent,
                             borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
                           ),
                           child: Text(
@@ -863,7 +869,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: chartType == 'Bar' ? Colors.black : const Color(0xFF64748B),
+                              color: chartType == 'Bar' ? Colors.white : Colors.white70,
                             ),
                           ),
                         ),
@@ -875,14 +881,14 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         child: Container(
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: chartType == 'Donut' ? const Color(0xFFF3E8FF) : Colors.white,
+                            color: chartType == 'Donut' ? const Color(0xFFA855F7) : Colors.transparent,
                           ),
                           child: Text(
                             'Donut',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: chartType == 'Donut' ? Colors.black : const Color(0xFF64748B),
+                              color: chartType == 'Donut' ? Colors.white : Colors.white70,
                             ),
                           ),
                         ),
@@ -894,7 +900,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         child: Container(
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: chartType == 'Treemap' ? const Color(0xFFF3E8FF) : Colors.white,
+                            color: chartType == 'Treemap' ? const Color(0xFFA855F7) : Colors.transparent,
                             borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
                           ),
                           child: Text(
@@ -902,7 +908,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: chartType == 'Treemap' ? Colors.black : const Color(0xFF64748B),
+                              color: chartType == 'Treemap' ? Colors.white : Colors.white70,
                             ),
                           ),
                         ),
@@ -917,7 +923,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                   ? const SizedBox(
                       height: 150,
                       child: Center(
-                        child: Text('No data available for selected filters.', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
+                        child: Text('No data available for selected filters.', style: TextStyle(fontSize: 12, color: Colors.white54)),
                       ),
                     )
                   : chartType == 'Bar'
@@ -945,7 +951,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                             style: const TextStyle(
                                               fontSize: 12,
                                               fontWeight: FontWeight.bold,
-                                              color: Color(0xFF1E293B),
+                                              color: Colors.white,
                                             ),
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -956,7 +962,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                 '${percentageShare.toStringAsFixed(1)}%',
                                                 style: const TextStyle(
                                                   fontSize: 10,
-                                                  color: Color(0xFF64748B),
+                                                  color: Colors.white70,
                                                   fontWeight: FontWeight.w500,
                                                 ),
                                               ),
@@ -966,7 +972,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                 style: TextStyle(
                                                   fontSize: 9,
                                                   fontWeight: FontWeight.bold,
-                                                  color: delta <= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                                  color: delta <= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                                                 ),
                                               ),
                                             ],
@@ -1009,7 +1015,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                     style: const TextStyle(
                                                       fontSize: 12,
                                                       fontWeight: FontWeight.bold,
-                                                      color: Color(0xFF334155),
+                                                      color: Colors.white,
                                                     ),
                                                   ),
                                                 ),
@@ -1028,14 +1034,14 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                               margin: const EdgeInsets.only(left: 97),
                               child: Column(
                                 children: [
-                                  Container(height: 1, color: const Color(0xFFE2E8F0)),
+                                  Container(height: 1, color: Colors.white12),
                                   const SizedBox(height: 6),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      const Text('\$0', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                      Text('\$${(_cachedMaxChartAmount * 0.5).toStringAsFixed(0)}', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                      Text('\$${_cachedMaxChartAmount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                                      const Text('\$0', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                                      Text('\$${(_cachedMaxChartAmount * 0.5).toStringAsFixed(0)}', style: const TextStyle(fontSize: 10, color: Colors.white54)),
+                                      Text('\$${_cachedMaxChartAmount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 10, color: Colors.white54)),
                                     ],
                                   ),
                                 ],
@@ -1049,9 +1055,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                 Container(
                                   height: 240,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFF8FAFC),
+                                    color: const Color(0xFF2D1B4E),
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                                    border: Border.all(color: Colors.white12),
                                   ),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
@@ -1072,9 +1078,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFF8FAFC),
+                                        color: const Color(0xFF2D1B4E),
                                         borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                                        border: Border.all(color: Colors.white12),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -1090,18 +1096,18 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                           const SizedBox(width: 6),
                                           Text(
                                             '${entry.key}: ',
-                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
                                           ),
                                           Text(
                                             '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
-                                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                            style: const TextStyle(fontSize: 11, color: Colors.white70),
                                           ),
                                           Text(
                                             '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
                                             style: TextStyle(
                                               fontSize: 10,
                                               fontWeight: FontWeight.bold,
-                                              color: delta <= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                              color: delta <= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                                             ),
                                           ),
                                         ],
@@ -1149,7 +1155,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                           titleStyle: TextStyle(
                                             fontSize: isTouched ? 12 : 10,
                                             fontWeight: FontWeight.bold,
-                                            color: Colors.black,
+                                            color: Colors.white,
                                           ),
                                         );
                                       }),
@@ -1170,9 +1176,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFF8FAFC),
+                                        color: const Color(0xFF2D1B4E),
                                         borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                                        border: Border.all(color: Colors.white12),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -1188,18 +1194,18 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                           const SizedBox(width: 6),
                                           Text(
                                             '${entry.key}: ',
-                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
                                           ),
                                           Text(
                                             '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
-                                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                            style: const TextStyle(fontSize: 11, color: Colors.white70),
                                           ),
                                           Text(
                                             '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
                                             style: TextStyle(
                                               fontSize: 10,
                                               fontWeight: FontWeight.bold,
-                                              color: delta <= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                              color: delta <= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                                             ),
                                           ),
                                         ],
@@ -1238,8 +1244,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: node.color.withValues(alpha: 0.28),
-                  border: Border.all(color: Colors.white, width: 1.5),
+                  color: node.color.withValues(alpha: 0.35),
+                  border: Border.all(color: Colors.white24, width: 1.5),
                 ),
                 child: fits
                     ? Column(
@@ -1251,7 +1257,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E293B),
+                              color: Colors.white,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1262,7 +1268,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF475569),
+                              color: Colors.white70,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1292,16 +1298,18 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
+              backgroundColor: const Color(0xFF2D1B4E),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              title: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
               content: SizedBox(
                 width: 300,
                 child: ListView(
                   shrinkWrap: true,
                   children: [
                     CheckboxListTile(
-                      title: const Text('Select All', style: TextStyle(fontWeight: FontWeight.bold)),
+                      title: const Text('Select All', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                       value: tempSelected.length == allLabels.length,
+                      activeColor: const Color(0xFFA855F7),
                       onChanged: (val) {
                         setDialogState(() {
                           if (val == true) {
@@ -1312,11 +1320,12 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         });
                       },
                     ),
-                    const Divider(),
+                    const Divider(color: Colors.white12),
                     ...allLabels.map((label) {
                       return CheckboxListTile(
-                        title: Text(label.name),
+                        title: Text(label.name, style: const TextStyle(color: Colors.white70)),
                         value: tempSelected.contains(label.id),
+                        activeColor: const Color(0xFFA855F7),
                         onChanged: (val) {
                           setDialogState(() {
                             if (val == true) {
@@ -1334,10 +1343,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 88, 47, 149), foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),
                   onPressed: () {
                     onSelectionChanged(tempSelected);
                     Navigator.pop(context);
@@ -1354,7 +1363,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
 }
 
 class BorderColorHelper {
-  static Color getCachedBorderColor() => const Color(0xFFCBD5E1);
+  static Color getCachedBorderColor() => Colors.white12;
 }
 
 class TreemapNode {
