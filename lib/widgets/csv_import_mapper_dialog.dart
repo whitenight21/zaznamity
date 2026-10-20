@@ -114,17 +114,19 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
   String? _mapOwner;
   String? _mapPool;
   String? _mapLabel;
-  String? _mapCurrency; // Added currency mapping
+  String? _mapCurrency;
 
   bool _autoDetectFuture = true;
   bool _createMissingOwners = true;
   bool _createMissingLabels = true;
   bool _createMissingPools = true;
   bool _isProcessing = false;
+  bool _isZaznamityMode = true;
 
   @override
   void initState() {
     super.initState();
+    _loadTheme();
     for (var h in widget.headers) {
       final lower = h.toLowerCase();
       if (lower.contains('date') && _mapDate == null) _mapDate = h;
@@ -135,6 +137,16 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
       if (lower.contains('pool') && _mapPool == null) _mapPool = h;
       if ((lower.contains('label') || lower.contains('category')) && _mapLabel == null) _mapLabel = h;
       if ((lower.contains('currency') || lower.contains('curr') || lower.contains('fx')) && _mapCurrency == null) _mapCurrency = h;
+    }
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
+    if (mounted) {
+      setState(() {
+        _isZaznamityMode = (savedTheme == 'zaznamity');
+      });
     }
   }
 
@@ -176,7 +188,6 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
         String dateStr = cols[dateIndex].trim();
         DateTime parsedDate = DateTime.tryParse(dateStr) ?? DateTime.now();
 
-        // 🛠️ Robust amount cleaning (handles currency symbols, commas as decimals, spaces)
         String rawAmount = cols[amountIndex]
             .replaceAll(RegExp(r'[^0-9.,\-]'), '')
             .replaceAll(',', '.')
@@ -295,7 +306,15 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Map CSV Columns', style: TextStyle(color: Color(0xFF582F95), fontWeight: FontWeight.bold)),
+      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        'Map CSV Columns',
+        style: TextStyle(
+          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+          fontWeight: FontWeight.bold,
+        ),
+      ),
       content: SizedBox(
         width: 400,
         child: SingleChildScrollView(
@@ -303,51 +322,95 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'Match your spreadsheet columns to Zaznamity fields below:',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                ),
               ),
               const SizedBox(height: 16),
               _buildDropdownMapping('Date Column *', _mapDate, (val) => setState(() => _mapDate = val)),
               _buildDropdownMapping('Amount Column *', _mapAmount, (val) => setState(() => _mapAmount = val)),
               _buildDropdownMapping('Description / Memo', _mapDescription, (val) => setState(() => _mapDescription = val)),
               _buildDropdownMapping('Type (Income/Expense)', _mapType, (val) => setState(() => _mapType = val)),
-              _buildDropdownMapping('Currency', _mapCurrency, (val) => setState(() => _mapCurrency = val)), // Added dropdown mapping row
+              _buildDropdownMapping('Currency', _mapCurrency, (val) => setState(() => _mapCurrency = val)),
               _buildDropdownMapping('Owner', _mapOwner, (val) => setState(() => _mapOwner = val)),
               _buildDropdownMapping('Pool', _mapPool, (val) => setState(() => _mapPool = val)),
               _buildDropdownMapping('Label / Category', _mapLabel, (val) => setState(() => _mapLabel = val)),
-              const Divider(height: 24),
+              Text(
+                'Configure Future/Pending transactions and missing elements:',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                ),
+              ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Auto-set Future transactions', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                subtitle: const Text('Flag transactions with dates after today as future items.', style: TextStyle(fontSize: 10)),
+                title: Text(
+                  'Auto-set Future transactions',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                ),
+                subtitle: Text(
+                  'Flag transactions with dates after today as future items.',
+                  style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                ),
                 value: _autoDetectFuture,
-                activeColor: const Color(0xFF582F95),
+                activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                checkColor: Colors.white,
                 onChanged: (val) => setState(() => _autoDetectFuture = val ?? true),
               ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Auto-create missing Owners', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                subtitle: const Text('Create new owners found in CSV automatically.', style: TextStyle(fontSize: 10)),
+                title: Text(
+                  'Auto-create missing Owners',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                ),
+                subtitle: Text(
+                  'Create new owners found in CSV automatically.',
+                  style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                ),
                 value: _createMissingOwners,
-                activeColor: const Color(0xFF582F95),
+                activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                checkColor: Colors.white,
                 onChanged: (val) => setState(() => _createMissingOwners = val ?? true),
               ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Auto-create missing Labels', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                subtitle: const Text('Create new labels/categories found in CSV automatically.', style: TextStyle(fontSize: 10)),
+                title: Text(
+                  'Auto-create missing Labels',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                ),
+                subtitle: Text(
+                  'Create new labels/categories found in CSV automatically.',
+                  style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                ),
                 value: _createMissingLabels,
-                activeColor: const Color(0xFF582F95),
+                activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                checkColor: Colors.white,
                 onChanged: (val) => setState(() => _createMissingLabels = val ?? true),
               ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Auto-create missing Pools', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                subtitle: const Text('Create new asset pools found in CSV automatically.', style: TextStyle(fontSize: 10)),
+                title: Text(
+                  'Auto-create missing Pools',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                ),
+                subtitle: Text(
+                  'Create new asset pools found in CSV automatically.',
+                  style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                ),
                 value: _createMissingPools,
-                activeColor: const Color(0xFF582F95),
+                activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                checkColor: Colors.white,
                 onChanged: (val) => setState(() => _createMissingPools = val ?? true),
+              ),
+              Text(
+                'All elements can be edited in Zaznamity Settings after the successful import.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                ),
               ),
             ],
           ),
@@ -356,12 +419,20 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
       actions: [
         TextButton(
           onPressed: _isProcessing ? null : () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(
+            'Cancel',
+            style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+          ),
         ),
         ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF582F95), foregroundColor: Colors.white),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+            foregroundColor: Colors.white,
+          ),
           onPressed: _isProcessing ? null : _processImport,
-          child: _isProcessing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Import CSV'),
+          child: _isProcessing
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Import CSV'),
         ),
       ],
     );
@@ -372,7 +443,17 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
       padding: const EdgeInsets.only(bottom: 12.0),
       child: Row(
         children: [
-          Expanded(flex: 4, child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155)))),
+          Expanded(
+            flex: 4,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155),
+              ),
+            ),
+          ),
           const SizedBox(width: 8),
           Expanded(
             flex: 6,
@@ -380,18 +461,39 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
               height: 36,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFCBD5E1)),
+                border: Border.all(
+                  color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1),
+                ),
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: selectedValue,
                   isDense: true,
                   isExpanded: true,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF1E293B)),
-                  hint: const Text('Select Column', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                  items: widget.headers.map((h) => DropdownMenuItem(value: h, child: Text(h, overflow: TextOverflow.ellipsis))).toList(),
+                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                  ),
+                  hint: Text(
+                    'Select Column',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: _isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8),
+                    ),
+                  ),
+                  items: widget.headers.map((h) => DropdownMenuItem(
+                    value: h,
+                    child: Text(
+                      h,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                      ),
+                    ),
+                  )).toList(),
                   onChanged: onChanged,
                 ),
               ),

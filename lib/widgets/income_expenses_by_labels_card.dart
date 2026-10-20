@@ -53,7 +53,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   final Map<String, bool> _multiLabelFixedCategories = {};
   bool _initializedLabels = false;
   String? _localOwner;
-  String _multiLabelDefaultRange = '30 Days';
+  String _multiLabelDefaultRange = '';
+  bool _isZaznamityMode = true;
 
   double _cachedTotalIncome = 0;
   double _cachedTotalExpenses = 0;
@@ -83,8 +84,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
 
   Future<void> _loadMultiLabelSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     setState(() {
-      _multiLabelDefaultRange = prefs.getString('set_multiLabel_range') ?? '30 Days';
+      _multiLabelDefaultRange = prefs.getString('set_multiLabel_range') ?? '';
+      _isZaznamityMode = (savedTheme == 'zaznamity');
       for (var label in widget.labels) {
         _multiLabelFixedCategories[label.name] = prefs.getBool('set_multilabel_fixed_${label.name}') ?? false;
       }
@@ -119,6 +122,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
 
   DateTime? _getEffectiveStartDate() {
     if (widget.startDate != null) return widget.startDate;
+    if (_multiLabelDefaultRange.isEmpty) return null;
     final now = DateTime.now();
     switch (_multiLabelDefaultRange) {
       case '15 Days':
@@ -130,12 +134,14 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       case '3 Months':
         return DateTime(now.year, now.month - 3, now.day);
       default:
-        return now.subtract(const Duration(days: 30));
+        return null;
     }
   }
 
   DateTime? _getEffectiveEndDate() {
-    return widget.endDate ?? DateTime.now();
+    if (widget.endDate != null) return widget.endDate;
+    if (_multiLabelDefaultRange.isEmpty) return null;
+    return DateTime.now();
   }
 
   void _computeDataIfNeeded() {
@@ -256,16 +262,16 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF2D1B4E),
+        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.info_outline, color: Color(0xFFA855F7)),
+            Icon(Icons.info_outline, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
             const SizedBox(width: 8),
-            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white))),
+            Expanded(child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)))),
           ],
         ),
-        content: Text(description, style: const TextStyle(fontSize: 13, color: Colors.white70, height: 1.4)),
+        content: Text(description, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), height: 1.4)),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -283,6 +289,17 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
 
   @override
   Widget build(BuildContext context) {
+    Future.microtask(() async {
+      final prefs = await SharedPreferences.getInstance();
+      final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
+      final zaznamityActive = (themeStr == 'zaznamity');
+      if (zaznamityActive != _isZaznamityMode && mounted) {
+        setState(() {
+          _isZaznamityMode = zaznamityActive;
+        });
+      }
+    });
+
     if (!_initializedLabels && widget.labels.isNotEmpty) {
       for (var l in widget.labels) {
         selectedIncomeLabels.add(l.id);
@@ -297,17 +314,16 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
     final activeOwner = widget.selectedOwner ?? _localOwner;
     
-    // High-visibility chart color palette tailored for Zaznamity dark UI
     final paletteColors = [
-      const Color(0xFFA855F7), // Electric Purple
-      const Color(0xFF38BDF8), // Cyan / Sky Blue
-      const Color(0xFF34D399), // Emerald Green
-      const Color(0xFFFBBF24), // Amber Gold
-      const Color(0xFFF87171), // Coral Red
-      const Color(0xFF818CF8), // Indigo
-      const Color(0xFFFB7185), // Rose Pink
-      const Color(0xFF2DD4BF), // Teal
-      const Color(0xFFC084FC), // Light Purple
+      const Color(0xFFA855F7),
+      const Color(0xFF38BDF8),
+      const Color(0xFF34D399),
+      const Color(0xFFFBBF24),
+      const Color(0xFFF87171),
+      const Color(0xFF818CF8),
+      const Color(0xFFFB7185),
+      const Color(0xFF2DD4BF),
+      const Color(0xFFC084FC),
     ];
 
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
@@ -324,18 +340,42 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
 
         return Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1333),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white10),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF3B1E63),
+                      Color(0xFF160D25),
+                      Color(0xFF000000),
+                    ],
+                    stops: [0.0, 0.6, 1.0],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -346,12 +386,12 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
-                      child: const Text(
+                      child: Text(
                         'MULTI-LABEL ANALYTICS',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFFA855F7),
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -369,8 +409,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             width: 32,
                             child: IconButton(
                               style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFF2D1B4E),
-                                foregroundColor: Colors.white70,
+                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                                 padding: EdgeInsets.zero,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
@@ -389,8 +429,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           width: 32,
                           child: IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFF2D1B4E),
-                              foregroundColor: Colors.white70,
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                               padding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -408,6 +448,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 16),
 
+              // Row 1: Owners & Date Range Picker (styled like Search Card)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -417,31 +458,31 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF2D1B4E),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.white12),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFFA855F7)),
+                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String?>(
                                 value: activeOwner,
-                                dropdownColor: const Color(0xFF2D1B4E),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
-                                hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Colors.white54)),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                hint: Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                                 items: [
-                                  const DropdownMenuItem<String?>(
+                                  DropdownMenuItem<String?>(
                                     value: null,
-                                    child: Text('All Owners'),
+                                    child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                   ),
                                   ...widget.owners.map((owner) => DropdownMenuItem<String?>(
                                         value: owner,
-                                        child: Text(owner),
+                                        child: Text(owner, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                       )),
                                 ],
                                 onChanged: (val) {
@@ -463,12 +504,12 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           child: Container(
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF2D1B4E),
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.horizontal(
                                 left: const Radius.circular(10),
                                 right: hasDateFilter ? Radius.zero : const Radius.circular(10),
                               ),
-                              border: Border.all(color: Colors.white12),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -482,18 +523,18 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFFA855F7)),
+                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
                                           effectiveStart != null && effectiveEnd != null
                                               ? '${DateFormat('MM/dd').format(effectiveStart)} - ${DateFormat('MM/dd').format(effectiveEnd)}'
-                                              : 'Select Date Range',
+                                              : 'Date Range',
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: hasDateFilter
-                                                ? Colors.white
-                                                : Colors.white54,
+                                                ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155))
+                                                : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                             fontWeight: hasDateFilter
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
@@ -502,7 +543,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                         ),
                                       ),
                                       if (!hasDateFilter)
-                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Colors.white38),
+                                        Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                                     ],
                                   ),
                                 ),
@@ -516,9 +557,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             height: 44,
                             width: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF3D256B),
+                              color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
                               borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: Colors.white12),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -526,7 +567,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                 onTap: widget.onClearDateFilter,
                                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
                                 child: const Center(
-                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171)),
+                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
                                 ),
                               ),
                             ),
@@ -539,6 +580,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               ),
               const SizedBox(height: 12),
 
+              // Row 2: Select Labels Multi-trigger & Display Mode Dropdown (styled like Search Card)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -567,9 +609,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF2D1B4E),
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white12),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -577,7 +619,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             Expanded(
                               child: Row(
                                 children: [
-                                  const Icon(Icons.label_outline_rounded, size: 16, color: Color(0xFFA855F7)),
+                                  Icon(Icons.label_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: FittedBox(
@@ -587,14 +629,14 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                         (chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length) == widget.labels.length
                                             ? 'All Labels'
                                             : '${chartDisplayMode == 'Show Income' ? selectedIncomeLabels.length : selectedExpenseLabels.length} selected',
-                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            const Icon(Icons.arrow_drop_down, size: 18, color: Colors.white70),
+                            Icon(Icons.arrow_drop_down, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                           ],
                         ),
                       ),
@@ -606,22 +648,22 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF2D1B4E),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.white12),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.swap_vert_rounded, size: 16, color: Color(0xFFA855F7)),
+                          Icon(Icons.swap_vert_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
                                 value: chartDisplayMode,
-                                dropdownColor: const Color(0xFF2D1B4E),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 items: const [
                                   DropdownMenuItem(value: 'Show Expenses', child: Text('Expense')),
                                   DropdownMenuItem(value: 'Show Income', child: Text('Income')),
@@ -650,16 +692,16 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF2D1B4E),
+                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white12),
+                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'FIXED VS DISCRETIONARY',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white70, letterSpacing: 0.5),
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), letterSpacing: 0.5),
                         ),
                         const SizedBox(height: 8),
                         Row(
@@ -715,11 +757,11 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       ),
                       child: Container(
                         padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF1E1333),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.info_outline_rounded, size: 13, color: Colors.white54),
+                        child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                       ),
                     ),
                   ),
@@ -735,7 +777,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A332A),
+                          color: _isZaznamityMode ? const Color(0xFF1A332A) : const Color(0xFFECFDF5),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: const Color(0xFF047857).withValues(alpha: 0.4)),
                         ),
@@ -778,7 +820,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           ),
                           child: Container(
                             padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(color: Color(0xFF1E1333), shape: BoxShape.circle),
+                            decoration: BoxDecoration(color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0), shape: BoxShape.circle),
                             child: const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFF34D399)),
                           ),
                         ),
@@ -792,7 +834,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF3B1F23),
+                          color: _isZaznamityMode ? const Color(0xFF3B1F23) : const Color(0xFFFEF2F2),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: const Color(0xFFB91C1C).withValues(alpha: 0.4)),
                         ),
@@ -835,7 +877,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           ),
                           child: Container(
                             padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(color: Color(0xFF1E1333), shape: BoxShape.circle),
+                            decoration: BoxDecoration(color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0), shape: BoxShape.circle),
                             child: const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFFF87171)),
                           ),
                         ),
@@ -849,8 +891,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               Container(
                 height: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2D1B4E),
-                  border: Border.all(color: Colors.white12),
+                  color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -869,7 +911,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: chartType == 'Bar' ? Colors.white : Colors.white70,
+                              color: chartType == 'Bar' ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                             ),
                           ),
                         ),
@@ -888,7 +930,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: chartType == 'Donut' ? Colors.white : Colors.white70,
+                              color: chartType == 'Donut' ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                             ),
                           ),
                         ),
@@ -908,7 +950,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: chartType == 'Treemap' ? Colors.white : Colors.white70,
+                              color: chartType == 'Treemap' ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                             ),
                           ),
                         ),
@@ -920,10 +962,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               const SizedBox(height: 20),
 
               _cachedSortedEntries.isEmpty
-                  ? const SizedBox(
+                  ? SizedBox(
                       height: 150,
                       child: Center(
-                        child: Text('No data available for selected filters.', style: TextStyle(fontSize: 12, color: Colors.white54)),
+                        child: Text('No data available for selected filters.', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                       ),
                     )
                   : chartType == 'Bar'
@@ -948,10 +990,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                           Text(
                                             entry.key,
                                             textAlign: TextAlign.right,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 12,
                                               fontWeight: FontWeight.bold,
-                                              color: Colors.white,
+                                              color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                                             ),
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -960,9 +1002,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                             children: [
                                               Text(
                                                 '${percentageShare.toStringAsFixed(1)}%',
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   fontSize: 10,
-                                                  color: Colors.white70,
+                                                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                                                   fontWeight: FontWeight.w500,
                                                 ),
                                               ),
@@ -1012,10 +1054,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                   child: Text(
                                                     '\$${entry.value.toStringAsFixed(2)}',
                                                     textAlign: TextAlign.right,
-                                                    style: const TextStyle(
+                                                    style: TextStyle(
                                                       fontSize: 12,
                                                       fontWeight: FontWeight.bold,
-                                                      color: Colors.white,
+                                                      color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                                                     ),
                                                   ),
                                                 ),
@@ -1034,14 +1076,14 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                               margin: const EdgeInsets.only(left: 97),
                               child: Column(
                                 children: [
-                                  Container(height: 1, color: Colors.white12),
+                                  Container(height: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                                   const SizedBox(height: 6),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      const Text('\$0', style: TextStyle(fontSize: 10, color: Colors.white54)),
-                                      Text('\$${(_cachedMaxChartAmount * 0.5).toStringAsFixed(0)}', style: const TextStyle(fontSize: 10, color: Colors.white54)),
-                                      Text('\$${_cachedMaxChartAmount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 10, color: Colors.white54)),
+                                      Text('\$0', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                      Text('\$${(_cachedMaxChartAmount * 0.5).toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                      Text('\$${_cachedMaxChartAmount.toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                                     ],
                                   ),
                                 ],
@@ -1055,9 +1097,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                 Container(
                                   height: 240,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF2D1B4E),
+                                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.white12),
+                                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                                   ),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
@@ -1078,9 +1120,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF2D1B4E),
+                                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                                         borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.white12),
+                                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -1096,11 +1138,11 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                           const SizedBox(width: 6),
                                           Text(
                                             '${entry.key}: ',
-                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
                                           ),
                                           Text(
                                             '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
-                                            style: const TextStyle(fontSize: 11, color: Colors.white70),
+                                            style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                           ),
                                           Text(
                                             '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
@@ -1155,7 +1197,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                           titleStyle: TextStyle(
                                             fontSize: isTouched ? 12 : 10,
                                             fontWeight: FontWeight.bold,
-                                            color: Colors.white,
+                                            color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                                           ),
                                         );
                                       }),
@@ -1176,9 +1218,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF2D1B4E),
+                                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                                         borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.white12),
+                                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -1194,11 +1236,11 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                           const SizedBox(width: 6),
                                           Text(
                                             '${entry.key}: ',
-                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
                                           ),
                                           Text(
                                             '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
-                                            style: const TextStyle(fontSize: 11, color: Colors.white70),
+                                            style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                           ),
                                           Text(
                                             '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
@@ -1245,7 +1287,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: node.color.withValues(alpha: 0.35),
-                  border: Border.all(color: Colors.white24, width: 1.5),
+                  border: Border.all(color: _isZaznamityMode ? Colors.white24 : const Color(0xFFCBD5E1), width: 1.5),
                 ),
                 child: fits
                     ? Column(
@@ -1254,10 +1296,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         children: [
                           Text(
                             node.label,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1265,10 +1307,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           const SizedBox(height: 2),
                           Text(
                             '${node.percentage.toStringAsFixed(1)}%',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white70,
+                              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1298,16 +1340,16 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: const Color(0xFF2D1B4E),
+              backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+              title: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
               content: SizedBox(
                 width: 300,
                 child: ListView(
                   shrinkWrap: true,
                   children: [
                     CheckboxListTile(
-                      title: const Text('Select All', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                      title: Text('Select All', style: TextStyle(fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
                       value: tempSelected.length == allLabels.length,
                       activeColor: const Color(0xFFA855F7),
                       onChanged: (val) {
@@ -1320,10 +1362,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         });
                       },
                     ),
-                    const Divider(color: Colors.white12),
+                    Divider(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                     ...allLabels.map((label) {
                       return CheckboxListTile(
-                        title: Text(label.name, style: const TextStyle(color: Colors.white70)),
+                        title: Text(label.name, style: TextStyle(color: _isZaznamityMode ? Colors.white70 : const Color(0xFF475569))),
                         value: tempSelected.contains(label.id),
                         activeColor: const Color(0xFFA855F7),
                         onChanged: (val) {
@@ -1343,7 +1385,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                  child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),

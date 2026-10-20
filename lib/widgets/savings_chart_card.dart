@@ -709,7 +709,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const Text(
-                                'Moving average:',
+                                'Moving average (days):',
                                 style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
                               ),
                               const SizedBox(height: 2),
@@ -718,7 +718,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                                 child: Row(
                                   children: [
                                     ChoiceChip(
-                                      label: const Text('30-Day', style: TextStyle(fontSize: 9.5)),
+                                      label: const Text('30', style: TextStyle(fontSize: 9.5)),
                                       selected: _maFilter == SavingsMovingAverageFilter.days30,
                                       showCheckmark: false,
                                       onSelected: (selected) {
@@ -732,7 +732,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                                     ),
                                     const SizedBox(width: 4),
                                     ChoiceChip(
-                                      label: const Text('90-Day', style: TextStyle(fontSize: 9.5)),
+                                      label: const Text('90', style: TextStyle(fontSize: 9.5)),
                                       selected: _maFilter == SavingsMovingAverageFilter.days90,
                                       showCheckmark: false,
                                       onSelected: (selected) {

@@ -1,5 +1,3 @@
-// ignore_for_file: unnecessary_this
-
 class LiabilityModel {
   final int? id;
   final String name;
@@ -9,6 +7,7 @@ class LiabilityModel {
   final int dueDay;
   final String owner;
   final String? lastProcessedDate;
+  final String? projectionEndDate;
 
   LiabilityModel({
     this.id,
@@ -19,6 +18,7 @@ class LiabilityModel {
     required this.dueDay,
     required this.owner,
     this.lastProcessedDate,
+    this.projectionEndDate,
   });
 
   Map<String, dynamic> toMap() {
@@ -31,6 +31,7 @@ class LiabilityModel {
       'due_day': dueDay,
       'owner': owner,
       'last_processed_date': lastProcessedDate,
+      'projection_end_date': projectionEndDate,
     };
   }
 
@@ -41,9 +42,10 @@ class LiabilityModel {
       remainingBalance: (map['remaining_balance'] as num?)?.toDouble() ?? 0.0,
       monthlyInstallment: (map['monthly_installment'] as num?)?.toDouble() ?? 0.0,
       interestRate: (map['interest_rate'] as num?)?.toDouble() ?? 0.0,
-      dueDay: (map['due_day'] as int?) ?? 1,
+      dueDay: map['due_day'] as int? ?? 1,
       owner: map['owner'] as String? ?? 'Shared',
       lastProcessedDate: map['last_processed_date'] as String?,
+      projectionEndDate: map['projection_end_date'] as String?,
     );
   }
 }

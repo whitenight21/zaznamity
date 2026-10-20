@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 7, // 🚀 Bumped to version 7 to patch the missing columns
+      version: 8,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -80,7 +80,8 @@ class DatabaseHelper {
         interest_rate REAL,
         due_day INTEGER,
         owner TEXT,
-        last_processed_date TEXT
+        last_processed_date TEXT,
+        projection_end_date TEXT
       )
     ''');
 
@@ -158,9 +159,14 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE liabilities ADD COLUMN last_processed_date TEXT;');
       } catch (_) {}
     }
+    if (oldVersion < 8) {
+      try {
+        await db.execute('ALTER TABLE liabilities ADD COLUMN projection_end_date TEXT;');
+      } catch (_) {}
+    }
   }
 
-// Liabilities Methods
+  // Liabilities Methods
   Future<List<LiabilityModel>> getLiabilities() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('liabilities');
@@ -176,8 +182,9 @@ class DatabaseHelper {
     }
     
     map.remove('lastProcessedDate');
+    map.remove('projectionEndDate');
+    map['projection_end_date'] = liability.projectionEndDate;
 
-    // 🚀 Automatically ensure dedicated label "[Name (L)]" exists in labels table
     final labelName = '${liability.name} (L)';
     final existingLabel = await db.query('labels', where: 'name = ?', whereArgs: [labelName]);
     if (existingLabel.isEmpty) {
@@ -188,6 +195,23 @@ class DatabaseHelper {
       );
     }
 
+    final existingLiability = await db.query(
+      'liabilities',
+      where: 'name = ? AND owner = ?',
+      whereArgs: [liability.name, liability.owner],
+    );
+
+    if (existingLiability.isNotEmpty) {
+      int existingId = existingLiability.first['id'] as int;
+      await db.update(
+        'liabilities',
+        map,
+        where: 'id = ?',
+        whereArgs: [existingId],
+      );
+      return existingId;
+    }
+
     return await db.insert(
       'liabilities',
       map,
@@ -195,16 +219,41 @@ class DatabaseHelper {
     );
   }
 
-  Future<int> deleteLiability(int id) async {
+  Future<int> deleteLiability(int id, String liabilityName) async {
     final db = await database;
-    return await db.delete(
+
+    await db.delete(
       'liabilities',
       where: 'id = ?',
       whereArgs: [id],
     );
+
+    await db.delete(
+      'transactions',
+      where: 'description LIKE ? OR description LIKE ?',
+      whereArgs: ['%Liability: $liabilityName%', '%Liability Payment: $liabilityName%'],
+    );
+
+    final labelName = '$liabilityName (L)';
+    final labelResult = await db.query('labels', where: 'name = ?', whereArgs: [labelName]);
+    if (labelResult.isNotEmpty) {
+      int labelId = labelResult.first['id'] as int;
+      await db.delete('transactions', where: 'label_id = ?', whereArgs: [labelId]);
+      await db.delete('labels', where: 'id = ?', whereArgs: [labelId]);
+    }
+
+    return id;
   }
 
-  /// Cleans up pending/future transactions tied to a deleted liability label or description pattern
+  Future<int> deleteTransactionsByLabelId(int labelId) async {
+    final db = await database;
+    return await db.delete(
+      'transactions',
+      where: 'label_id = ?',
+      whereArgs: [labelId],
+    );
+  }
+
   Future<void> deleteTransactionsByLabelOrDescription(String labelOrName) async {
     final db = await database;
     
@@ -223,11 +272,10 @@ class DatabaseHelper {
       );
     }
 
-    // Also clean up by description fallback matching
     await db.delete(
       'transactions',
-      where: 'description LIKE ? AND is_confirmed = 0',
-      whereArgs: ['%Liability Payment: $labelOrName%'],
+      where: '(description LIKE ? OR description LIKE ?) AND is_confirmed = 0',
+      whereArgs: ['%Liability: $labelOrName%', '%Liability Payment: $labelOrName%'],
     );
   }
 
@@ -235,7 +283,6 @@ class DatabaseHelper {
     final db = await database;
     final liabilities = await db.query('liabilities');
     final now = DateTime.now();
-    final oneYearFromNow = DateTime(now.year + 1, now.month, now.day);
 
     for (var row in liabilities) {
       int id = row['id'] as int;
@@ -245,6 +292,11 @@ class DatabaseHelper {
       int dueDay = (row['due_day'] as int?) ?? 1;
       String owner = row['owner'] as String? ?? 'Shared';
       String name = row['name'] as String? ?? 'Loan';
+      
+      String? projectionEndDateStr = row['projection_end_date'] as String?;
+      DateTime projectionEndDate = projectionEndDateStr != null && projectionEndDateStr.isNotEmpty
+          ? (DateTime.tryParse(projectionEndDateStr) ?? DateTime(now.year + 1, now.month, now.day))
+          : DateTime(now.year + 1, now.month, now.day);
       
       String? lastProcessedStr = row['last_processed_date'] as String?;
       
@@ -259,7 +311,7 @@ class DatabaseHelper {
 
       bool updated = false;
 
-      while (!nextDue.isAfter(oneYearFromNow)) {
+      while (!nextDue.isAfter(projectionEndDate)) {
         bool isPastOrPresent = !nextDue.isAfter(now);
 
         if (isPastOrPresent) {
@@ -272,14 +324,14 @@ class DatabaseHelper {
           if (balance < 0) balance = 0.0;
         }
 
+        // Strict duplicate protection checking both formats across exact timestamps
         final existingTx = await db.query(
           'transactions',
-          where: 'description = ? AND created_at = ?',
-          whereArgs: ['Liability Payment: $name', nextDue.toIso8601String()],
+          where: '(description = ? OR description = ? OR description = ?) AND created_at = ?',
+          whereArgs: ['Liability: $name', 'Liability Payment: $name', 'Liability Payment: ${name.trim()}', nextDue.toIso8601String()],
         );
 
         if (existingTx.isEmpty) {
-          // 🚀 Assign liability payment transactions directly to the dedicated "[Name (L)]" label
           final labelName = '$name (L)';
           final labelResult = await db.query('labels', where: 'name = ?', whereArgs: [labelName]);
           int targetLabelId = 1;
@@ -291,7 +343,7 @@ class DatabaseHelper {
 
           final paymentTx = TransactionModel(
             createdAt: nextDue.toIso8601String(),
-            description: 'Liability Payment: $name',
+            description: 'Liability: $name',
             amount: installment,
             type: 'expense',
             pool: 'checking', 
@@ -327,7 +379,54 @@ class DatabaseHelper {
     }
   }
 
-// labels Methods
+  Future<void> updateExistingLiabilityTransactions(int liabilityId, String oldName, LiabilityModel newLiability) async {
+    final db = await database;
+    
+    final existingTxs = await db.query(
+      'transactions',
+      where: 'description = ? AND is_confirmed = 0',
+      whereArgs: ['Liability: $oldName'],
+    );
+
+    for (var txMap in existingTxs) {
+      int txId = txMap['id'] as int;
+      await db.update(
+        'transactions',
+        {
+          'description': 'Liability: ${newLiability.name}',
+          'amount': newLiability.monthlyInstallment,
+          'owner': newLiability.owner,
+        },
+        where: 'id = ?',
+        whereArgs: [txId],
+      );
+    }
+
+    final oldLabelName = '$oldName (L)';
+    final newLabelName = '${newLiability.name} (L)';
+
+    final oldLabelResult = await db.query('labels', where: 'name = ?', whereArgs: [oldLabelName]);
+    if (oldLabelResult.isNotEmpty) {
+      int oldLabelId = oldLabelResult.first['id'] as int;
+      
+      final newLabelResult = await db.query('labels', where: 'name = ?', whereArgs: [newLabelName]);
+      int newLabelId;
+      if (newLabelResult.isNotEmpty) {
+        newLabelId = newLabelResult.first['id'] as int;
+      } else {
+        newLabelId = await db.insert('labels', {'name': newLabelName, 'color': '#8B5CF6'});
+      }
+
+      await db.update(
+        'transactions',
+        {'label_id': newLabelId},
+        where: 'label_id = ?',
+        whereArgs: [oldLabelId],
+      );
+    }
+  }
+
+  // Labels Methods
   Future<List<LabelModel>> getLabels() async {
     final db = await instance.database;
     final result = await db.query('labels', orderBy: 'name ASC');
@@ -363,7 +462,7 @@ class DatabaseHelper {
     );
   }
 
-// budgets Methods
+  // Budgets Methods
   Future<List<Map<String, dynamic>>> getBudgets() async {
     final db = await instance.database;
     return await db.rawQuery('''
@@ -449,6 +548,7 @@ class DatabaseHelper {
     }
   }
 
+  // Transactions Methods
   Future<List<TransactionModel>> getTransactions() async {
     final db = await instance.database;
     final result = await db.rawQuery('''

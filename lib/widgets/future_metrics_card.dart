@@ -84,6 +84,23 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     return format.format(amount);
   }
 
+  String _getLastZaznamDateString() {
+    if (widget.transactions.isEmpty) return 'N/A';
+    
+    DateTime? latestDate;
+    for (var tx in widget.transactions) {
+      final dt = DateTime.tryParse(tx.createdAt);
+      if (dt != null) {
+        if (latestDate == null || dt.isAfter(latestDate)) {
+          latestDate = dt;
+        }
+      }
+    }
+    
+    if (latestDate == null) return 'N/A';
+    return DateFormat('yyyy-MM-dd').format(latestDate);
+  }
+
   Map<String, double> _calculateBurnAndSavingsRate() {
     double totalIncome = 0;
     double totalExpense = 0;
@@ -120,6 +137,9 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
   }
 
   void _showMetricInfo(BuildContext context, String title, String explanation) {
+    final lastDateStr = _getLastZaznamDateString();
+    final fullExplanation = '$explanation\n\nBy default based on all Zaznams until last Zaznam on $lastDateStr.';
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -133,7 +153,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
           ],
         ),
         content: Text(
-          explanation,
+          fullExplanation,
           style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.4),
         ),
         actions: [

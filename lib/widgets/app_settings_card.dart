@@ -36,12 +36,14 @@ class AppSettingsCard extends StatefulWidget {
   final Function(List<String>, List<String>) onSaveNavItems;
   final Function(List<CardConfig>) onSaveCardOrder;
   final Function(String) onAddLabel;
-  final Function(int, String) onUpdateLabel;
+  final Function(int, String, String) onUpdateLabel; // Updated to include hex color
   final Function(int) onDeleteLabel;
   final VoidCallback? onImportCsv;
   final Function(String, {int? year, int? month}) onDeleteBulkTransactions;
+  final Function(int)? onDeleteTransactionsByLabel; 
   final Function(String, String) onBulkUpdateTransactionsLabel; 
   final Function(String, String, String) onBulkUpdateTransactionsPool;
+  final VoidCallback? onLiabilityUpdated;
   final bool isWide;
   final VoidCallback? onToggleWidth;
   final VoidCallback? onHide;
@@ -69,8 +71,10 @@ class AppSettingsCard extends StatefulWidget {
     required this.onDeleteLabel,
     this.onImportCsv,
     required this.onDeleteBulkTransactions,
+    this.onDeleteTransactionsByLabel,
     required this.onBulkUpdateTransactionsLabel,
     required this.onBulkUpdateTransactionsPool,
+    this.onLiabilityUpdated,
     required this.isWide,
     this.onToggleWidth,
     this.onHide,
@@ -131,6 +135,20 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     {'code': 'CHF', 'name': '🇨🇭 Swiss Franc (CHF)'},
     {'code': 'HKD', 'name': '🇭🇰 Hong Kong Dollar (HK\$)'},
     {'code': 'SGD', 'name': '🇸🇬 Singapore Dollar (S\$)'},
+  ];
+
+  // Preset Color Palette Options for Labels
+  final List<String> _labelPalette = [
+    '#582F95', // Default Deep Purple
+    '#A855F7', // Vivid Purple
+    '#3B82F6', // Blue
+    '#06B6D4', // Cyan
+    '#10B981', // Emerald Green
+    '#F59E0B', // Amber
+    '#EF4444', // Red
+    '#EC4899', // Pink
+    '#8B5CF6', // Violet
+    '#64748B', // Slate Gray
   ];
   
   final TextEditingController _newLabelController = TextEditingController();
@@ -336,29 +354,116 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     }).toList();
   }
 
+  Color _parseColor(String hexStr) {
+    try {
+      String cleanHex = hexStr.replaceAll('#', '');
+      if (cleanHex.length == 6) {
+        cleanHex = 'FF$cleanHex';
+      }
+      return Color(int.parse(cleanHex, radix: 16));
+    } catch (_) {
+      return const Color(0xFF582F95);
+    }
+  }
+
   void _editLabelDialog(LabelModel label) {
     final controller = TextEditingController(text: label.name);
+    String selectedColor = label.color.isNotEmpty ? label.color : '#582F95';
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit Label', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'Label Name'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                widget.onUpdateLabel(label.id, controller.text.trim());
-              }
-              Navigator.pop(ctx);
-            },
-            child: const Text('Save'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Edit Label',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+            ),
           ),
-        ],
+          content: SizedBox(
+            width: 360,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: controller,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 13),
+                    decoration: const InputDecoration(labelText: 'Label Name', isDense: true, border: OutlineInputBorder()),
+                    autofocus: true,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Select Label Color Palette',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _labelPalette.map((hexCode) {
+                      final isSelected = selectedColor.toUpperCase() == hexCode.toUpperCase();
+                      return GestureDetector(
+                        onTap: () => setDialogState(() => selectedColor = hexCode),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: _parseColor(hexCode),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected ? Colors.white : Colors.transparent,
+                              width: 2.5,
+                            ),
+                            boxShadow: [
+                              if (isSelected)
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                            ],
+                          ),
+                          child: isSelected
+                              ? const Center(child: Icon(Icons.check, size: 16, color: Colors.white))
+                              : null,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                if (controller.text.trim().isNotEmpty) {
+                  widget.onUpdateLabel(label.id, controller.text.trim(), selectedColor);
+                }
+                Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -370,6 +475,10 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     final aprController = TextEditingController(text: liability.interestRate.toString());
     final dueDayController = TextEditingController(text: liability.dueDay.toString());
     String selectedOwner = _owners.contains(liability.owner) ? liability.owner : (_owners.isNotEmpty ? _owners.first : 'Shared');
+    
+    DateTime selectedProjectionDate = liability.projectionEndDate != null 
+        ? (DateTime.tryParse(liability.projectionEndDate!) ?? DateTime.now().add(const Duration(days: 365)))
+        : DateTime.now().add(const Duration(days: 365));
 
     showDialog(
       context: context,
@@ -436,6 +545,30 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       if (val != null) setStateModal(() => selectedOwner = val);
                     },
                   ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Project Until: ${DateFormat('yyyy-MM-dd').format(selectedProjectionDate)}',
+                        style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: selectedProjectionDate,
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime(2045),
+                          );
+                          if (picked != null) {
+                            setStateModal(() => selectedProjectionDate = picked);
+                          }
+                        },
+                        child: Text('Reproject Date', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -451,26 +584,51 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 foregroundColor: Colors.white,
               ),
               onPressed: () async {
-                final updatedLiability = LiabilityModel(
-                  id: liability.id,
-                  name: nameController.text.trim(),
-                  remainingBalance: double.tryParse(balanceController.text) ?? liability.remainingBalance,
-                  monthlyInstallment: double.tryParse(installmentController.text) ?? liability.monthlyInstallment,
-                  interestRate: double.tryParse(aprController.text) ?? liability.interestRate,
-                  dueDay: int.tryParse(dueDayController.text) ?? liability.dueDay,
-                  owner: selectedOwner,
-                  lastProcessedDate: liability.lastProcessedDate,
-                );
+                try {
+                  final updatedLiability = LiabilityModel(
+                    id: liability.id,
+                    name: nameController.text.trim(),
+                    remainingBalance: double.tryParse(balanceController.text) ?? liability.remainingBalance,
+                    monthlyInstallment: double.tryParse(installmentController.text) ?? liability.monthlyInstallment,
+                    interestRate: double.tryParse(aprController.text) ?? liability.interestRate,
+                    dueDay: int.tryParse(dueDayController.text) ?? liability.dueDay,
+                    owner: selectedOwner,
+                    lastProcessedDate: liability.lastProcessedDate,
+                    projectionEndDate: selectedProjectionDate.toIso8601String(),
+                  );
 
-                await DatabaseHelper.instance.insertLiability(updatedLiability);
-                await DatabaseHelper.instance.checkAndApplyAutomaticLiabilityPayments();
-                await _loadLiabilities();
+                  // Clear previous unconfirmed projected payments for this liability before reprojection
+                  await DatabaseHelper.instance.deleteTransactionsByLabelOrDescription(liability.name);
 
-                if (!context.mounted) return;
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Liability updated successfully')));
+                  await DatabaseHelper.instance.insertLiability(updatedLiability);
+                  
+                  await DatabaseHelper.instance.updateExistingLiabilityTransactions(
+                    liability.id!, 
+                    liability.name, 
+                    updatedLiability,
+                  );
+
+                  await DatabaseHelper.instance.checkAndApplyAutomaticLiabilityPayments();
+                  
+                  await _loadLiabilities();
+
+                  if (widget.onLiabilityUpdated != null) {
+                    widget.onLiabilityUpdated!();
+                  }
+
+                  if (!context.mounted) return;
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Liability updated and payments reprojected successfully'))
+                  );
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error updating liability: $e'))
+                  );
+                }
               },
-              child: const Text('Save Changes'),
+              child: const Text('Save Changes & Reproject'),
             ),
           ],
         ),
@@ -1108,84 +1266,142 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     int selectedMonth = DateTime.now().month;
     String mode = 'month';
 
+    int selectedLabelId = widget.labels.isNotEmpty ? widget.labels.first.id : -1;
+    String selectedLabelName = widget.labels.isNotEmpty ? widget.labels.first.name : '';
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setStateModal) => AlertDialog(
-          title: const Text('Bulk Delete Transactions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Select scope for deletion:', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-              const SizedBox(height: 12),
-              RadioListTile<String>(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('By Specific Month', style: TextStyle(fontSize: 13)),
-                value: 'month',
-                groupValue: mode,
-                onChanged: (val) => setStateModal(() => mode = val!),
+        builder: (context, setStateModal) {
+          return AlertDialog(
+            backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text(
+              'Delete Zaznams Configurator',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
               ),
-              RadioListTile<String>(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('By Specific Year', style: TextStyle(fontSize: 13)),
-                value: 'year',
-                groupValue: mode,
-                onChanged: (val) => setStateModal(() => mode = val!),
-              ),
-              RadioListTile<String>(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('All Transactions (Wipe All)', style: TextStyle(fontSize: 13, color: Color(0xFFDC2626))),
-                value: 'all',
-                groupValue: mode,
-                onChanged: (val) => setStateModal(() => mode = val!),
-              ),
-              if (mode == 'month' || mode == 'year') ...[
-                const SizedBox(height: 12),
-                Row(
+            ),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        initialValue: selectedYear,
-                        decoration: const InputDecoration(labelText: 'Year', isDense: true),
-                        items: List.generate(11, (i) => 2020 + i).map((y) => DropdownMenuItem(value: y, child: Text('$y'))).toList(),
-                        onChanged: (val) => setStateModal(() => selectedYear = val ?? selectedYear),
-                      ),
+                    Text('Select scope for deletion:', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                    const SizedBox(height: 8),
+                    RadioListTile<String>(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('By Specific Month', style: TextStyle(fontSize: 13)),
+                      value: 'month',
+                      groupValue: mode,
+                      onChanged: (val) => setStateModal(() => mode = val!),
                     ),
-                    if (mode == 'month') ...[
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          initialValue: selectedMonth,
-                          decoration: const InputDecoration(labelText: 'Month', isDense: true),
-                          items: List.generate(12, (i) => i + 1).map((m) => DropdownMenuItem(value: m, child: Text('$m'))).toList(),
-                          onChanged: (val) => setStateModal(() => selectedMonth = val ?? selectedMonth),
-                        ),
+                    RadioListTile<String>(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('By Specific Year', style: TextStyle(fontSize: 13)),
+                      value: 'year',
+                      groupValue: mode,
+                      onChanged: (val) => setStateModal(() => mode = val!),
+                    ),
+                    RadioListTile<String>(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('By Specific Label', style: TextStyle(fontSize: 13)),
+                      value: 'label',
+                      groupValue: mode,
+                      onChanged: (val) => setStateModal(() => mode = val!),
+                    ),
+                    RadioListTile<String>(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('All Transactions (Wipe All)', style: TextStyle(fontSize: 13, color: Color(0xFFDC2626))),
+                      value: 'all',
+                      groupValue: mode,
+                      onChanged: (val) => setStateModal(() => mode = val!),
+                    ),
+                    if (mode == 'month' || mode == 'year') ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<int>(
+                              initialValue: selectedYear,
+                              decoration: const InputDecoration(labelText: 'Year', isDense: true, border: OutlineInputBorder()),
+                              items: List.generate(11, (i) => 2020 + i).map((y) => DropdownMenuItem(value: y, child: Text('$y'))).toList(),
+                              onChanged: (val) => setStateModal(() => selectedYear = val ?? selectedYear),
+                            ),
+                          ),
+                          if (mode == 'month') ...[
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: DropdownButtonFormField<int>(
+                                initialValue: selectedMonth,
+                                decoration: const InputDecoration(labelText: 'Month', isDense: true, border: OutlineInputBorder()),
+                                items: List.generate(12, (i) => i + 1).map((m) => DropdownMenuItem(value: m, child: Text('$m'))).toList(),
+                                onChanged: (val) => setStateModal(() => selectedMonth = val ?? selectedMonth),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
+                    ],
+                    if (mode == 'label') ...[
+                      const SizedBox(height: 12),
+                      widget.labels.isEmpty
+                          ? Text('No labels available.', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white70 : Colors.black54))
+                          : DropdownButtonFormField<int>(
+                              initialValue: selectedLabelId,
+                              isExpanded: true,
+                              dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                              style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 13),
+                              decoration: const InputDecoration(labelText: 'Select Target Label', isDense: true, border: OutlineInputBorder()),
+                              items: widget.labels.map((l) {
+                                return DropdownMenuItem<int>(
+                                  value: l.id,
+                                  child: Text(l.name),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  selectedLabelId = val;
+                                  final match = widget.labels.firstWhere((l) => l.id == val);
+                                  selectedLabelName = match.name;
+                                }
+                              },
+                            ),
                     ],
                   ],
                 ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
-              onPressed: () {
-                Navigator.pop(ctx);
-                if (mode == 'month') {
-                  widget.onDeleteBulkTransactions('month', year: selectedYear, month: selectedMonth);
-                } else if (mode == 'year') {
-                  widget.onDeleteBulkTransactions('year', year: selectedYear);
-                } else {
-                  widget.onDeleteBulkTransactions('all');
-                }
-              },
-              child: const Text('Delete'),
+              ),
             ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  if (mode == 'month') {
+                    widget.onDeleteBulkTransactions('month', year: selectedYear, month: selectedMonth);
+                  } else if (mode == 'year') {
+                    widget.onDeleteBulkTransactions('year', year: selectedYear);
+                  } else if (mode == 'label') {
+                    if (widget.onDeleteTransactionsByLabel != null) {
+                      widget.onDeleteTransactionsByLabel!(selectedLabelId);
+                    }
+                  } else {
+                    widget.onDeleteBulkTransactions('all');
+                  }
+                },
+                child: const Text('Delete'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1463,7 +1679,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   children: [
                     _buildSubSectionCard(
                       title: 'Zaznamity Theme',
-                      subtitle: 'Toggle themes: White (light) or Zaznamity (dark)',
+                      subtitle: 'Toggle: White (light) or Zaznamity (dark)',
                       children: [
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
@@ -1617,7 +1833,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             children: [
                               Icon(Icons.grid_view_rounded, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
                               const SizedBox(width: 8),
-                              Text('Zaznamity Dashboard Snapshot (Fixed)', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), fontWeight: FontWeight.w500)),
+                              Text('Dashboard Snapshot (Fixed)', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), fontWeight: FontWeight.w500)),
                             ],
                           ),
                         ),
@@ -1735,7 +1951,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     ),
                     _buildSubSectionCard(
                       title: 'Liabilities',
-                      subtitle: 'Edit remaining balances, installments, interest rates, and due dates',
+                      subtitle: 'Edit remaining balances, installments, interest rates, due dates, and projection end dates',
                       children: [
                         Text(
                           'Active Liabilities & Loans',
@@ -1787,7 +2003,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                         color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF64748B),
                                       ),
                                       onPressed: () => _showEditLiabilityDialog(item),
-                                      tooltip: 'Edit Liability Parameters',
+                                      tooltip: 'Edit Liability Parameters & Reproject',
                                     ),
                                   );
                                 },
@@ -1950,12 +2166,15 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       subtitle: 'Data management & bulk operations',
                       children: [
                         Text('Zaznams Management - DANGER ZONE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                        const SizedBox(height: 4),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
-                          onPressed: _showBulkDeleteDialog,
-                          icon: const Icon(Icons.delete_sweep, size: 16),
-                          label: const Text('Delete Zaznams Configurator', style: TextStyle(fontSize: 12)),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
+                            onPressed: _showBulkDeleteDialog,
+                            icon: const Icon(Icons.delete_sweep, size: 16),
+                            label: const Text('Delete Zaznams Configurator', style: TextStyle(fontSize: 12)),
+                          ),
                         ),
                       ],
                     ),
@@ -2073,7 +2292,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     ),
                     _buildSubSectionCard(
                       title: 'Labels Management',
-                      subtitle: 'Create, edit, delete, and bulk reassign Zaznam Labels',
+                      subtitle: 'Create, edit color palettes, delete, and bulk reassign Zaznam Labels',
                       children: [
                         Text('Add & Manage Individual Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                         const SizedBox(height: 6),
@@ -2111,14 +2330,29 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             itemCount: widget.labels.length,
                             itemBuilder: (context, index) {
                               final label = widget.labels[index];
+                              final labelColor = _parseColor(label.color);
                               return ListTile(
                                 contentPadding: EdgeInsets.zero,
+                                leading: Container(
+                                  width: 16,
+                                  height: 16,
+                                  decoration: BoxDecoration(
+                                    color: labelColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
                                 title: Text(label.name, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     IconButton(
+                                      icon: Icon(Icons.palette_outlined, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                      tooltip: 'Change Color Palette',
+                                      onPressed: () => _editLabelDialog(label),
+                                    ),
+                                    IconButton(
                                       icon: Icon(Icons.edit, size: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                      tooltip: 'Edit Label Name',
                                       onPressed: () => _editLabelDialog(label),
                                     ),
                                     IconButton(
