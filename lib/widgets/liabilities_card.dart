@@ -377,16 +377,7 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
           padding: const EdgeInsets.all(16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xFF3B1E63),
-                      Color(0xFF160D25),
-                      Color(0xFF000000),
-                    ],
-                    stops: [0.0, 0.6, 1.0],
-                  ),
+                  color: Colors.black,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: const Color(0xFF582F95).withValues(alpha: 0.5),

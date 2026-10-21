@@ -111,7 +111,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   String _calendarStartDay = 'Monday';
 
   bool _titleCardVisible = true;
-  final TextEditingController _titleCardMessageController = TextEditingController();
 
   final Map<String, bool> _multiLabelFixedCategories = {};
 
@@ -120,6 +119,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   final Map<String, bool> _poolsTrendsVisibility = {};
 
   bool _budgetRolloverEnabled = false;
+  bool _excludeTransfersFromInsights = true;
 
   List<File> _savedReportsList = [];
   List<LiabilityModel> _liabilitiesList = [];
@@ -188,7 +188,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
   @override
   void dispose() {
-    _titleCardMessageController.dispose();
     _newLabelController.dispose();
     _pinController.dispose();
     super.dispose();
@@ -226,12 +225,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       _calendarStartDay = prefs.getString('calendarStartDay') ?? 'Monday';
 
       _titleCardVisible = prefs.getBool('titleCardVisible') ?? true;
-      final savedMsg = prefs.getString('titleCardCustomMessage') ?? prefs.getString('custom_display_name');
-      if (savedMsg != null && savedMsg.isNotEmpty) {
-        _titleCardMessageController.text = savedMsg;
-      } else {
-        _titleCardMessageController.text = _owners.isNotEmpty ? _owners.first : 'Mathias';
-      }
+      _excludeTransfersFromInsights = prefs.getBool('exclude_transfers_insights') ?? true;
 
       for (var label in widget.labels) {
         _multiLabelFixedCategories[label.name] = prefs.getBool('set_multilabel_fixed_${label.name}') ?? false;
@@ -1536,16 +1530,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
           padding: const EdgeInsets.all(16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xFF3B1E63),
-                      Color(0xFF160D25),
-                      Color(0xFF000000),
-                    ],
-                    stops: [0.0, 0.6, 1.0],
-                  ),
+                  color: Colors.black,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: const Color(0xFF582F95).withValues(alpha: 0.5),
@@ -1851,7 +1836,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   children: [
                     _buildSubSectionCard(
                       title: 'Welcome Card',
-                      subtitle: 'Toggle card visibility & custom display name',
+                      subtitle: 'Toggle card visibility',
                       children: [
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
@@ -1863,50 +1848,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             final prefs = await SharedPreferences.getInstance();
                             await prefs.setBool('titleCardVisible', val);
                           },
-                        ),
-                        const SizedBox(height: 12),
-                        Text('Custom Message / Display Name', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _titleCardMessageController,
-                                style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 13),
-                                decoration: const InputDecoration(
-                                  hintText: 'Enter name or message (e.g. Mathias)...',
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                                  isDense: true,
-                                ),
-                                onChanged: (val) async {
-                                  final prefs = await SharedPreferences.getInstance();
-                                  await prefs.setString('titleCardCustomMessage', val.trim());
-                                  await prefs.setString('custom_display_name', val.trim());
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              onPressed: () async {
-                                final prefs = await SharedPreferences.getInstance();
-                                await prefs.setString('titleCardCustomMessage', _titleCardMessageController.text.trim());
-                                await prefs.setString('custom_display_name', _titleCardMessageController.text.trim());
-                                await prefs.setBool('titleCardVisible', _titleCardVisible);
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Title card settings saved successfully!')),
-                                  );
-                                }
-                              },
-                              child: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                            ),
-                          ],
                         ),
                       ],
                     ),
@@ -2045,44 +1986,20 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       ],
                     ),
                     _buildSubSectionCard(
-                      title: 'Multi-Label Analytics',
-                      subtitle: 'Fixed vs discretionary category mappings',
+                      title: 'Transfers & Analytics',
+                      subtitle: 'Configure how internal pool-to-pool transfers affect insights',
                       children: [
-                        Text('Configure Fixed vs Discretionary Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                        const SizedBox(height: 4),
-                        Text('Check labels that should be categorized as Fixed expenses (unchecked are Discretionary):', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                        const SizedBox(height: 8),
-                        widget.labels.isEmpty
-                            ? Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                child: Text('No labels available. Add labels in the Organization group.', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8))),
-                              )
-                            : ConstrainedBox(
-                                constraints: const BoxConstraints(maxHeight: 200),
-                                child: ListView.builder(
-                                  shrinkWrap: true,
-                                  itemCount: widget.labels.length,
-                                  itemBuilder: (context, index) {
-                                    final label = widget.labels[index];
-                                    final isFixed = _multiLabelFixedCategories[label.name] ?? false;
-                                    return CheckboxListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      dense: true,
-                                      title: Text(label.name, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
-                                      subtitle: Text(isFixed ? 'Fixed Expense' : 'Discretionary Expense', style: TextStyle(fontSize: 10, color: isFixed ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)) : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)))),
-                                      value: isFixed,
-                                      onChanged: (val) async {
-                                        final newVal = val ?? false;
-                                        setState(() {
-                                          _multiLabelFixedCategories[label.name] = newVal;
-                                        });
-                                        final prefs = await SharedPreferences.getInstance();
-                                        await prefs.setBool('set_multilabel_fixed_${label.name}', newVal);
-                                      },
-                                    );
-                                  },
-                                ),
-                              ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('Exclude Transfers from Insights & Analytics', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                          subtitle: Text('Prevents internal transfers from skewing spending drivers and category charts', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                          value: _excludeTransfersFromInsights,
+                          onChanged: (val) async {
+                            setState(() => _excludeTransfersFromInsights = val);
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setBool('exclude_transfers_insights', val);
+                          },
+                        ),
                       ],
                     ),
                     _buildSubSectionCard(
@@ -2292,7 +2209,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     ),
                     _buildSubSectionCard(
                       title: 'Labels Management',
-                      subtitle: 'Create, edit color palettes, delete, and bulk reassign Zaznam Labels',
+                      subtitle: 'Create, edit color palettes, delete, bulk reassign, and configure Fixed vs Discretionary Labels',
                       children: [
                         Text('Add & Manage Individual Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                         const SizedBox(height: 6),
@@ -2365,6 +2282,42 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             },
                           ),
                         ),
+                        Divider(height: 24, color: _isZaznamityMode ? Colors.white24 : const Color(0xFFE2E8F0)),
+                        Text('Fixed vs Discretionary Labels Mapping', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                        const SizedBox(height: 4),
+                        Text('Check labels that should be categorized as Fixed expenses (unchecked are Discretionary):', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                        const SizedBox(height: 8),
+                        widget.labels.isEmpty
+                            ? Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                child: Text('No labels available.', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8))),
+                              )
+                            : ConstrainedBox(
+                                constraints: const BoxConstraints(maxHeight: 200),
+                                child: ListView.builder(
+                                  shrinkWrap: true,
+                                  itemCount: widget.labels.length,
+                                  itemBuilder: (context, index) {
+                                    final label = widget.labels[index];
+                                    final isFixed = _multiLabelFixedCategories[label.name] ?? false;
+                                    return CheckboxListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      dense: true,
+                                      title: Text(label.name, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                                      subtitle: Text(isFixed ? 'Fixed Expense' : 'Discretionary Expense', style: TextStyle(fontSize: 10, color: isFixed ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)) : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)))),
+                                      value: isFixed,
+                                      onChanged: (val) async {
+                                        final newVal = val ?? false;
+                                        setState(() {
+                                          _multiLabelFixedCategories[label.name] = newVal;
+                                        });
+                                        final prefs = await SharedPreferences.getInstance();
+                                        await prefs.setBool('set_multilabel_fixed_${label.name}', newVal);
+                                      },
+                                    );
+                                  },
+                                ),
+                              ),
                         Divider(height: 24, color: _isZaznamityMode ? Colors.white24 : const Color(0xFFE2E8F0)),
                         Text('Bulk Edit Zaznam Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                         const SizedBox(height: 4),
@@ -2700,7 +2653,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           'This feature is designed to help you import your financial data from other sources into Zaznamity with ease and efficiency.\n\n'
                           'INSTRUCTIONS : Before importing your data, please select in "Currency Preferences" your Primary Currency. Then proceed to importing your data.\n\n'
                           'After importing, please allow some time for data parsing - more Zaznams imported require more time to parse data.\n\n' 
-                          'Also, if you encounter a label or pool discrepency in your imported data, reassign errors with bulk actions in "Labels Management".',
+                          'If you encounter a label or pool discrepency in your imported data, reassign errors with bulk actions in settings.',
                           style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
                         ),
                         const SizedBox(height: 12),

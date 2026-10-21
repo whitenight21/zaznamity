@@ -5,9 +5,11 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
+import '../models/label.dart';
 
 class MonthlyCashflowTrendCard extends StatefulWidget {
   final List<TransactionModel> transactions;
+  final List<LabelModel> labels;
   final List<String> owners;
   final List<String> pools;
   final String? selectedOwner;
@@ -22,6 +24,7 @@ class MonthlyCashflowTrendCard extends StatefulWidget {
   const MonthlyCashflowTrendCard({
     super.key,
     required this.transactions,
+    this.labels = const [],
     required this.owners,
     required this.pools,
     this.selectedOwner,
@@ -41,6 +44,7 @@ class MonthlyCashflowTrendCard extends StatefulWidget {
 class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
   String _selectedTimeframe = 'All time';
   bool _showNetTrendLine = true;
+  bool _excludeTransfers = true;
 
   List<BarChartGroupData> _cachedBarGroups = [];
   List<FlSpot> _cachedNetSpots = [];
@@ -54,6 +58,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
   String? _lastOwner;
   String? _lastPool;
   String? _lastTimeframe;
+  bool? _lastExcludeTransfers;
 
   @override
   void initState() {
@@ -66,6 +71,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
     if (mounted) {
       setState(() {
         _selectedTimeframe = prefs.getString('set_cashFlow_range') ?? 'All time';
+        _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
       });
     }
   }
@@ -102,12 +108,21 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
     if (_lastTxLength == widget.transactions.length &&
         _lastOwner == widget.selectedOwner &&
         _lastPool == widget.selectedPool &&
-        _lastTimeframe == _selectedTimeframe) {
+        _lastTimeframe == _selectedTimeframe &&
+        _lastExcludeTransfers == _excludeTransfers) {
       return;
     }
 
     final filteredTxs = widget.transactions.where((tx) {
       if (tx.isConfirmed != 1) return false;
+
+      if (_excludeTransfers && widget.labels.isNotEmpty) {
+        final matchLbl = widget.labels.where((l) => l.id == tx.labelId).firstOrNull;
+        if (matchLbl != null && matchLbl.name.toLowerCase() == 'transfer') {
+          return false;
+        }
+      }
+
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && tx.owner != widget.selectedOwner) {
         return false;
       }
@@ -215,6 +230,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
     _lastOwner = widget.selectedOwner;
     _lastPool = widget.selectedPool;
     _lastTimeframe = _selectedTimeframe;
+    _lastExcludeTransfers = _excludeTransfers;
   }
 
   @override

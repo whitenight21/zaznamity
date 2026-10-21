@@ -33,6 +33,10 @@ class SmartInsightsCard extends StatefulWidget {
 
 class _SmartInsightsCardState extends State<SmartInsightsCard> {
   bool _isZaznamityMode = true;
+  bool _excludeTransfers = true;
+  String _primaryCurrency = 'USD';
+  String? _selectedOwner;
+  final Map<String, bool> _multiLabelFixedCategories = {};
 
   @override
   void initState() {
@@ -43,16 +47,59 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
+    final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    
+    final fixedMap = <String, bool>{};
+    for (var label in widget.labels) {
+      fixedMap[label.name] = prefs.getBool('set_multilabel_fixed_${label.name}') ?? false;
+    }
+
     if (mounted) {
       setState(() {
         _isZaznamityMode = (savedTheme == 'zaznamity');
+        _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
+        _primaryCurrency = primary;
+        _multiLabelFixedCategories.addAll(fixedMap);
       });
     }
   }
 
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': return '¥';
+      default: return '\$';
+    }
+  }
+
   String _formatCurrency(double amount) {
-    final format = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+    final symbol = _getCurrencySymbol(_primaryCurrency);
+    final format = NumberFormat.currency(symbol: symbol, decimalDigits: 2);
     return format.format(amount);
+  }
+
+  bool _isFixedExpenseLabel(LabelModel label) {
+    if (_multiLabelFixedCategories.containsKey(label.name)) {
+      return _multiLabelFixedCategories[label.name] == true;
+    }
+    final lower = label.name.toLowerCase();
+    return lower.contains('rent') ||
+        lower.contains('housing') ||
+        lower.contains('utility') ||
+        lower.contains('utilities') ||
+        lower.contains('insurance') ||
+        lower.contains('loan') ||
+        lower.contains('mortgage') ||
+        lower.contains('bill');
+  }
+
+  List<String> get _availableOwners {
+    final set = <String>{};
+    for (var tx in widget.transactions) {
+      if (tx.owner.isNotEmpty) set.add(tx.owner);
+    }
+    return set.toList();
   }
 
   void _showInfoDialog(BuildContext context, String title, String explanation) {
@@ -132,8 +179,21 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     double variableSpending = 0;
 
     for (var tx in widget.transactions) {
+      if (_selectedOwner != null && _selectedOwner!.isNotEmpty && _selectedOwner != 'All Owners' && tx.owner != _selectedOwner) {
+        continue;
+      }
+
       if (tx.isConfirmed != 1) continue;
       final dt = DateTime.tryParse(tx.createdAt);
+
+      String labelName = '';
+      LabelModel? matchLbl = widget.labels.where((l) => l.id == tx.labelId).firstOrNull;
+      if (matchLbl != null) labelName = matchLbl.name.toLowerCase();
+
+      // Skip internal transfers if enabled
+      if (_excludeTransfers && labelName == 'transfer') {
+        continue;
+      }
       
       if (dt != null && !dt.isAfter(now)) {
         double signedAmt = tx.type == 'income' ? tx.amount : -tx.amount;
@@ -151,18 +211,17 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
 
           labelExpenses[tx.labelId] = (labelExpenses[tx.labelId] ?? 0) + tx.amount;
 
-          String labelName = '';
-          final matchLbl = widget.labels.where((l) => l.id == tx.labelId).firstOrNull;
-          if (matchLbl != null) labelName = matchLbl.name.toLowerCase();
-
-          if (labelName.contains('rent') || labelName.contains('mortgage') || labelName.contains('utility') || labelName.contains('grocery') || labelName.contains('(l)')) {
-            needsExpense += tx.amount;
+          bool isFixed = matchLbl != null ? _isFixedExpenseLabel(matchLbl) : false;
+          if (isFixed) {
             fixedOverhead += tx.amount;
-          } else if (labelName.contains('saving') || labelName.contains('goal') || tx.pool == 'savings') {
-            savingsContribution += tx.amount;
+            needsExpense += tx.amount;
           } else {
-            wantsExpense += tx.amount;
             variableSpending += tx.amount;
+            if (labelName.contains('saving') || labelName.contains('goal') || tx.pool == 'savings') {
+              savingsContribution += tx.amount;
+            } else {
+              wantsExpense += tx.amount;
+            }
           }
         }
         if (tx.type == 'income') currentMonthIncome += tx.amount;
@@ -332,15 +391,19 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       padding: const EdgeInsets.all(16),
       decoration: _isZaznamityMode
           ? BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFF3B1E63), Color(0xFF160D25), Color(0xFF000000)],
-                stops: [0.0, 0.6, 1.0],
-              ),
+              color: Colors.black,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFF582F95).withValues(alpha: 0.5), width: 1.2),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 6))],
+              border: Border.all(
+                color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             )
           : BoxDecoration(
               color: Colors.white,
@@ -411,7 +474,50 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
+
+          // OWNER DROPDOWN (matching IncomeExpensesByLabelsCard style)
+          Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String?>(
+                      value: _selectedOwner,
+                      dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                      isDense: true,
+                      isExpanded: true,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                      hint: Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                      items: [
+                        DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                        ),
+                        ..._availableOwners.map((owner) => DropdownMenuItem<String?>(
+                              value: owner,
+                              child: Text(owner, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                            )),
+                      ],
+                      onChanged: (val) {
+                        setState(() => _selectedOwner = val);
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
 
           // HEALTH SCORE SUMMARY BAR
           Container(
@@ -604,7 +710,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                 onTap: () => _showInfoDialog(
                   context,
                   'Fixed vs. Variable Burn Rate',
-                  'Separates your mandatory, non-negotiable fixed overhead (mortgages, loan installments, recurring bills) from flexible discretionary spending.\n\nImportance: Shows your financial agility—high fixed overhead leaves less room to adjust if cashflow tightens.',
+                  'Separates mandatory fixed overhead from flexible discretionary spending. Configured in Settings -> Label Management -> Fixed vs. Discretionary.\n\nImportance: Shows your financial agility—high fixed overhead leaves less room to adjust if cashflow tightens.',
                 ),
                 child: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
               ),
@@ -773,32 +879,32 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), letterSpacing: 0.6),
-                  ),
-                  const SizedBox(width: 4),
-                  InkWell(
-                    onTap: () => _showInfoDialog(context, infoTitle, infoExplanation),
-                    child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
-                  ),
-                ],
+              Text(
+                title,
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), letterSpacing: 0.6),
               ),
-              Icon(icon, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+              const SizedBox(width: 4),
+              InkWell(
+                onTap: () => _showInfoDialog(context, infoTitle, infoExplanation),
+                child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+              ),
             ],
           ),
           const SizedBox(height: 6),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: color),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  value,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: color),
+                ),
+              ),
+              Icon(icon, size: 16, color: color),
+            ],
           ),
           const SizedBox(height: 2),
           Text(

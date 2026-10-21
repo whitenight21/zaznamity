@@ -219,6 +219,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     bool isZaznamity = (savedTheme == 'zaznamity');
     setState(() {
       _isZaznamityMode = isZaznamity;
+      _globalSelectedOwner = prefs.getString('master_owner') ?? prefs.getString('globalSelectedOwner');
     });
     if (widget.onThemeChanged != null) {
       widget.onThemeChanged!(isZaznamity);
@@ -274,6 +275,17 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     });
   }
 
+  Future<void> _saveMasterOwner(String? owner) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (owner == null) {
+      await prefs.remove('master_owner');
+      await prefs.remove('globalSelectedOwner');
+    } else {
+      await prefs.setString('master_owner', owner);
+      await prefs.setString('globalSelectedOwner', owner);
+    }
+  }
+
   Future<void> _saveCardLayoutPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     List<String> cardIds = _cards.map((c) => c.id).toList();
@@ -326,11 +338,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 'All Owners',
                 style: TextStyle(fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
               ),
-              onTap: () {
+              onTap: () async {
                 setState(() {
                   _globalSelectedOwner = null;
                   calculateMetrics();
                 });
+                await _saveMasterOwner(null);
                 Navigator.pop(ctx);
               },
             ),
@@ -339,11 +352,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   leading: Icon(Icons.person, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                   title: Text(owner, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                   selected: _globalSelectedOwner == owner,
-                  onTap: () {
+                  onTap: () async {
                     setState(() {
                       _globalSelectedOwner = owner;
                       calculateMetrics();
                     });
+                    await _saveMasterOwner(owner);
                     Navigator.pop(ctx);
                   },
                 )),
@@ -2334,7 +2348,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       builder: (ctx) => Dialog(
         backgroundColor: const Color(0xFF1E1333),
         alignment: Alignment.topCenter,
-        insetPadding: const EdgeInsets.fromLTRB(12, 32, 12, 12),
+        insetPadding: const EdgeInsets.fromLTRB(10, 32, 10, 10),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
           width: MediaQuery.of(context).size.width * 0.96,
@@ -2535,6 +2549,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 width: netWidth,
                 child: TitleCard(
                   owners: _owners,
+                  selectedOwner: _globalSelectedOwner,
                   isWide: _titleCardConfig.isWide,
                   onToggleWidth: () => setState(() => _titleCardConfig.isWide = !_titleCardConfig.isWide),
                   onHide: () {},
@@ -2601,7 +2616,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF3B1E63),
       resizeToAvoidBottomInset: false,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

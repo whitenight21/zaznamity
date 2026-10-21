@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
+import '../models/label.dart';
 
 class FutureMetricsCard extends StatefulWidget {
   final List<String> owners;
@@ -13,6 +14,7 @@ class FutureMetricsCard extends StatefulWidget {
   final Map<String, double> prognosisByOwner;
   final double totalPrognosis;
   final List<TransactionModel> transactions;
+  final List<LabelModel> labels;
   
   final DateTime? startDate;
   final DateTime? endDate;
@@ -32,6 +34,7 @@ class FutureMetricsCard extends StatefulWidget {
     required this.prognosisByOwner,
     required this.totalPrognosis,
     required this.transactions,
+    this.labels = const [],
     this.startDate,
     this.endDate,
     this.onDateRangeChanged,
@@ -49,6 +52,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
   late String _selectedOwner;
   String _dateRangeSetting = '90 Days';
   bool _isZaznamityMode = true;
+  bool _excludeTransfers = true;
 
   @override
   void initState() {
@@ -64,6 +68,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
       setState(() {
         _isZaznamityMode = (savedTheme == 'zaznamity');
         _dateRangeSetting = prefs.getString('set_futureMetrics_range') ?? '90 Days';
+        _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
       });
     }
   }
@@ -115,6 +120,13 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     for (var tx in widget.transactions) {
       if (tx.isConfirmed != 1) continue;
       if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
+
+      if (_excludeTransfers && widget.labels.isNotEmpty) {
+        final matchLbl = widget.labels.where((l) => l.id == tx.labelId).firstOrNull;
+        if (matchLbl != null && matchLbl.name.toLowerCase() == 'transfer') {
+          continue;
+        }
+      }
 
       final dt = DateTime.tryParse(tx.createdAt) ?? now;
       if (dt.isAfter(pastLimit)) {
@@ -230,16 +242,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
           padding: const EdgeInsets.all(16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xFF3B1E63),
-                      Color(0xFF160D25),
-                      Color(0xFF000000),
-                    ],
-                    stops: [0.0, 0.6, 1.0],
-                  ),
+                  color: Colors.black,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: const Color(0xFF582F95).withValues(alpha: 0.5),

@@ -440,16 +440,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
           padding: const EdgeInsets.all(16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xFF3B1E63), // Dark Purple
-                      Color(0xFF160D25), // Deep Dark Shade
-                      Color(0xFF000000), // Solid Black
-                    ],
-                    stops: [0.0, 0.6, 1.0],
-                  ),
+                  color: Colors.black,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: const Color(0xFF582F95).withValues(alpha: 0.5),
