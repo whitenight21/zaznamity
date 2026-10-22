@@ -582,7 +582,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                         ),
                         onPressed: () => _showAddBudgetDialog(context),
                         icon: const Icon(Icons.add, size: 16),
-                        label: const Text('New Budget', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        label: const Text('Add Budget', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ),

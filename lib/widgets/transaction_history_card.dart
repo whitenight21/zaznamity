@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -80,6 +81,9 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
   String _selectedLimit = '50';
   final TextEditingController _minAmountController = TextEditingController();
   final TextEditingController _maxAmountController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _debounceTimer;
+  String _debouncedQuery = '';
   
   late Set<int> _localSelectedLabels = {};
   late Set<String> _localSelectedPools = {};
@@ -136,9 +140,20 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
+    _searchController.dispose();
     _minAmountController.dispose();
     _maxAmountController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String val) {
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      setState(() {
+        _debouncedQuery = val.trim().toLowerCase();
+      });
+    });
   }
 
   void _initDefaults() {
@@ -204,6 +219,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       _localEndDate = null;
       _minAmountController.clear();
       _maxAmountController.clear();
+      _searchController.clear();
+      _debouncedQuery = '';
       _localSelectedLabels = allLabelIds;
       _localSelectedPools = allPools;
       _hideFuturePayments = false;
@@ -227,6 +244,21 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       case 'GBP': return '£';
       case 'JPY': return '¥';
       default: return '\$';
+    }
+  }
+
+  Color _parseColor(String? colorHex) {
+    if (colorHex == null || colorHex.isEmpty) {
+      return const Color(0xFF4338CA);
+    }
+    try {
+      var hex = colorHex.replaceAll('#', '');
+      if (hex.length == 6) {
+        hex = 'FF$hex';
+      }
+      return Color(int.parse(hex, radix: 16));
+    } catch (_) {
+      return const Color(0xFF4338CA);
     }
   }
 
@@ -431,6 +463,11 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     final double? maxAmount = double.tryParse(_maxAmountController.text);
 
     final filteredTransactions = widget.transactions.where((tx) {
+      if (_debouncedQuery.isNotEmpty) {
+        final desc = tx.description.toLowerCase();
+        if (!desc.contains(_debouncedQuery)) return false;
+      }
+
       if (activeOwner != null && activeOwner.isNotEmpty && activeOwner != 'All Owners' && tx.owner != activeOwner) return false;
       
       if (_localSelectedPools.isNotEmpty && tx.pool.isNotEmpty && !_localSelectedPools.contains(tx.pool)) {
@@ -597,8 +634,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                 children: [
                   SizedBox(
                     width: boxWidth,
+                    height: 44,
                     child: Container(
-                      height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
                         color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
@@ -635,8 +672,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   ),
                   SizedBox(
                     width: boxWidth,
+                    height: 44,
                     child: Container(
-                      height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
                         color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
@@ -682,11 +719,11 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                 children: [
                   SizedBox(
                     width: boxWidth,
+                    height: 44,
                     child: InkWell(
                       onTap: () => _showMultiSelectDialog(context),
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
-                        height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         decoration: BoxDecoration(
                           color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
@@ -724,11 +761,11 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   ),
                   SizedBox(
                     width: boxWidth,
+                    height: 44,
                     child: InkWell(
                       onTap: () => _showPoolsMultiSelectDialog(context),
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
-                        height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         decoration: BoxDecoration(
                           color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
@@ -774,8 +811,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                 children: [
                   SizedBox(
                     width: boxWidth,
+                    height: 44,
                     child: Container(
-                      height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
                         color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
@@ -828,6 +865,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   ),
                   SizedBox(
                     width: boxWidth,
+                    height: 44,
                     child: Row(
                       children: [
                         Expanded(
@@ -929,83 +967,119 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 4: Hide Future Payments, Clear All
+              // Row 4: Pending Button, Search Description Box, Clear Button (all height 44)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // Pending Button
                   SizedBox(
-                    height: 38,
-                    child: OutlinedButton.styleFrom != null
-                        ? OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: _hideFuturePayments
-                                  ? (_isZaznamityMode ? Colors.white : Colors.black87)
-                                  : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                              backgroundColor: _hideFuturePayments
-                                  ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
-                                  : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC)),
-                              side: BorderSide(
-                                color: _hideFuturePayments
-                                    ? Colors.transparent
-                                    : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                              ),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                    width: boxWidth * 0.58,
+                    height: 44,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _hideFuturePayments
+                            ? (_isZaznamityMode ? Colors.white : Colors.black87)
+                            : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                        backgroundColor: _hideFuturePayments
+                            ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                            : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC)),
+                        side: BorderSide(
+                          color: _hideFuturePayments
+                              ? Colors.transparent
+                              : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _hideFuturePayments = !_hideFuturePayments;
+                        });
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _hideFuturePayments ? Icons.visibility_off : Icons.visibility,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 4),
+                          const Flexible(
+                            child: Text(
+                              'Pending',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            onPressed: () {
-                              setState(() {
-                                _hideFuturePayments = !_hideFuturePayments;
-                              });
-                            },
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  _hideFuturePayments ? Icons.visibility_off : Icons.visibility,
-                                  size: 14,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _hideFuturePayments ? 'Future Hidden' : 'Hide Future Payments',
-                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                          )
-                        : const SizedBox.shrink(),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
+                  const SizedBox(width: 4),
+                  // Search Description Box
+                  Expanded(
+                    child: SizedBox(
+                      height: 44,
+                      child: Center(
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: _onSearchChanged,
+                          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 11),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            hintText: 'Search description...',
+                            hintStyle: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
+                            prefixIcon: Icon(Icons.search, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF64748B)),
+                            prefixIconConstraints: const BoxConstraints(minWidth: 26, minHeight: 16),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                            filled: true,
+                            fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  // Clear Button
                   SizedBox(
-                    height: 38,
+                    width: boxWidth * 0.34,
+                    height: 44,
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFFDC2626),
+                        backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         side: BorderSide(color: _isZaznamityMode ? Colors.red.shade800 : const Color(0xFFFCA5A5)),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
                       ),
                       onPressed: _clearAllFilters,
-                      child: const Text('Clear All', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      child: const Text('Clear', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
 
-              // Row 5: Min, Max - same size respectfully as owner, type (boxWidth)
+              // Row 5: Min, Max Amount Fields
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   SizedBox(
                     width: boxWidth,
+                    height: 44,
                     child: TextField(
                       controller: _minAmountController,
-                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 11),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       onChanged: (val) => setState(() {}),
                       decoration: InputDecoration(
                         isDense: true,
                         prefixIcon: Icon(Icons.attach_money_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                        hintText: 'Min',
+                        prefixIconConstraints: const BoxConstraints(minWidth: 26, minHeight: 16),
+                        hintText: 'Min Amount',
                         hintStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 11),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
@@ -1017,15 +1091,17 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   ),
                   SizedBox(
                     width: boxWidth,
+                    height: 44,
                     child: TextField(
                       controller: _maxAmountController,
-                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 11),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       onChanged: (val) => setState(() {}),
                       decoration: InputDecoration(
                         isDense: true,
                         prefixIcon: Icon(Icons.attach_money_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                        hintText: 'Max',
+                        prefixIconConstraints: const BoxConstraints(minWidth: 26, minHeight: 16),
+                        hintText: 'Max Amount',
                         hintStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 11),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
@@ -1098,6 +1174,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                           (l) => l.id == tx.labelId,
                           orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
                         );
+                        final labelColor = _parseColor(labelObj.color);
 
                         final currencyCode = tx.currencyCode.isNotEmpty ? tx.currencyCode : 'USD';
                         final flag = _currencyFlags[currencyCode] ?? '🇺🇸';
@@ -1142,12 +1219,13 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                           decoration: BoxDecoration(
-                                            color: _isZaznamityMode ? const Color(0xFF3F2F17) : const Color(0xFFFEF3C7),
+                                            color: labelColor.withValues(alpha: _isZaznamityMode ? 0.25 : 0.15),
                                             borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: labelColor.withValues(alpha: 0.5), width: 0.5),
                                           ),
                                           child: Text(
                                             labelObj.name,
-                                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFFCD34D) : const Color(0xFFD97706)),
+                                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: labelColor),
                                           ),
                                         ),
                                         Text('•', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
@@ -1188,27 +1266,22 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                 ],
                               ),
                               const SizedBox(width: 4),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        constraints: const BoxConstraints(),
-                                        padding: const EdgeInsets.all(1),
-                                        icon: Icon(Icons.edit, size: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                        tooltip: 'Edit',
-                                        onPressed: () => widget.onEditTransaction(tx),
-                                      ),
-                                      IconButton(
-                                        constraints: const BoxConstraints(),
-                                        padding: const EdgeInsets.all(1),
-                                        icon: const Icon(Icons.delete, size: 16, color: Color(0xFFEF4444)),
-                                        tooltip: 'Delete',
-                                        onPressed: () => _showDeleteConfirmation(context, tx.id!),
-                                      ),
-                                    ],
+                                  IconButton(
+                                    constraints: const BoxConstraints(),
+                                    padding: EdgeInsets.zero,
+                                    icon: Icon(Icons.edit, size: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                    tooltip: 'Edit',
+                                    onPressed: () => widget.onEditTransaction(tx),
+                                  ),
+                                  IconButton(
+                                    constraints: const BoxConstraints(),
+                                    padding: EdgeInsets.zero,
+                                    icon: const Icon(Icons.delete, size: 16, color: Color(0xFFEF4444)),
+                                    tooltip: 'Delete',
+                                    onPressed: () => _showDeleteConfirmation(context, tx.id!),
                                   ),
                                 ],
                               ),

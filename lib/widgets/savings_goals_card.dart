@@ -14,6 +14,7 @@ class SavingsGoalsCard extends StatefulWidget {
   final String? selectedOwner;
   final Function(SavingsGoalModel) onSaveGoal;
   final Function(int goalId, double amountToAdd, String owner, String fromPool, String goalName, String currency) onAddFundsToGoal;
+  final Function(int goalId, double amountToRemove, String owner, String toPool, String goalName, String currency) onRemoveFundsFromGoal;
   final Function(int goalId) onDeleteGoal;
   final Function(int goalId) onCompleteGoal;
   final bool isWide;
@@ -29,6 +30,7 @@ class SavingsGoalsCard extends StatefulWidget {
     this.selectedOwner,
     required this.onSaveGoal,
     required this.onAddFundsToGoal,
+    required this.onRemoveFundsFromGoal,
     required this.onDeleteGoal,
     required this.onCompleteGoal,
     this.isWide = false,
@@ -112,6 +114,57 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
       });
     }
     _loadAllUserCurrencies();
+  }
+
+  void _showSavingsGoalInfoModal(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Savings Goals Guide',
+                  style: TextStyle(
+                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Text(
+              'Savings goals help you earmark funds for target milestones:\n\n'
+              '• Add funds directly from any active pool (e.g. checking or cash) to simulate capital transfers into your goals pool.\n'
+              '• Remove funds anytime to return capital back to standard pools.\n'
+              '• Reaching 100% target progress lets you check off and complete your goal.',
+              style: TextStyle(
+                fontSize: 13,
+                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
+                height: 1.4,
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Got it'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showAddFundsDialog(SavingsGoalModel goal) {
@@ -258,6 +311,157 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                 }
               },
               child: const Text('Add Funds', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRemoveFundsDialog(SavingsGoalModel goal) {
+    final TextEditingController amountController = TextEditingController();
+    String selectedDialogOwner = (_selectedOwner != 'All Owners' && _selectedOwner.isNotEmpty)
+        ? _selectedOwner
+        : (widget.owners.isNotEmpty ? widget.owners.first : 'Shared');
+    
+    String selectedDialogPool = widget.pools.isNotEmpty ? widget.pools.first : 'checking';
+    String selectedCurrency = _userCurrencies.first;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Remove Funds from "${goal.name}"', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95), fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: widget.owners.contains(selectedDialogOwner) ? selectedDialogOwner : widget.owners.first,
+                      dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                      style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                      decoration: InputDecoration(
+                        labelText: 'Owner',
+                        labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                      ),
+                      items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
+                      onChanged: (val) {
+                        if (val != null) setDialogState(() => selectedDialogOwner = val);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      height: 42,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _userCurrencies.contains(selectedCurrency) ? selectedCurrency : _userCurrencies.first,
+                          isDense: true,
+                          isExpanded: true,
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                          items: _userCurrencies.map((c) {
+                            return DropdownMenuItem(
+                              value: c,
+                              child: Text('$c (${_getCurrencySymbol(c)})', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => selectedCurrency = val);
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextField(
+                      controller: amountController,
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'Amount to Remove',
+                        labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 3,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: widget.pools.contains(selectedDialogPool) ? selectedDialogPool : widget.pools.first,
+                      dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                      style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                      decoration: InputDecoration(
+                        labelText: 'To Pool',
+                        labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                        filled: true,
+                        fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                      ),
+                      items: widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase(), style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
+                      onChanged: (val) {
+                        if (val != null) setDialogState(() => selectedDialogPool = val);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 12)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+              onPressed: () {
+                final val = double.tryParse(amountController.text);
+                if (val != null && val > 0) {
+                  widget.onRemoveFundsFromGoal(goal.id!, val, selectedDialogOwner, selectedDialogPool, goal.name, selectedCurrency);
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Remove Funds', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -470,14 +674,30 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'SAVINGS GOALS',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                      letterSpacing: 0.8,
-                    ),
+                  Row(
+                    children: [
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'SAVINGS GOALS',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                        onPressed: () => _showSavingsGoalInfoModal(context),
+                        tooltip: 'Savings Goals Guide',
+                        constraints: const BoxConstraints(),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ],
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -580,8 +800,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         onPressed: _showCreateGoalDialog,
-                        icon: const Icon(Icons.add, size: 16),
-                        label: const Text('New Savings Goal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        label: const Text('Add Savings Goal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ),
@@ -655,7 +874,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                                 goal.name,
                                                 style: TextStyle(
                                                   fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
+                                                  fontSize: 15,
                                                   color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                                                 ),
                                                 overflow: TextOverflow.ellipsis,
@@ -728,19 +947,39 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                       ),
                                     ],
                                   ),
-                                  SizedBox(
-                                    height: 28,
-                                    width: 28,
-                                    child: IconButton(
-                                      style: IconButton.styleFrom(
-                                        backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                                        foregroundColor: Colors.white,
-                                        padding: EdgeInsets.zero,
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        height: 28,
+                                        width: 28,
+                                        child: IconButton(
+                                          style: IconButton.styleFrom(
+                                            backgroundColor: const Color(0xFFEF4444),
+                                            foregroundColor: Colors.white,
+                                            padding: EdgeInsets.zero,
+                                          ),
+                                          icon: const Icon(Icons.remove, size: 16),
+                                          tooltip: 'Remove funds from goal',
+                                          onPressed: () => _showRemoveFundsDialog(goal),
+                                        ),
                                       ),
-                                      icon: const Icon(Icons.add, size: 16),
-                                      tooltip: 'Add funds to goal',
-                                      onPressed: () => _showAddFundsDialog(goal),
-                                    ),
+                                      const SizedBox(width: 6),
+                                      SizedBox(
+                                        height: 28,
+                                        width: 28,
+                                        child: IconButton(
+                                          style: IconButton.styleFrom(
+                                            backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                            foregroundColor: Colors.white,
+                                            padding: EdgeInsets.zero,
+                                          ),
+                                          icon: const Icon(Icons.add, size: 16),
+                                          tooltip: 'Add funds to goal',
+                                          onPressed: () => _showAddFundsDialog(goal),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),

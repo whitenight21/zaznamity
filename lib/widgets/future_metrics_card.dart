@@ -472,7 +472,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       amount: currentFutureFlow,
                       amountColor: currentFutureFlow >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                       width: boxWidth,
-                      infoExplanation: 'Future Flow calculates the net sum of all scheduled incoming and outgoing transactions (income minus expenses) dated after today.',
+                      infoExplanation: 'Future Flow calculates the net sum of all scheduled incoming and outgoing transactions (income minus expenses) dated after today.\n\nGreen indicates a positive net future balance (more incoming than outgoing), while red indicates a negative balance (outflows exceed inflows).',
                     ),
                   ),
                   SizedBox(
@@ -499,7 +499,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       amount: monthlyBurn,
                       amountColor: const Color(0xFFF87171),
                       width: boxWidth,
-                      infoExplanation: 'Monthly Burn Rate represents your average monthly baseline spending calculated over your configured timeframe setting.',
+                      infoExplanation: 'Monthly Burn Rate represents your average monthly baseline spending calculated over your configured timeframe setting.\n\nFont always displayed in red because burn rate represents total money spent/leaving your accounts.',
                     ),
                   ),
                   SizedBox(
@@ -508,7 +508,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       title: 'SAVINGS RATE',
                       savingsRate: savingsRate,
                       width: boxWidth,
-                      infoExplanation: 'Savings Rate shows the exact percentage of your monthly income that you successfully retain rather than spend, based on your configured timeframe setting.',
+                      infoExplanation: 'Savings Rate shows the exact percentage of your monthly income that you successfully retain rather than spend, based on your configured timeframe setting.\n\nGreen indicates a healthy savings rate (20% or higher), while red highlights low or negative savings.\nNegative Percentages: A minus sign (%) appears when your monthly expenses exceed your total income during the timeframe, meaning you are drawing down savings or incurring debt.',
                     ),
                   ),
                 ],

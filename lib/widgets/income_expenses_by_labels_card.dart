@@ -431,7 +431,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        'MULTI-LABEL ANALYTICS',
+                        'LABELS ANALYTICS',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

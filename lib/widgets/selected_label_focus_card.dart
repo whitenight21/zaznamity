@@ -52,6 +52,8 @@ class SelectedLabelFocusCard extends StatefulWidget {
 class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
   String _singleLabelDefaultRange = '';
   bool _isZaznamityMode = true;
+  String _primaryCurrency = 'USD';
+  final NumberFormat _currencyFormatter = NumberFormat('#,##0.00', 'en_US');
 
   @override
   void initState() {
@@ -65,7 +67,23 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
       _singleLabelDefaultRange = prefs.getString('set_singleLabel_range') ?? '';
       final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
       _isZaznamityMode = (themeStr == 'zaznamity');
+      _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
     });
+  }
+
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': return '¥';
+      case 'CZK': return 'Kč';
+      default: return '\$';
+    }
+  }
+
+  String _formatAmount(double amount) {
+    final symbol = _getCurrencySymbol(_primaryCurrency);
+    return '$symbol${_currencyFormatter.format(amount)}';
   }
 
   DateTime? _getComputedStartDate() {
@@ -127,9 +145,11 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
       final prefs = await SharedPreferences.getInstance();
       final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
       final zaznamityActive = (themeStr == 'zaznamity');
-      if (zaznamityActive != _isZaznamityMode && mounted) {
+      final curr = prefs.getString('primaryCurrency') ?? 'USD';
+      if ((zaznamityActive != _isZaznamityMode || curr != _primaryCurrency) && mounted) {
         setState(() {
           _isZaznamityMode = zaznamityActive;
+          _primaryCurrency = curr;
         });
       }
     });
@@ -202,13 +222,44 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
     double outflowPercentage = totalGlobalOutflow > 0 ? (outflow / totalGlobalOutflow) * 100 : 0.0;
     double inflowPercentage = totalGlobalInflow > 0 ? (inflow / totalGlobalInflow) * 100 : 0.0;
 
-    final sortedFilteredTxs = List<TransactionModel>.from(filteredTxs)
-      ..sort((a, b) {
-        final dateA = DateTime.tryParse(a.createdAt) ?? DateTime(0);
-        final dateB = DateTime.tryParse(b.createdAt) ?? DateTime(0);
-        return dateB.compareTo(dateA);
-      });
-    final recentTransactions = sortedFilteredTxs.take(5).toList();
+    // Analytics: Average Transaction Size & Frequency Metrics
+    double avgTransactionSize = filteredTxs.isNotEmpty ? (inflow + outflow) / filteredTxs.length : 0.0;
+    int durationDays = effectiveStartDate != null && effectiveEndDate != null 
+        ? effectiveEndDate.difference(effectiveStartDate).inDays + 1 
+        : 30;
+    if (durationDays < 1) durationDays = 1;
+    double frequencyPerWeek = (filteredTxs.length / durationDays) * 7;
+
+    // Analytics: Top Spending/Income Contributors (Breakdown by Description)
+    Map<String, double> descriptionTotals = {};
+    for (var tx in filteredTxs) {
+      if (tx.isConfirmed == 1 && tx.description.isNotEmpty) {
+        descriptionTotals[tx.description] = (descriptionTotals[tx.description] ?? 0.0) + tx.amount;
+      }
+    }
+    var topContributors = descriptionTotals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    var top3Contributors = topContributors.take(3).toList();
+
+    // Analytics: Period-over-Period (MoM) Trend Indicator
+    double previousPeriodNet = 0.0;
+    if (effectiveStartDate != null && effectiveEndDate != null) {
+      final prevStart = effectiveStartDate.subtract(Duration(days: durationDays));
+      final prevEnd = effectiveStartDate.subtract(const Duration(days: 1));
+      
+      for (var tx in widget.transactions) {
+        final txDate = DateTime.tryParse(tx.createdAt);
+        if (txDate == null) continue;
+        if (txDate.isAfter(prevStart.subtract(const Duration(seconds: 1))) && txDate.isBefore(prevEnd.add(const Duration(days: 1)))) {
+          if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) continue;
+          if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) continue;
+          if (tx.isConfirmed == 1) {
+            previousPeriodNet += (tx.type == 'income' ? tx.amount : -tx.amount);
+          }
+        }
+      }
+    }
+    double momDifference = previousPeriodNet != 0 ? ((net - previousPeriodNet) / previousPeriodNet.abs()) * 100 : 0.0;
 
     final bool hasDateFilter = effectiveStartDate != null || effectiveEndDate != null;
 
@@ -258,7 +309,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        'SINGLE-LABEL ANALYSIS',
+                        'LABEL ANALYSIS',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -559,7 +610,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '\$${net.toStringAsFixed(2)}',
+                      _formatAmount(net),
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -591,7 +642,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('+\$${inflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
+                      Text('+${_formatAmount(inflow)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
                       const SizedBox(height: 2),
                       Text('${inflowPercentage.toStringAsFixed(1)}% of total', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B))),
                     ],
@@ -615,75 +666,203 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('-\$${outflow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFFF87171))),
+                      Text('-${_formatAmount(outflow)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFFF87171))),
                       const SizedBox(height: 2),
                       Text('${outflowPercentage.toStringAsFixed(1)}% of total', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B))),
                     ],
                   ),
                 ],
               ),
-              if (recentTransactions.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                Text(
-                  'LAST 5 ZAZNAMS',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  height: 150,
-                  decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                  ),
-                  child: ListView.builder(
-                    cacheExtent: 1000,
-                    itemCount: recentTransactions.length,
-                    itemBuilder: (context, index) {
-                      final tx = recentTransactions[index];
-                      final txDate = DateTime.tryParse(tx.createdAt);
-                      final formattedTxDate = txDate != null ? DateFormat('MM/dd').format(txDate) : '';
-                      final isIncome = tx.type == 'income';
-                      
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  Text(
-                                    formattedTxDate,
-                                    style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B), fontWeight: FontWeight.w500),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      tx.description.isNotEmpty ? tx.description : 'No description',
-                                      style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.w500),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '${isIncome ? '+' : '-'}\$${tx.amount.toStringAsFixed(2)}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: isIncome ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                              ),
-                            ),
-                          ],
+              
+              const SizedBox(height: 20),
+              
+              // SECTION 1: Average Transaction Size & Frequency Metrics Card
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'TRANSACTION DYNAMICS',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
+                      ),
+                      const SizedBox(width: 4),
+                      InkWell(
+                        onTap: () => _showInfoModal(
+                          context,
+                          'Transaction Dynamics',
+                          'Shows the average size per transaction and the frequency rate (transactions per week) over the selected date span.',
                         ),
-                      );
-                    },
+                        child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
+                      ),
+                    ],
                   ),
+                  Text(
+                    'Count: ${filteredTxs.length}',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                 ),
-              ],
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    Column(
+                      children: [
+                        Text('Average Size', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
+                        const SizedBox(height: 2),
+                        Text(_formatAmount(avgTransactionSize), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                      ],
+                    ),
+                    Container(height: 25, width: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                    Column(
+                      children: [
+                        Text('Frequency Rate', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
+                        const SizedBox(height: 2),
+                        Text('${frequencyPerWeek.toStringAsFixed(1)} / week', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              // SECTION 2: Top Spending/Income Contributors Card
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'TOP CONTRIBUTORS',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
+                      ),
+                      const SizedBox(width: 4),
+                      InkWell(
+                        onTap: () => _showInfoModal(
+                          context,
+                          'Top Contributors',
+                          'Aggregates and highlights the top 3 description drivers ranked by total amount within this label.',
+                        ),
+                        child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                ),
+                child: top3Contributors.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Center(
+                          child: Text('No transactions recorded', style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: _isZaznamityMode ? Colors.white38 : const Color(0xFF94A3B8))),
+                        ),
+                      )
+                    : Column(
+                        children: top3Contributors.map((entry) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 6.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    entry.key,
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _formatAmount(entry.value),
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+              ),
+
+              const SizedBox(height: 14),
+
+              // SECTION 3: Period-over-Period (MoM) Trend Indicator Card
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'PERIOD TREND (MoM)',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
+                      ),
+                      const SizedBox(width: 4),
+                      InkWell(
+                        onTap: () => _showInfoModal(
+                          context,
+                          'Period-over-Period Trend',
+                          'Compares net cash flow of the current selected date range against the exact preceding timeframe span.',
+                        ),
+                        child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Previous Period Net:', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
+                    Row(
+                      children: [
+                        Text(
+                          _formatAmount(previousPeriodNet),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: momDifference >= 0 ? const Color(0xFF34D399).withValues(alpha: 0.2) : const Color(0xFFF87171).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '${momDifference >= 0 ? '▲ +' : '▼ '}${momDifference.toStringAsFixed(1)}%',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: momDifference >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         );

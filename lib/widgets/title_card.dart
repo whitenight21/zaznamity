@@ -148,40 +148,9 @@ class _TitleCardState extends State<TitleCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Top Row: Day of week on top, date in the next row[cite: 5]
+          // Middle Row: Profile Picture Avatar with Zaznamity Logo Badge & Owner Name, with Day/Date perfectly aligned with the top edge of the avatar
           Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    currentDayOfWeek,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    currentDateFormatted,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white60,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          // Middle Row: Profile Picture Avatar with Zaznamity Logo Badge & Owner Name
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Column(
                 mainAxisSize: MainAxisSize.min,
@@ -246,30 +215,64 @@ class _TitleCardState extends State<TitleCard> {
               ),
               const SizedBox(width: 20),
               Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Transform.translate(
+                        offset: const Offset(-7.0, 0.0),
+                        child: const Text(
+                          'Welcome,',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white70,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4.0),
+                        child: Text(
+                          _displayName,
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            letterSpacing: 0.8,
+                            height: 1.1,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Top Right: Day of week and Date perfectly inline with the top edge of the profile picture
+              Padding(
+                padding: const EdgeInsets.only(top: 2.0),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text(
-                      'Welcome,',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white70,
-                        letterSpacing: 0.3,
+                    Text(
+                      currentDayOfWeek,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                        letterSpacing: 0.4,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4.0),
-                      child: Text(
-                        _displayName,
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: 0.8,
-                          height: 1.1,
-                        ),
+                    const SizedBox(height: 2),
+                    Text(
+                      currentDateFormatted,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white60,
+                        letterSpacing: 0.4,
                       ),
                     ),
                   ],

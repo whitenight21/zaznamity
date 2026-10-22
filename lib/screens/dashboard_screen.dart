@@ -24,7 +24,6 @@ import '../widgets/bottom_card_nav_bar.dart';
 import '../widgets/calendar_card.dart';
 import '../widgets/budget_progress_card.dart';
 import '../widgets/selected_label_focus_card.dart';
-import '../widgets/transaction_search_card.dart';
 import '../widgets/sankey_flow_card.dart';
 import '../widgets/pools_analytics_card.dart';
 import '../widgets/monthly_cashflow_trend_card.dart';
@@ -153,15 +152,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   final CardConfig _titleCardConfig = CardConfig(id: 'title_card', title: 'Title Card', key: GlobalKey());
 
   late final List<CardConfig> _cards = [
-    CardConfig(id: 'settings', title: 'Zaznamity Settings', key: GlobalKey(), isVisible: false),
+    CardConfig(id: 'settings', title: 'Settings', key: GlobalKey(), isVisible: false),
     CardConfig(id: 'metrics', title: 'Metrics', key: GlobalKey()),
     CardConfig(id: 'smart_insights', title: 'Health & Insights', key: GlobalKey()),
     CardConfig(id: 'future_metrics', title: 'Future Metrics', key: GlobalKey()),
     CardConfig(id: 'liabilities_card', title: 'Liabilities', key: GlobalKey()),    
     CardConfig(id: 'savings_goals', title: 'Savings Goals', key: GlobalKey()),
-    CardConfig(id: 'label_focus', title: 'Single-Label Analysis', key: GlobalKey()),
-    CardConfig(id: 'income_expenses_labels', title: 'Multi-Label Analytics', key: GlobalKey()),
-    CardConfig(id: 'transaction_search', title: 'Search Zaznams', key: GlobalKey()),
+    CardConfig(id: 'label_focus', title: 'Label Analysis', key: GlobalKey()),
+    CardConfig(id: 'income_expenses_labels', title: 'Labels Analytics', key: GlobalKey()),
     CardConfig(id: 'new_entry', title: 'New Zaznam', key: GlobalKey()),
     CardConfig(id: 'transfer', title: 'Transfer Funds', key: GlobalKey()),
     CardConfig(id: 'budget', title: 'Budgets', key: GlobalKey()),
@@ -479,12 +477,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: StatefulBuilder(
           builder: (stateContext, setModalState) {
+            // Filter out settings from general actions list to manage it explicitly
             final metricsCards = cards.where((c) => ['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(c.id)).toList();
             final trendsCards = cards.where((c) => ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
             final analyticsCards = cards.where((c) => ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
-            final actionsCards = cards.where((c) => ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
+            final actionsCards = cards.where((c) => ['new_entry', 'transfer', 'history'].contains(c.id)).toList();
+            final settingsCard = cards.firstWhere((c) => c.id == 'settings', orElse: () => CardConfig(id: 'settings', title: 'Zaznamity Settings', key: GlobalKey()));
 
-            Widget buildCategorySection(String title, List<CardConfig> catCards, {bool isReorderable = false, List<CardConfig>? masterCardsRef}) {
+            Widget buildCategorySection(String title, List<CardConfig> catCards, {bool isReorderable = false, List<CardConfig>? masterCardsRef, bool isActionsCategory = false}) {
               final headerWidget = Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 8),
@@ -506,16 +506,19 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               final listContent = ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: catCards.length,
+                itemCount: catCards.length + (isActionsCategory ? 1 : 0),
                 itemBuilder: (context, index) {
-                  final card = catCards[index];
+                  // If it's the actions section and this is the last index, render the pinned Settings tile
+                  final bool isPinnedSettings = isActionsCategory && index == catCards.length;
+                  final card = isPinnedSettings ? settingsCard : catCards[index];
+
                   final tileWidget = SizedBox(
-                    height: 28,
+                    height: 33,
                     child: ListTile(
                       key: ValueKey(card.id),
                       dense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                      visualDensity: const VisualDensity(vertical: -4),
+                      visualDensity: const VisualDensity(vertical: -2),
                       title: Text(
                         card.title,
                         style: TextStyle(
@@ -525,27 +528,29 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
-                      trailing: SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          icon: Icon(
-                            card.isVisible ? Icons.visibility : Icons.visibility_off,
-                            size: 14,
-                            color: card.isVisible 
-                                ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)) 
-                                : Colors.grey,
-                          ),
-                          onPressed: () {
-                            setModalState(() {
-                              onToggleVisibility(card);
-                            });
-                            setState(() {});
-                            _saveCardLayoutPreferences();
-                          },
-                        ),
-                      ),
+                      trailing: isPinnedSettings
+                          ? const SizedBox(width: 22, height: 22) // Pinned settings has no visibility toggle per instructions
+                          : SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                icon: Icon(
+                                  card.isVisible ? Icons.visibility : Icons.visibility_off,
+                                  size: 14,
+                                  color: card.isVisible 
+                                      ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)) 
+                                      : Colors.grey,
+                                ),
+                                onPressed: () {
+                                  setModalState(() {
+                                    onToggleVisibility(card);
+                                  });
+                                  setState(() {});
+                                  _saveCardLayoutPreferences();
+                                },
+                              ),
+                            ),
                       onTap: () {
                         if (!card.isVisible) {
                           setModalState(() {
@@ -559,57 +564,64 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                     ),
                   );
 
-                  if (!isReorderable || masterCardsRef == null) {
-                    return tileWidget;
+                  // Pinned settings card at the bottom of Actions cannot be reordered or dragged
+                  if (isPinnedSettings || !isReorderable || masterCardsRef == null) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 5.0),
+                      child: tileWidget,
+                    );
                   }
 
-                  return LongPressDraggable<CardConfig>(
-                    data: card,
-                    feedback: Material(
-                      color: Colors.transparent,
-                      child: Container(
-                        width: 180,
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF3B1E63) : Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-                        ),
-                        child: Text(
-                          card.title,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 5.0),
+                    child: LongPressDraggable<CardConfig>(
+                      data: card,
+                      feedback: Material(
+                        color: Colors.transparent,
+                        child: Container(
+                          width: 180,
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: _isZaznamityMode ? const Color(0xFF3B1E63) : Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                          ),
+                          child: Text(
+                            card.title,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    childWhenDragging: Opacity(opacity: 0.3, child: tileWidget),
-                    child: DragTarget<CardConfig>(
-                      onAcceptWithDetails: (details) {
-                        final draggedCard = details.data;
-                        if (draggedCard.id != card.id && catCards.any((c) => c.id == draggedCard.id)) {
-                          setModalState(() {
-                            int oldIdx = catCards.indexWhere((c) => c.id == draggedCard.id);
-                            int newIdx = catCards.indexWhere((c) => c.id == card.id);
-                            if (oldIdx != -1 && newIdx != -1) {
-                              catCards.removeAt(oldIdx);
-                              catCards.insert(newIdx, draggedCard);
+                      childWhenDragging: Opacity(opacity: 0.3, child: tileWidget),
+                      child: DragTarget<CardConfig>(
+                        onAcceptWithDetails: (details) {
+                          final draggedCard = details.data;
+                          if (draggedCard.id != card.id && catCards.any((c) => c.id == draggedCard.id)) {
+                            setModalState(() {
+                              int oldIdx = catCards.indexWhere((c) => c.id == draggedCard.id);
+                              int newIdx = catCards.indexWhere((c) => c.id == card.id);
+                              if (oldIdx != -1 && newIdx != -1) {
+                                catCards.removeAt(oldIdx);
+                                catCards.insert(newIdx, draggedCard);
 
-                              for (var c in catCards) {
-                                masterCardsRef.remove(c);
+                                for (var c in catCards) {
+                                  masterCardsRef.remove(c);
+                                }
+                                int insertPos = masterCardsRef.indexWhere((c) => c.id == catCards.first.id);
+                                if (insertPos == -1) insertPos = masterCardsRef.length;
+                                masterCardsRef.insertAll(insertPos, catCards);
                               }
-                              int insertPos = masterCardsRef.indexWhere((c) => c.id == catCards.first.id);
-                              if (insertPos == -1) insertPos = masterCardsRef.length;
-                              masterCardsRef.insertAll(insertPos, catCards);
-                            }
-                          });
-                          setState(() {});
-                          _saveCardLayoutPreferences();
-                        }
-                      },
-                      builder: (context, candidateData, rejectedData) => tileWidget,
+                            });
+                            setState(() {});
+                            _saveCardLayoutPreferences();
+                          }
+                        },
+                        builder: (context, candidateData, rejectedData) => tileWidget,
+                      ),
                     ),
                   );
                 },
@@ -620,7 +632,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   headerWidget,
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   listContent,
                 ],
               );
@@ -628,7 +640,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
             return Container(
               width: MediaQuery.of(context).size.width * 0.95,
-              constraints: const BoxConstraints(maxWidth: 650, maxHeight: 540),
+              constraints: const BoxConstraints(maxWidth: 650, maxHeight: 580),
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -659,7 +671,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                                     '• Click the title of any card to jump directly to it (unhides it automatically if hidden).\n\n'
                                     '• Long press any card title to rearrange its position within its tab.\n\n'
                                     '• Toggle card visibility with the eye icon.\n\n'
-                                    '• Zaznamity settings are hidden by default.',
+                                    '• Zaznamity Settings are pinned at the bottom of Actions.\n\n'
+                                    '• Toggle app theme to Zaznamity or White at the bottom.',
                                     style: TextStyle(color: _isZaznamityMode ? Colors.white70 : Colors.black87, fontSize: 12),
                                   ),
                                   actions: [
@@ -691,36 +704,115 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   Divider(color: _isZaznamityMode ? Colors.white24 : Colors.black12, height: 6),
                   const SizedBox(height: 4),
                   Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: SingleChildScrollView(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                buildCategorySection('Metrics', metricsCards, isReorderable: true, masterCardsRef: cards),
-                                const SizedBox(height: 8),
-                                buildCategorySection('Analytics', analyticsCards, isReorderable: true, masterCardsRef: cards),
-                              ],
+                    child: SingleChildScrollView(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Column 0: Metrics, Analytics underneath Metrics
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  buildCategorySection('Metrics', metricsCards, isReorderable: true, masterCardsRef: cards),
+                                  const SizedBox(height: 10),
+                                  buildCategorySection('Analytics', analyticsCards, isReorderable: true, masterCardsRef: cards),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                buildCategorySection('Trends', trendsCards, isReorderable: true, masterCardsRef: cards),
-                                const SizedBox(height: 8),
-                                buildCategorySection('Actions', actionsCards, isReorderable: true, masterCardsRef: cards),
-                              ],
+                          const SizedBox(width: 8),
+                          // Column 1: Trends, Actions underneath Trends
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  buildCategorySection('Trends', trendsCards, isReorderable: true, masterCardsRef: cards),
+                                  const SizedBox(height: 10),
+                                  buildCategorySection('Actions', actionsCards, isReorderable: true, masterCardsRef: cards, isActionsCategory: true),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  Divider(color: _isZaznamityMode ? Colors.white24 : Colors.black12, height: 6),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Theme :  ',
+                        style: TextStyle(
+                          fontSize: 13.8,
+                          fontWeight: FontWeight.bold,
+                          color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () async {
+                          setState(() {
+                            _isZaznamityMode = true;
+                          });
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setString('app_theme', 'zaznamity');
+                          if (widget.onThemeChanged != null) {
+                            widget.onThemeChanged!(true);
+                          }
+                          setModalState(() {});
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9.2, vertical: 4.6),
+                          decoration: BoxDecoration(
+                            color: _isZaznamityMode ? const Color(0xFFA855F7) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFA855F7)),
+                          ),
+                          child: Text(
+                            'Zaznamity',
+                            style: TextStyle(
+                              fontSize: 12.65,
+                              fontWeight: FontWeight.bold,
+                              color: _isZaznamityMode ? Colors.white : const Color(0xFFA855F7),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6.9),
+                      InkWell(
+                        onTap: () async {
+                          setState(() {
+                            _isZaznamityMode = false;
+                          });
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setString('app_theme', 'white');
+                          if (widget.onThemeChanged != null) {
+                            widget.onThemeChanged!(false);
+                          }
+                          setModalState(() {});
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9.2, vertical: 4.6),
+                          decoration: BoxDecoration(
+                            color: !_isZaznamityMode ? const Color(0xFF582F95) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF582F95)),
+                          ),
+                          child: Text(
+                            'White',
+                            style: TextStyle(
+                              fontSize: 12.65,
+                              fontWeight: FontWeight.bold,
+                              color: !_isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -814,7 +906,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     }
 
     final outboundTx = TransactionModel(
-      description: 'Transfer out to Goal: $goalName',
+      description: 'Withdrawal from $fromPool',
       amount: amountToAdd,
       type: 'expense',
       pool: fromPool,
@@ -827,7 +919,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     );
 
     final inboundTx = TransactionModel(
-      description: 'Contribution to Goal: $goalName',
+      description: 'Deposit into Goal: $goalName',
       amount: amountToAdd,
       type: 'income',
       pool: 'goals',
@@ -848,8 +940,64 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Funds transferred to goal pool successfully!')));
   }
 
+  Future<void> _handleRemoveFundsFromGoal(int goalId, double amountToRemove, String owner, String toPool, String goalName, String currency) async {
+    final goal = _goals.firstWhere((g) => g.id == goalId);
+    final updatedAmount = (goal.currentAmount - amountToRemove).clamp(0.0, double.infinity);
+
+    await DatabaseHelper.instance.updateSavingsGoalCurrentAmount(goalId, updatedAmount);
+
+    final labelObj = _labels.firstWhere(
+      (l) => l.name.toLowerCase() == 'goals',
+      orElse: () => _labels.first,
+    );
+
+    int transferLabelId = _labels.isNotEmpty ? _labels.first.id : 1;
+    for (var label in _labels) {
+      if (label.name.toLowerCase() == 'transfer') {
+        transferLabelId = label.id;
+        break;
+      }
+    }
+
+    final outboundTx = TransactionModel(
+      description: 'Withdrawal from goals',
+      amount: amountToRemove,
+      type: 'expense',
+      pool: 'goals',
+      labelId: labelObj.id,
+      owner: owner,
+      createdAt: DateTime.now().toIso8601String(),
+      isConfirmed: 1,
+      isSavings: 0,
+      currencyCode: currency,
+    );
+
+    final inboundTx = TransactionModel(
+      description: 'Deposit into $toPool',
+      amount: amountToRemove,
+      type: 'income',
+      pool: toPool,
+      labelId: transferLabelId,
+      owner: owner,
+      createdAt: DateTime.now().toIso8601String(),
+      isConfirmed: 1,
+      isSavings: 0,
+      currencyCode: currency,
+    );
+
+    await DatabaseHelper.instance.insertTransaction(outboundTx);
+    await DatabaseHelper.instance.insertTransaction(inboundTx);
+
+    await Future.delayed(const Duration(milliseconds: 150));
+    await loadData();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Funds removed from goal and returned to pool successfully!')));
+  }
+
   Future<void> _deleteSavingsGoal(int id) async {
     final goalToDelete = _goals.firstWhere((g) => g.id == id, orElse: () => _goals.first);
+    
+    // Find all transactions related to this goal name
     final matchingTxs = _transactions.where((tx) => tx.description.contains(goalToDelete.name)).toList();
     for (var tx in matchingTxs) {
       if (tx.id != null) {
@@ -861,15 +1009,25 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await Future.delayed(const Duration(milliseconds: 150));
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Savings goal removed and funds restored!')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Savings goal and all related records completely removed!')));
   }
 
   Future<void> _completeSavingsGoal(int id) async {
+    final goalToDelete = _goals.firstWhere((g) => g.id == id, orElse: () => _goals.first);
+    
+    // Find all transactions related to this goal name and remove them completely leaving no trace
+    final matchingTxs = _transactions.where((tx) => tx.description.contains(goalToDelete.name)).toList();
+    for (var tx in matchingTxs) {
+      if (tx.id != null) {
+        await DatabaseHelper.instance.deleteTransaction(tx.id!);
+      }
+    }
+
     await DatabaseHelper.instance.deleteSavingsGoal(id);
     await Future.delayed(const Duration(milliseconds: 150));
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🎉 Goal completed and achieved!')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🎉 Goal completed and completely cleared!')));
   }
 
   void calculateMetrics() {
@@ -1158,13 +1316,15 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   Future<void> _deleteTransaction(int id) async {
     final txToDelete = _transactions.firstWhere((tx) => tx.id == id, orElse: () => _transactions.first);
     
-    if (txToDelete.description.contains('Goal:')) {
-      final goalName = txToDelete.description.split(':').last.trim();
-      await DatabaseHelper.instance.subtractFromSavingsGoalByName(goalName, txToDelete.amount);
+    if (txToDelete.description.contains('Deposit into Goal:') || txToDelete.description.contains('Withdrawal from')) {
+      final goalName = txToDelete.description.contains(':') ? txToDelete.description.split(':').last.trim() : '';
+      
+      if (goalName.isNotEmpty) {
+        await DatabaseHelper.instance.subtractFromSavingsGoalByName(goalName, txToDelete.amount);
+      }
 
       final matchingTx = _transactions.firstWhere(
         (tx) => tx.id != id && 
-                tx.description.contains(goalName) && 
                 tx.amount == txToDelete.amount &&
                 tx.createdAt == txToDelete.createdAt,
         orElse: () => txToDelete,
@@ -1314,7 +1474,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     final outbound = TransactionModel(
       createdAt: date.toIso8601String(),
-      description: description.isNotEmpty ? 'Transfer out: $description' : 'Transfer out to $toPool',
+      description: description.isNotEmpty ? 'Withdrawal from $fromPool: $description' : 'Withdrawal from $fromPool',
       amount: amount,
       type: 'expense',
       labelId: transferLabelId,
@@ -1328,7 +1488,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final convertedAmount = amount * exchangeRate;
     final inbound = TransactionModel(
       createdAt: date.toIso8601String(),
-      description: description.isNotEmpty ? 'Transfer in: $description' : 'Transfer in from $fromPool',
+      description: description.isNotEmpty ? 'Deposit into $toPool: $description' : 'Deposit into $toPool',
       amount: convertedAmount,
       type: 'income',
       labelId: transferLabelId,
@@ -1680,29 +1840,32 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _saveCardLayoutPreferences();
           },
         );
-      case 'savings_goals':
-        return SavingsGoalsCard(
-          goals: _goals,
-          labels: _labels,
-          owners: _owners,
-          pools: _pools.keys.toList(),
-          selectedOwner: _globalSelectedOwner,
-          onSaveGoal: _handleSaveGoal,
-          onAddFundsToGoal: (goalId, amountToAdd, owner, fromPool, goalName, currency) {
-            _handleAddFundsToGoal(goalId, amountToAdd, owner, fromPool, goalName, currency);
-          },
-          onDeleteGoal: _deleteSavingsGoal,
-          onCompleteGoal: _completeSavingsGoal,
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
-        );
+        case 'savings_goals':
+          return SavingsGoalsCard(
+            goals: _goals,
+            labels: _labels,
+            owners: _owners,
+            pools: _pools.keys.toList(),
+            selectedOwner: _globalSelectedOwner,
+            onSaveGoal: _handleSaveGoal,
+            onAddFundsToGoal: (goalId, amountToAdd, owner, fromPool, goalName, currency) {
+              _handleAddFundsToGoal(goalId, amountToAdd, owner, fromPool, goalName, currency);
+            },
+            onRemoveFundsFromGoal: (goalId, amountToRemove, owner, toPool, goalName, currency) {
+              _handleRemoveFundsFromGoal(goalId, amountToRemove, owner, toPool, goalName, currency);
+            },
+            onDeleteGoal: _deleteSavingsGoal,
+            onCompleteGoal: _completeSavingsGoal,
+            isWide: card.isWide,
+            onToggleWidth: () {
+              setState(() => card.isWide = !card.isWide);
+              _saveCardLayoutPreferences();
+            },
+            onHide: () {
+              setState(() => card.isVisible = false);
+              _saveCardLayoutPreferences();
+            },
+          );
       case 'settings':
         return AppSettingsCard(
           initialPools: _pools,
@@ -1854,28 +2017,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               _historySelectedOwner = owner;
               _historyStartDate = start;
               _historyEndDate = end;
+              _historySelectedType = null; // Clear type filter
             });
             _navigateToCard('history');
           },
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
-        );
-      case 'transaction_search':
-        return TransactionSearchCard(
-          transactions: _transactions,
-          labels: _labels,
-          owners: _owners,
-          pools: _pools.keys.toList(),
-          onDeleteTransaction: _deleteTransaction,
-          onEditTransaction: showEditTransactionDialog,
-          onConfirmTransaction: _confirmTransaction,
           isWide: card.isWide,
           onToggleWidth: () {
             setState(() => card.isWide = !card.isWide);
@@ -2341,7 +2486,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(c.id)).toList();
     final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
     final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
-    final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
+    final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'history', 'settings'].contains(c.id)).toList();
 
     showDialog(
       context: context,
@@ -2633,7 +2778,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                           final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'smart_insights', 'liabilities_card', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
                           final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
                           final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
-                          final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'transaction_search', 'history', 'settings'].contains(c.id)).toList();
+                          final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'history', 'settings'].contains(c.id)).toList();
 
                           return TabBarView(
                             controller: _tabController,

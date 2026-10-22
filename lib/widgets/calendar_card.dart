@@ -84,6 +84,56 @@ class _CalendarCardState extends State<CalendarCard> {
     }
   }
 
+  void _showCalendarInfoModal(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Calendar Guide',
+                  style: TextStyle(
+                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Text(
+              'The calendar is fully interactive:\n\n'
+              '• Press any day containing transaction data to jump directly to "All Zaznams".\n'
+              '• Selecting a day will automatically filter the transaction ledger to show all entries recorded for that specific date.',
+              style: TextStyle(
+                fontSize: 13,
+                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
+                height: 1.4,
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Got it'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     Future.microtask(() async {
@@ -321,22 +371,31 @@ class _CalendarCardState extends State<CalendarCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'CALENDAR',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                          letterSpacing: 0.8,
+                  Row(
+                    children: [
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'CALENDAR',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                            letterSpacing: 0.8,
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                        onPressed: () => _showCalendarInfoModal(context),
+                        tooltip: 'Calendar Guide',
+                        constraints: const BoxConstraints(),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

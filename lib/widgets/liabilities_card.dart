@@ -137,9 +137,7 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               child: const Text('Got it'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
             ),
           ],
         );
@@ -411,18 +409,22 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        'LIABILITIES',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                          letterSpacing: 0.8,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'LIABILITIES',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                            letterSpacing: 0.8,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 4),
                       IconButton(
-                        icon: Icon(Icons.info_outline, size: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                        icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
                         onPressed: () => _showLiabilityInfoModal(context),
                         tooltip: 'Setup Guide',
                         constraints: const BoxConstraints(),
@@ -550,10 +552,11 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                         ),
                       ),
                     )
-                  : ListView.builder(
+                  : ListView.separated(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: filteredLiabilities.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         final item = filteredLiabilities[index];
                         
@@ -562,11 +565,10 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                         double progressRatio = (1.0 - (item.remainingBalance / estimatedInitial)).clamp(0.0, 1.0);
 
                         return Container(
-                          margin: const EdgeInsets.symmetric(vertical: 6),
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
                           ),
                           child: Column(
@@ -579,32 +581,26 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                                     item.name,
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 13,
+                                      fontSize: 15,
                                       color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                                     ),
                                   ),
-                                  IconButton(
-                                    constraints: const BoxConstraints(),
-                                    padding: EdgeInsets.zero,
-                                    icon: Icon(
-                                      Icons.delete_outline,
-                                      color: _isZaznamityMode ? const Color(0xFFEF4444) : Colors.redAccent,
-                                      size: 18,
-                                    ),
-                                    onPressed: () => widget.onDeleteLiability(item.id, item.name),
+                                  InkWell(
+                                    onTap: () => widget.onDeleteLiability(item.id, item.name),
+                                    child: Icon(Icons.close, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), size: 16),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 12),
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
+                                borderRadius: BorderRadius.circular(6),
                                 child: LinearProgressIndicator(
                                   value: progressRatio,
-                                  backgroundColor: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFE2E8F0),
+                                  minHeight: 10,
+                                  backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
                                   valueColor: AlwaysStoppedAnimation<Color>(
                                     _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
                                   ),
-                                  minHeight: 6,
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -614,7 +610,7 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                                   Text(
                                     'Balance: ${widget.currencySymbol}${item.remainingBalance.toStringAsFixed(2)}',
                                     style: TextStyle(
-                                      fontSize: 11,
+                                      fontSize: 12,
                                       fontWeight: FontWeight.bold,
                                       color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
                                     ),

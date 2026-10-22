@@ -554,19 +554,48 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     required double width,
     required String currencyCode,
   }) {
+    String lowerTitle = title.toLowerCase();
+    String infoTitle = title;
+    String infoExplanation;
+
+    if (lowerTitle == 'checking') {
+      infoExplanation = 'Checking Pool: Represents your everyday transactional funds and bank accounts used for immediate income deposits, bill payments, and daily expenses.';
+    } else if (lowerTitle == 'savings') {
+      infoExplanation = 'Savings Pool: Tracks funds set aside for emergency reserves, future security, or intermediate holding separate from everyday spending.';
+    } else if (lowerTitle == 'goals') {
+      infoExplanation = 'Goals Pool: Dedicated funds earmarked for specific targeted milestones, purchases, or dedicated financial projects.';
+    } else {
+      infoExplanation = 'Custom user created pool.';
+    }
+
     return SizedBox(
       width: width,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
-              letterSpacing: 0.6,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
+                    letterSpacing: 0.6,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              InkWell(
+                onTap: () => _showMetricInfo(context, infoTitle, infoExplanation),
+                child: Padding(
+                  padding: const EdgeInsets.all(2.0),
+                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 2),
           FittedBox(
