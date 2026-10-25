@@ -203,6 +203,18 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+
+    bool isNormalized = prefs.getBool('transfers_normalized_withdrawal_deposit') ?? false;
+    if (!isNormalized) {
+      try {
+        int count = await DatabaseHelper.instance.normalizePastTransfersToWithdrawalDeposit();
+        print('Migrated $count transfer records with 5s offset!');
+      } catch (e) {
+        print('Migration error: $e');
+      }
+      await prefs.setBool('transfers_normalized_withdrawal_deposit', true);
+    }
+
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     final sec1 = prefs.getString('secondaryCurrency1');
     final sec2 = prefs.getString('secondaryCurrency2');
@@ -477,7 +489,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: StatefulBuilder(
           builder: (stateContext, setModalState) {
-            // Filter out settings from general actions list to manage it explicitly
             final metricsCards = cards.where((c) => ['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(c.id)).toList();
             final trendsCards = cards.where((c) => ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
             final analyticsCards = cards.where((c) => ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
@@ -487,18 +498,18 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             Widget buildCategorySection(String title, List<CardConfig> catCards, {bool isReorderable = false, List<CardConfig>? masterCardsRef, bool isActionsCategory = false}) {
               final headerWidget = Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 8),
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
                 decoration: BoxDecoration(
-                  color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                  borderRadius: BorderRadius.circular(6),
+                  color: const Color(0xFF582F95),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    color: _isZaznamityMode ? const Color(0xFF582F95) : Colors.white,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
                 ),
               );
@@ -508,7 +519,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: catCards.length + (isActionsCategory ? 1 : 0),
                 itemBuilder: (context, index) {
-                  // If it's the actions section and this is the last index, render the pinned Settings tile
                   final bool isPinnedSettings = isActionsCategory && index == catCards.length;
                   final card = isPinnedSettings ? settingsCard : catCards[index];
 
@@ -529,7 +539,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                         overflow: TextOverflow.ellipsis,
                       ),
                       trailing: isPinnedSettings
-                          ? const SizedBox(width: 22, height: 22) // Pinned settings has no visibility toggle per instructions
+                          ? const SizedBox(width: 22, height: 22)
                           : SizedBox(
                               height: 22,
                               width: 22,
@@ -564,7 +574,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                     ),
                   );
 
-                  // Pinned settings card at the bottom of Actions cannot be reordered or dragged
                   if (isPinnedSettings || !isReorderable || masterCardsRef == null) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 5.0),
@@ -708,7 +717,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Column 0: Metrics, Analytics underneath Metrics
                           Expanded(
                             child: SingleChildScrollView(
                               child: Column(
@@ -722,7 +730,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                             ),
                           ),
                           const SizedBox(width: 8),
-                          // Column 1: Trends, Actions underneath Trends
                           Expanded(
                             child: SingleChildScrollView(
                               child: Column(
@@ -828,23 +835,41 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       setState(() => _isLoading = true);
     }
     
-    await DatabaseHelper.instance.checkAndApplyAutomaticLiabilityPayments();
+    try {
+      await DatabaseHelper.instance.checkAndApplyAutomaticLiabilityPayments();
 
-    final txs = await DatabaseHelper.instance.getTransactions();
-    final lbls = await DatabaseHelper.instance.getLabels();
-    final bdgs = await DatabaseHelper.instance.getBudgets();
-    final gls = await DatabaseHelper.instance.getSavingsGoals();
-    final liabs = await DatabaseHelper.instance.getLiabilities(); 
+      final prefs = await SharedPreferences.getInstance();
+      bool isNormalized = prefs.getBool('transfers_normalized_withdrawal_deposit') ?? false;
+      if (!isNormalized) {
+        try {
+          await DatabaseHelper.instance.normalizePastTransfersToWithdrawalDeposit();
+        } catch (e) {
+          print('Migration error (non-fatal): $e');
+        }
+        await prefs.setBool('transfers_normalized_withdrawal_deposit', true);
+      }
 
-    setState(() {
-      _transactions = txs;
-      _labels = lbls;
-      _budgets = List<Map<String, dynamic>>.from(bdgs);
-      _goals = List<SavingsGoalModel>.from(gls);
-      _liabilities = List<LiabilityModel>.from(liabs); 
-      calculateMetrics();
-      _isLoading = false;
-    });
+      final txs = await DatabaseHelper.instance.getTransactions();
+      final lbls = await DatabaseHelper.instance.getLabels();
+      final bdgs = await DatabaseHelper.instance.getBudgets();
+      final gls = await DatabaseHelper.instance.getSavingsGoals();
+      final liabs = await DatabaseHelper.instance.getLiabilities(); 
+
+      setState(() {
+        _transactions = txs;
+        _labels = lbls;
+        _budgets = List<Map<String, dynamic>>.from(bdgs);
+        _goals = List<SavingsGoalModel>.from(gls);
+        _liabilities = List<LiabilityModel>.from(liabs); 
+        calculateMetrics();
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading data: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _handleSaveLiability(LiabilityModel liability) async {
@@ -997,7 +1022,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   Future<void> _deleteSavingsGoal(int id) async {
     final goalToDelete = _goals.firstWhere((g) => g.id == id, orElse: () => _goals.first);
     
-    // Find all transactions related to this goal name
     final matchingTxs = _transactions.where((tx) => tx.description.contains(goalToDelete.name)).toList();
     for (var tx in matchingTxs) {
       if (tx.id != null) {
@@ -1015,7 +1039,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   Future<void> _completeSavingsGoal(int id) async {
     final goalToDelete = _goals.firstWhere((g) => g.id == id, orElse: () => _goals.first);
     
-    // Find all transactions related to this goal name and remove them completely leaving no trace
     final matchingTxs = _transactions.where((tx) => tx.description.contains(goalToDelete.name)).toList();
     for (var tx in matchingTxs) {
       if (tx.id != null) {
@@ -1474,7 +1497,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     final outbound = TransactionModel(
       createdAt: date.toIso8601String(),
-      description: description.isNotEmpty ? 'Withdrawal from $fromPool: $description' : 'Withdrawal from $fromPool',
+      description: description.isNotEmpty 
+          ? 'Withdrawal from $fromPool ($fromCurrency): $description' 
+          : 'Withdrawal from $fromPool ($fromCurrency)',
       amount: amount,
       type: 'expense',
       labelId: transferLabelId,
@@ -1487,8 +1512,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     final convertedAmount = amount * exchangeRate;
     final inbound = TransactionModel(
-      createdAt: date.toIso8601String(),
-      description: description.isNotEmpty ? 'Deposit into $toPool: $description' : 'Deposit into $toPool',
+      createdAt: date.add(const Duration(seconds: 5)).toIso8601String(),
+      description: description.isNotEmpty 
+          ? 'Deposit into $toPool ($toCurrency): $description' 
+          : 'Deposit into $toPool ($toCurrency)',
       amount: convertedAmount,
       type: 'income',
       labelId: transferLabelId,
@@ -1504,7 +1531,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Multi-currency transfer executed successfully!')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Transfer recorded with pool details!')),
+    );
   }
 
   Future<void> _addLabel(String name) async {
@@ -2017,7 +2046,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               _historySelectedOwner = owner;
               _historyStartDate = start;
               _historyEndDate = end;
-              _historySelectedType = null; // Clear type filter
+              _historySelectedType = null;
             });
             _navigateToCard('history');
           },
@@ -2444,6 +2473,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             }
             return true;
           }).toList(),
+          allTransactions: _transactions,
           labels: _labels,
           owners: _owners,
           startDate: _historyStartDate,
@@ -2683,7 +2713,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final double netWidth = screenWidth - sidePadding;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(2, 8, 2, 85),
+      // Dynamic padding that accounts for the keyboard height and bottom navigation space
+      padding: EdgeInsets.fromLTRB(
+        2, 
+        8, 
+        2, 
+        MediaQuery.of(context).viewInsets.bottom + 120,
+      ),
       child: Column(
         children: [
           if (isMetricsTab) ...[
@@ -2759,90 +2795,98 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   @override
   Widget build(BuildContext context) {
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final bool isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
     return Scaffold(
       backgroundColor: const Color(0xFF3B1E63),
-      resizeToAvoidBottomInset: false,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Stack(
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      resizeToAvoidBottomInset: true, // Enabled so viewInsets.bottom works dynamically
+      body: SafeArea(
+        top: true,
+        child: Container(
+          color: const Color(0xFF3B1E63),
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Stack(
                   children: [
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final screenWidth = constraints.maxWidth;
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final screenWidth = constraints.maxWidth;
 
-                          final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'smart_insights', 'liabilities_card', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
-                          final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
-                          final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
-                          final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'history', 'settings'].contains(c.id)).toList();
+                              final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'smart_insights', 'liabilities_card', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
+                              final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
+                              final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
+                              final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'history', 'settings'].contains(c.id)).toList();
 
-                          return TabBarView(
-                            controller: _tabController,
-                            children: [
-                              _buildCardTabContent(metricsCards, screenWidth, isMetricsTab: true),
-                              _buildCardTabContent(trendsCards, screenWidth),
-                              _buildCardTabContent(analyticsCards, screenWidth),
-                              _buildCardTabContent(actionsCards, screenWidth),
-                            ],
-                          );
-                        },
-                      ),
+                              return TabBarView(
+                                controller: _tabController,
+                                children: [
+                                  _buildCardTabContent(metricsCards, screenWidth, isMetricsTab: true),
+                                  _buildCardTabContent(trendsCards, screenWidth),
+                                  _buildCardTabContent(analyticsCards, screenWidth),
+                                  _buildCardTabContent(actionsCards, screenWidth),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
+
+                    if (!isKeyboardOpen)
+                      Positioned(
+                        left: isLandscape ? 0 : 0,
+                        right: isLandscape ? null : 0,
+                        bottom: 0,
+                        top: isLandscape ? 0 : null,
+                        child: Align(
+                          alignment: isLandscape ? Alignment.centerRight : Alignment.bottomCenter,
+                          child: BottomCardNavBar(
+                            cards: _cards,
+                            leftItems: _leftNavItems,
+                            rightItems: _rightNavItems,
+                            isLandscape: isLandscape,
+                            currentTabIndex: _tabController.index,
+                            onTabSelected: (index) {
+                              _tabController.animateTo(
+                                index,
+                                duration: const Duration(milliseconds: 180),
+                                curve: Curves.easeInOut,
+                              );
+                            },
+                            onOpenManager: () => showCardStackManager(
+                              context,
+                              _cards,
+                              (card) {
+                                setState(() => card.isVisible = !card.isVisible);
+                                _saveCardLayoutPreferences();
+                              },
+                            ),
+                            onQuickAdd: () => _navigateToCard('new_entry'),
+                            onSelectOwner: _showOwnerSelectionDialog,
+                            onNavigateToCard: (cardId) {
+                              if (cardId == 'snapshot') {
+                                _showZoomOutSnapshotModal();
+                              } else {
+                                _navigateToCard(cardId);
+                              }
+                            },
+                            onToggleVisibility: (card) {
+                              setState(() {
+                                card.isVisible = true;
+                              });
+                              _saveCardLayoutPreferences();
+                            },
+                          ),
+                        ),
+                      ),
                   ],
                 ),
-
-                Positioned(
-                  left: isLandscape ? 0 : 0,
-                  right: isLandscape ? null : 0,
-                  bottom: 0,
-                  top: isLandscape ? 0 : null,
-                  child: Align(
-                    alignment: isLandscape ? Alignment.centerRight : Alignment.bottomCenter,
-                    child: BottomCardNavBar(
-                      cards: _cards,
-                      leftItems: _leftNavItems,
-                      rightItems: _rightNavItems,
-                      isLandscape: isLandscape,
-                      currentTabIndex: _tabController.index,
-                      onTabSelected: (index) {
-                        _tabController.animateTo(
-                          index,
-                          duration: const Duration(milliseconds: 180),
-                          curve: Curves.easeInOut,
-                        );
-                      },
-                      onOpenManager: () => showCardStackManager(
-                        context,
-                        _cards,
-                        (card) {
-                          setState(() => card.isVisible = !card.isVisible);
-                          _saveCardLayoutPreferences();
-                        },
-                      ),
-                      onQuickAdd: () => _navigateToCard('new_entry'),
-                      onSelectOwner: _showOwnerSelectionDialog,
-                      onNavigateToCard: (cardId) {
-                        if (cardId == 'snapshot') {
-                          _showZoomOutSnapshotModal();
-                        } else {
-                          _navigateToCard(cardId);
-                        }
-                      },
-                      onToggleVisibility: (card) {
-                        setState(() {
-                          card.isVisible = true;
-                        });
-                        _saveCardLayoutPreferences();
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
+        ),
+      ),
     );
   }
 }

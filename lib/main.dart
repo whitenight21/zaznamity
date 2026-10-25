@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/dashboard_screen.dart';
@@ -76,7 +78,7 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _initializeApp() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // Load preferences[cite: 10]
+    // Load preferences
     _isDarkMode = prefs.getBool('isDarkMode') ?? false;
     _pinEnabled = prefs.getBool('biometricsEnabled') ?? false;
     _savedPin = prefs.getString('savedPin') ?? "1234";
@@ -85,7 +87,7 @@ class _SplashScreenState extends State<SplashScreen> {
     await DatabaseHelper.instance.database;
 
     // Optional short delay for a smooth startup view
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 1));
 
     if (!mounted) return;
 
@@ -93,7 +95,7 @@ class _SplashScreenState extends State<SplashScreen> {
       _isInitialized = true;
     });
 
-    // If PIN lock is disabled, navigate directly to dashboard
+    // If security lock is disabled, navigate directly to dashboard
     if (!_pinEnabled) {
       _navigateToDashboard();
     }
@@ -153,36 +155,38 @@ class _SplashScreenState extends State<SplashScreen> {
                 ClipOval(
                   child: Image.asset(
                     'assets/ZaznamityLogoFULL.jpg', 
-                    width: 220,
-                    height: 220,
+                    width: 190,
+                    height: 190,
                     fit: BoxFit.cover,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
+                // Title
                 const Text(
                   'ZAZNAMITY',
                   style: TextStyle(
-                    fontSize: 30,
+                    fontSize: 26,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
-                    letterSpacing: 2.0,
+                    letterSpacing: 1.5,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
+                // Subtitle
                 const Text(
                   'RECORD • TRACK • FOCUS',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 10.5,
                     color: Color.fromARGB(255, 157, 101, 255),
-                    letterSpacing: 1.0,
+                    letterSpacing: 0.8,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
 
                 // Fixed-height container prevents any vertical shifting/dropping when loader disappears
                 SizedBox(
-                  height: 120,
+                  height: 90,
                   child: Center(
                     child: !_isInitialized
                         ? const CircularProgressIndicator(color: Colors.white)
@@ -194,13 +198,13 @@ class _SplashScreenState extends State<SplashScreen> {
                                     'Enter Passcode',
                                     style: TextStyle(fontSize: 14, color: Colors.white70),
                                   ),
-                                  const SizedBox(height: 16),
+                                  const SizedBox(height: 10),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: List.generate(4, (index) => Container(
-                                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                                      width: 14,
-                                      height: 14,
+                                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                                      width: 12,
+                                      height: 12,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         color: index < _enteredPin.length ? Colors.white : Colors.white.withValues(alpha: 0.3),
@@ -215,22 +219,23 @@ class _SplashScreenState extends State<SplashScreen> {
 
                 // PIN pad rows if initialized and enabled
                 if (_isInitialized && _pinEnabled) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   for (var row in [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['', '0', '⌫']])
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: row.map((val) {
-                        if (val.isEmpty) return const SizedBox(width: 60, height: 60);
+                        if (val.isEmpty) return const SizedBox(width: 57, height: 52);
                         return Container(
-                          margin: const EdgeInsets.all(6),
-                          width: 60,
-                          height: 60,
+                          margin: const EdgeInsets.all(4),
+                          width: 57,
+                          height: 52,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.white.withValues(alpha: 0.15),
                               foregroundColor: Colors.white,
                               elevation: 0,
-                              shape: const CircleBorder(),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                              padding: EdgeInsets.zero,
                             ),
                             onPressed: () {
                               if (val == '⌫') {
@@ -241,7 +246,7 @@ class _SplashScreenState extends State<SplashScreen> {
                                 _onKeyTap(val);
                               }
                             },
-                            child: Text(val, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                            child: Text(val, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                           ),
                         );
                       }).toList(),

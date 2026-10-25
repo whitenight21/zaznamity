@@ -23,6 +23,7 @@ dependencies:
   path_provider: ^2.1.2
   share_plus: ^10.0.0 
   open_file: ^3.3.2 # or the latest version
+  local_auth: ^3.0.1  # Add this line
 
   cupertino_icons: ^1.0.8
 

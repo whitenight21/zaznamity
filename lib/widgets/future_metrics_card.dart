@@ -53,6 +53,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
   String _dateRangeSetting = '90 Days';
   bool _isZaznamityMode = true;
   bool _excludeTransfers = true;
+  String _primaryCurrency = 'USD';
 
   @override
   void initState() {
@@ -69,6 +70,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         _isZaznamityMode = (savedTheme == 'zaznamity');
         _dateRangeSetting = prefs.getString('set_futureMetrics_range') ?? '90 Days';
         _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
+        _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
       });
     }
   }
@@ -84,8 +86,24 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     _loadPrefs();
   }
 
+  String _getCurrencySymbol() {
+    switch (_primaryCurrency) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': return '¥';
+      case 'CNY': return '¥';
+      case 'AUD': return 'A\$';
+      case 'CAD': return 'C\$';
+      case 'CHF': return 'CHF ';
+      case 'HKD': return 'HK\$';
+      case 'SGD': return 'S\$';
+      default: return '\$';
+    }
+  }
+
   String _formatCurrency(double amount) {
-    final format = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+    final symbol = _getCurrencySymbol();
+    final format = NumberFormat.currency(symbol: symbol, decimalDigits: 2);
     return format.format(amount);
   }
 
@@ -146,6 +164,40 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
       'burnRate': monthlyBurn,
       'savingsRate': savingsRate.clamp(-100.0, 100.0),
     };
+  }
+
+  double _calculate30DayNetShift() {
+    final now = DateTime.now();
+    final next30Days = now.add(const Duration(days: 30));
+    double netShift = 0.0;
+
+    for (var tx in widget.transactions) {
+      if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
+      final dt = DateTime.tryParse(tx.createdAt);
+      if (dt != null && dt.isAfter(now) && dt.isBefore(next30Days)) {
+        if (tx.type == 'income') netShift += tx.amount;
+        if (tx.type == 'expense') netShift -= tx.amount;
+      }
+    }
+
+    return netShift;
+  }
+
+  int _calculateUpcomingScheduledCount() {
+    final now = DateTime.now();
+    final next7Days = now.add(const Duration(days: 7));
+    int count = 0;
+
+    for (var tx in widget.transactions) {
+      if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
+      final dt = DateTime.tryParse(tx.createdAt);
+      if (dt != null && dt.isAfter(now) && dt.isBefore(next7Days)) {
+        if (tx.isConfirmed != 1) {
+          count++;
+        }
+      }
+    }
+    return count;
   }
 
   void _showMetricInfo(BuildContext context, String title, String explanation) {
@@ -235,6 +287,8 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         final burnAndSavings = _calculateBurnAndSavingsRate();
         final monthlyBurn = burnAndSavings['burnRate'] ?? 0.0;
         final savingsRate = burnAndSavings['savingsRate'] ?? 0.0;
+        final net30Shift = _calculate30DayNetShift();
+        final upcomingCount = _calculateUpcomingScheduledCount();
 
         final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
 
@@ -513,6 +567,114 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+
+              // 30-DAY NET LIQUIDITY SHIFT BAR WITH EXPLANATION INFO CIRCLE
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          net30Shift >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                          size: 16,
+                          color: net30Shift >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'NEXT 30-DAY CASH SHIFT:',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        InkWell(
+                          onTap: () => _showMetricInfo(
+                            context,
+                            'NEXT 30-DAY CASH SHIFT',
+                            'Calculates the absolute net change in your liquid cash over the next 30 days by combining both incoming scheduled cashflows (income) and outgoing scheduled cashflows (expenses/bills).\n\n• Positive (+): Incoming earnings exceed your bills.\n• Negative (-): Scheduled expenses/bills outweigh upcoming income.',
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(2.0),
+                            child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      '${net30Shift >= 0 ? '+' : ''}${_formatCurrency(net30Shift)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: net30Shift >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // SCHEDULED TRANSACTIONS REMINDER COUNTER
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.notification_important_rounded, size: 16, color: Color(0xFFF59E0B)),
+                        const SizedBox(width: 8),
+                        Text(
+                          'SCHEDULED DUE (NEXT 7 DAYS):',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        InkWell(
+                          onTap: () => _showMetricInfo(
+                            context,
+                            'SCHEDULED DUE (NEXT 7 DAYS)',
+                            'Shows the total number of unconfirmed scheduled transactions or bills coming due within the next 7 days, helping you stay ahead of upcoming payments.',
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(2.0),
+                            child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      '$upcomingCount Pending',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: upcomingCount > 0 ? const Color(0xFFF59E0B) : const Color(0xFF34D399),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         );
@@ -533,20 +695,18 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
-                    letterSpacing: 0.6,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
+                  letterSpacing: 0.6,
                 ),
               ),
+              const SizedBox(width: 4),
               InkWell(
                 onTap: () => _showMetricInfo(context, title, infoExplanation),
                 child: Padding(
@@ -586,20 +746,18 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
-                    letterSpacing: 0.6,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
+                  letterSpacing: 0.6,
                 ),
               ),
+              const SizedBox(width: 4),
               InkWell(
                 onTap: () => _showMetricInfo(context, title, infoExplanation),
                 child: Padding(

@@ -5,6 +5,8 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'package:share_plus/share_plus.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:open_file/open_file.dart';
@@ -122,6 +124,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   bool _excludeTransfersFromInsights = true;
 
   List<File> _savedReportsList = [];
+  List<File> _savedExportsList = []; // New separate list for CSV & JSON backups
   List<LiabilityModel> _liabilitiesList = [];
 
   final List<Map<String, String>> _availableCurrencies = [
@@ -204,6 +207,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
         _multiLabelFixedCategories.putIfAbsent(label.name, () => false);
       }
     }
+    _loadPrefs(); // Re-loads preferences instantly on widget update
   }
 
   Future<void> _loadPrefs() async {
@@ -260,47 +264,94 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     } catch (_) {}
   }
 
-  Future<void> _loadSavedReports() async {
+Future<void> _loadSavedReports() async {
     try {
-      Directory? directory;
-      if (Platform.isAndroid) {
-        directory = Directory('/storage/emulated/0/Download');
-        if (!await directory.exists()) {
-          directory = await getExternalStorageDirectory();
-        }
-      } else {
-        directory = await getApplicationDocumentsDirectory();
-      }
+      final directory = await getApplicationDocumentsDirectory();
 
-      if (directory != null && await directory.exists()) {
-        final files = directory.listSync();
-        final pdfFiles = files
-            .where((entity) => entity is File && entity.path.toLowerCase().endsWith('.pdf') && entity.path.contains('ZaznamityReport'))
-            .map((entity) => entity as File)
-            .toList();
+      if (await directory.exists()) {
+        final List<FileSystemEntity> entities = directory.listSync();
         
-        pdfFiles.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+        List<File> pdfFiles = [];
+        List<File> exportFiles = [];
 
-        setState(() {
-          _savedReportsList = pdfFiles;
+        for (var entity in entities) {
+          if (entity is File) {
+            final path = entity.path;
+            final lowerPath = path.toLowerCase();
+            
+            // Check for PDF reports
+            if (lowerPath.endsWith('.pdf')) {
+              pdfFiles.add(entity);
+            }
+            
+            // Check for CSV or JSON exports (captures any file ending in .csv or .json)
+            if (lowerPath.endsWith('.csv') || lowerPath.endsWith('.json')) {
+              exportFiles.add(entity);
+            }
+          }
+        }
+
+        // Sort both lists by last modified date (newest first)
+        pdfFiles.sort((a, b) {
+          try {
+            return b.lastModifiedSync().compareTo(a.lastModifiedSync());
+          } catch (_) {
+            return 0;
+          }
         });
+
+        exportFiles.sort((a, b) {
+          try {
+            return b.lastModifiedSync().compareTo(a.lastModifiedSync());
+          } catch (_) {
+            return 0;
+          }
+        });
+
+        if (mounted) {
+          setState(() {
+            _savedReportsList = pdfFiles;
+            _savedExportsList = exportFiles;
+          });
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      // Debug print if any unexpected filesystem issue occurs
+      debugPrint('Error loading saved reports/exports: $e');
+    }
   }
 
-  Future<void> _openReportFile(File file) async {
+Future<void> _openReportFile(File file) async {
     try {
-      final result = await OpenFile.open(file.path);
-      if (result.type != ResultType.done) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open file: ${result.message}')),
-        );
+      // Use OpenFile first for PDFs if it works, otherwise fallback to Share sheet for CSV/JSON
+      final path = file.path.toLowerCase();
+      if (path.endsWith('.pdf')) {
+        final result = await OpenFile.open(file.path);
+        if (result.type != ResultType.done) {
+          // Fallback to share sheet if open_file fails
+          await _shareFile(file);
+        }
+      } else {
+        // For CSV and JSON backups, open via system share sheet so you can pick Sheets, Files, or Drive
+        await _shareFile(file);
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error opening report: $e')),
+        SnackBar(content: Text('Could not open file: $e')),
+      );
+    }
+  }
+
+  Future<void> _shareFile(File file) async {
+    try {
+      // Ensure share_plus is used to safely pass the sandboxed file to external apps
+      // Note: If you don't have share_plus imported yet, you can add `import 'package:share_plus/share_plus.dart';`
+      await Share.shareXFiles([XFile(file.path)], text: 'Zaznamity Backup File');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sharing failed: $e')),
       );
     }
   }
@@ -313,12 +364,333 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       await _loadSavedReports();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Report log deleted successfully')),
+        const SnackBar(content: Text('File deleted successfully')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error deleting report file: $e')),
+        SnackBar(content: Text('Error deleting file: $e')),
+      );
+    }
+  }
+
+// --- PREVIEW & EXPORT WORKFLOW WITH DATE RANGE OPTIONS ---
+  Future<void> _showExportPreviewDialog(String format) async {
+    String selectedRangeMode = 'all'; // 'all', 'month', 'year', 'custom'
+    int selectedYear = DateTime.now().year;
+    int selectedMonth = DateTime.now().month;
+    DateTime customStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
+    DateTime customEnd = DateTime.now();
+
+    try {
+      final allTxs = await DatabaseHelper.instance.getTransactions();
+      
+      // Map label IDs to names
+      final Map<int, String> labelMap = {
+        for (var l in widget.labels) l.id: l.name
+      };
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (context, setStateModal) {
+            // Filter transactions based on selected range mode
+            final filteredTxs = allTxs.where((tx) {
+              final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+              if (selectedRangeMode == 'month') {
+                return txDate.year == selectedYear && txDate.month == selectedMonth;
+              } else if (selectedRangeMode == 'year') {
+                return txDate.year == selectedYear;
+              } else if (selectedRangeMode == 'custom') {
+                final startOfDay = DateTime(customStart.year, customStart.month, customStart.day);
+                final endOfDay = DateTime(customEnd.year, customEnd.month, customEnd.day, 23, 59, 59);
+                return !txDate.isBefore(startOfDay) && !txDate.isAfter(endOfDay);
+              }
+              return true; // 'all'
+            }).toList();
+
+            // Build preview text for the first 2 rows
+            String previewHeader = 'ID,CreatedAt,Type,Amount,Description,Owner,Pool,CurrencyCode,LabelId,LabelName,IsConfirmed\n';
+            final previewRowsBuffer = StringBuffer();
+            
+            for (var tx in filteredTxs.take(2)) {
+              final double exportAmount = (tx.type.toLowerCase() == 'expense') ? -tx.amount.abs() : tx.amount.abs();
+              final labelName = labelMap[tx.labelId] ?? 'General';
+              previewRowsBuffer.writeln('${tx.id},"${tx.createdAt}","${tx.type}",$exportAmount,"${tx.description}","${tx.owner}","${tx.pool}","${tx.currencyCode}",${tx.labelId},"$labelName",${tx.isConfirmed}');
+            }
+
+            final previewContent = previewHeader + previewRowsBuffer.toString();
+
+            return AlertDialog(
+              backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text(
+                'Export Preview (${format.toUpperCase()})',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                ),
+              ),
+              content: SizedBox(
+                width: 500,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Select Export Date Range:',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedRangeMode,
+                        dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                        style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 12),
+                        decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                        items: const [
+                          DropdownMenuItem(value: 'all', child: Text('All-Time Ledger History')),
+                          DropdownMenuItem(value: 'month', child: Text('By Specific Month')),
+                          DropdownMenuItem(value: 'year', child: Text('By Specific Year')),
+                          DropdownMenuItem(value: 'custom', child: Text('Custom Date Range')),
+                        ],
+                        onChanged: (val) => setStateModal(() => selectedRangeMode = val ?? 'all'),
+                      ),
+                      if (selectedRangeMode == 'month' || selectedRangeMode == 'year') ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<int>(
+                                initialValue: selectedYear,
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 12),
+                                decoration: const InputDecoration(labelText: 'Year', isDense: true, border: OutlineInputBorder()),
+                                items: List.generate(11, (i) => 2020 + i).map((y) => DropdownMenuItem(value: y, child: Text('$y'))).toList(),
+                                onChanged: (val) => setStateModal(() => selectedYear = val ?? selectedYear),
+                              ),
+                            ),
+                            if (selectedRangeMode == 'month') ...[
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: DropdownButtonFormField<int>(
+                                  initialValue: selectedMonth,
+                                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                  style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 12),
+                                  decoration: const InputDecoration(labelText: 'Month', isDense: true, border: OutlineInputBorder()),
+                                  items: List.generate(12, (i) => i + 1).map((m) => DropdownMenuItem(value: m, child: Text('$m'))).toList(),
+                                  onChanged: (val) => setStateModal(() => selectedMonth = val ?? selectedMonth),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                      if (selectedRangeMode == 'custom') ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextButton.icon(
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: customStart,
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2030),
+                                  );
+                                  if (picked != null) setStateModal(() => customStart = picked);
+                                },
+                                icon: const Icon(Icons.calendar_today, size: 14),
+                                label: Text('Start: ${DateFormat('yyyy-MM-dd').format(customStart)}', style: const TextStyle(fontSize: 11)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextButton.icon(
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: customEnd,
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2030),
+                                  );
+                                  if (picked != null) setStateModal(() => customEnd = picked);
+                                },
+                                icon: const Icon(Icons.calendar_today, size: 14),
+                                label: Text('End: ${DateFormat('yyyy-MM-dd').format(customEnd)}', style: const TextStyle(fontSize: 11)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      Text(
+                        'Total Matching Records: ${filteredTxs.length} (Showing 2-Row Horizontal Preview)',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                      ),
+                      const SizedBox(height: 6),
+                      // Horizontal scroll preview container
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minWidth: 600),
+                            child: Text(
+                              filteredTxs.isEmpty ? 'No transactions match the selected date range.' : previewContent,
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 11,
+                                color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _executeExportData(format, selectedRangeMode, selectedYear, selectedMonth, customStart, customEnd);
+                  },
+                  child: const Text('Confirm & Save'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Preview error: $e')),
+      );
+    }
+  }
+
+  Future<void> _executeExportData(
+    String format,
+    String rangeMode,
+    int year,
+    int month,
+    DateTime customStart,
+    DateTime customEnd,
+  ) async {
+    try {
+      final allTxs = await DatabaseHelper.instance.getTransactions();
+      
+      // Filter transactions matching the chosen range
+      final filteredTxs = allTxs.where((tx) {
+        final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+        if (rangeMode == 'month') {
+          return txDate.year == year && txDate.month == month;
+        } else if (rangeMode == 'year') {
+          return txDate.year == year;
+        } else if (rangeMode == 'custom') {
+          final startOfDay = DateTime(customStart.year, customStart.month, customStart.day);
+          final endOfDay = DateTime(customEnd.year, customEnd.month, customEnd.day, 23, 59, 59);
+          return !txDate.isBefore(startOfDay) && !txDate.isAfter(endOfDay);
+        }
+        return true;
+      }).toList();
+
+      String fileContent = '';
+      String extension = format.toLowerCase();
+      
+      final Map<int, String> labelMap = {
+        for (var l in widget.labels) l.id: l.name
+      };
+
+      if (extension == 'csv') {
+        final buffer = StringBuffer();
+        // Clear, fixed column headers matching data layout exactly
+        buffer.writeln('ID,CreatedAt,Type,Amount,Description,Owner,Pool,CurrencyCode,LabelId,LabelName,IsConfirmed');
+        
+        for (var tx in filteredTxs) {
+          final safeDescription = tx.description.replaceAll('"', '""');
+          final safeOwner = tx.owner.replaceAll('"', '""');
+          final safePool = tx.pool.replaceAll('"', '""');
+          final safeCurrency = tx.currencyCode.replaceAll('"', '""');
+          
+          // Format expenses as negative numbers and income as positive numbers
+          final double exportAmount = (tx.type.toLowerCase() == 'expense') 
+              ? -tx.amount.abs() 
+              : tx.amount.abs();
+          
+          final labelName = labelMap[tx.labelId] ?? 'General';
+          final safeLabelName = labelName.replaceAll('"', '""');
+
+          buffer.writeln(
+            '${tx.id},'
+            '"${tx.createdAt}",'
+            '"${tx.type}",'
+            '$exportAmount,'
+            '"$safeDescription",'
+            '"$safeOwner",'
+            '"$safePool",'
+            '"$safeCurrency",'
+            '${tx.labelId},'
+            '"$safeLabelName",'
+            '${tx.isConfirmed}'
+          );
+        }
+        fileContent = buffer.toString();
+      } else {
+        // JSON Export with resolved fields and sign-adjusted amounts
+        final List<Map<String, dynamic>> txMaps = filteredTxs.map((tx) => {
+          'id': tx.id,
+          'createdAt': tx.createdAt,
+          'type': tx.type,
+          'amount': (tx.type.toLowerCase() == 'expense') ? -tx.amount.abs() : tx.amount.abs(),
+          'description': tx.description,
+          'owner': tx.owner,
+          'pool': tx.pool,
+          'currencyCode': tx.currencyCode,
+          'labelId': tx.labelId,
+          'labelName': labelMap[tx.labelId] ?? 'General',
+          'isConfirmed': tx.isConfirmed,
+        }).toList();
+        
+        fileContent = txMaps.toString();
+      }
+
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final fileName = 'Zaznamity_Backup_$timestamp.$extension';
+
+      final directory = await getApplicationDocumentsDirectory();
+      final savedFile = File('${directory.path}/$fileName');
+      
+      await savedFile.writeAsString(fileContent, encoding: utf8);
+      await _loadSavedReports();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Backup saved successfully: $fileName (${filteredTxs.length} records)')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Export failed: $e')),
       );
     }
   }
@@ -642,7 +1014,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text('Configure Budgets', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+          title: Text('Configure Budgets', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95))),
           content: SizedBox(
             width: 450,
             child: budgets.isEmpty
@@ -1955,13 +2327,13 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       title: 'Budgets',
                       subtitle: 'Budget configurator and rollover preferences',
                       children: [
-                        Text('Configure Existing Budgets', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                        Text('Configure Existing Budgets', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95))),
                         const SizedBox(height: 4),
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 10),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -2082,7 +2454,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       title: 'All Zaznams',
                       subtitle: 'Data management & bulk operations',
                       children: [
-                        Text('Zaznams Management - DANGER ZONE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                        Text('Zaznams Management - DANGER ZONE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFDC2626) : const Color(0xFFDC2626))),
                         const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,
@@ -2424,7 +2796,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   children: [
                     _buildSubSectionCard(
                       title: 'Security',
-                      subtitle: 'Secure app with PIN, Face ID, or Touch ID',
+                      subtitle: 'Secure app with a 4-digit PIN code',
                       children: [
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
@@ -2440,80 +2812,59 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           },
                         ),
                         if (_biometricsEnabled) ...[
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue: ['PIN', 'Face ID', 'Touch ID'].contains(_biometricType) ? _biometricType : 'PIN',
-                            dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                            style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 13),
-                            decoration: const InputDecoration(labelText: 'Authentication Method', isDense: true),
-                            items: [
-                              DropdownMenuItem(value: 'PIN', child: Text('4-Digit PIN Code', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)))),
-                              DropdownMenuItem(value: 'Face ID', child: Text('Face ID (Biometrics)', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)))),
-                              DropdownMenuItem(value: 'Touch ID', child: Text('Touch ID (Fingerprint)', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)))),
-                            ],
-                            onChanged: (val) async {
-                              if (val != null) {
-                                setState(() => _biometricType = val);
-                                final prefs = await SharedPreferences.getInstance();
-                                await prefs.setString('biometricType', val);
-                              }
-                            },
-                          ),
-                          if (_biometricType == 'PIN') ...[
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: _pinController,
-                                    keyboardType: TextInputType.number,
-                                    maxLength: 4,
-                                    obscureText: !_isPinVisible,
-                                    style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 13),
-                                    decoration: const InputDecoration(
-                                      labelText: 'Set 4-Digit PIN',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                                      isDense: true,
-                                      counterText: '',
-                                    ),
-                                    onChanged: (val) async {
-                                      if (val.length == 4) {
-                                        setState(() => _savedPin = val);
-                                        final prefs = await SharedPreferences.getInstance();
-                                        await prefs.setString('savedPin', val);
-                                        if (widget.onPinSettingsChanged != null) {
-                                          widget.onPinSettingsChanged!(_biometricsEnabled, val);
-                                        }
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _pinController,
+                                  keyboardType: TextInputType.number,
+                                  maxLength: 4,
+                                  obscureText: !_isPinVisible,
+                                  style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 13),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Set 4-Digit PIN',
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                                    isDense: true,
+                                    counterText: '',
+                                  ),
+                                  onChanged: (val) async {
+                                    if (val.length == 4) {
+                                      setState(() => _savedPin = val);
+                                      final prefs = await SharedPreferences.getInstance();
+                                      await prefs.setString('savedPin', val);
+                                      if (widget.onPinSettingsChanged != null) {
+                                        widget.onPinSettingsChanged!(_biometricsEnabled, val);
                                       }
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                                    foregroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                                    elevation: 0,
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      _isPinVisible = !_isPinVisible;
-                                    });
+                                    }
                                   },
-                                  icon: Icon(
-                                    _isPinVisible ? Icons.visibility_off : Icons.visibility,
-                                    size: 16,
-                                  ),
-                                  label: Text(
-                                    _isPinVisible ? 'Hide PIN' : 'Show PIN',
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                  ),
                                 ),
-                              ],
-                            ),
-                          ],
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                  foregroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _isPinVisible = !_isPinVisible;
+                                  });
+                                },
+                                icon: Icon(
+                                  _isPinVisible ? Icons.visibility_off : Icons.visibility,
+                                  size: 16,
+                                ),
+                                label: Text(
+                                  _isPinVisible ? 'Hide PIN' : 'Show PIN',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ],
                     ),
@@ -2573,8 +2924,9 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 // ==========================================
                 _buildMainCategoryGroup(
                   title: 'System Tools',
-                  subtitle: 'Zaznamity Reports, Logs, CSV imports, and About',
+                  subtitle: 'Zaznamity Reports, Data Backup, CSV imports, and About',
                   children: [
+                // --- SUB-SECTION : ZAZNAMITY REPORTS ---
                     _buildSubSectionCard(
                       title: 'Zaznamity Reports',
                       subtitle: 'Generate PDF reports and manage created reports',
@@ -2600,7 +2952,10 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        Text('Created Zaznamity Reports', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                        Text(
+                          'Created Zaznamity Reports',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                        ),
                         const SizedBox(height: 4),
                         _savedReportsList.isEmpty
                             ? Padding(
@@ -2644,6 +2999,107 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                               ),
                       ],
                     ),
+                    // --- SUB-SECTION : DATA EXPORT / BACKUP ---
+                    _buildSubSectionCard(
+                      title: 'Data Export / Backup',
+                      subtitle: 'One-click export of transactions to CSV or JSON',
+                      children: [
+                        Text(
+                          'Instantly export your complete ledger history into CSV format (for Excel/Spreadsheets) or JSON backup format. Files are saved securely in app documents storage.',
+                          style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                onPressed: () => _showExportPreviewDialog('csv'),
+                                icon: const Icon(Icons.table_chart, size: 16),
+                                label: const Text('Export CSV', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _isZaznamityMode ? const Color(0xFF3B1E63) : const Color(0xFF475569),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                onPressed: () => _showExportPreviewDialog('json'),
+                                icon: const Icon(Icons.code, size: 16),
+                                label: const Text('Export JSON', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Created Exports / Backups',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                        ),
+                        const SizedBox(height: 4),
+                        _savedExportsList.isEmpty
+                            ? Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                child: Text(
+                                  'No saved backups found in local storage.',
+                                  style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8)),
+                                ),
+                              )
+                            : ConstrainedBox(
+                                constraints: const BoxConstraints(maxHeight: 180),
+                                child: ListView.builder(
+                                  shrinkWrap: true,
+                                  itemCount: _savedExportsList.length,
+                                  itemBuilder: (context, index) {
+                                    final file = _savedExportsList[index];
+                                    final fileName = file.uri.pathSegments.last;
+                                    return ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      dense: true,
+                                      leading: Icon(
+                                        fileName.endsWith('.csv') ? Icons.table_view : Icons.data_object,
+                                        size: 16,
+                                        color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                      ),
+                                      title: Text(
+                                        fileName,
+                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          TextButton(
+                                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 24)),
+                                            onPressed: () => _openReportFile(file),
+                                            child: Text('Open', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          IconButton(
+                                            constraints: const BoxConstraints(),
+                                            padding: EdgeInsets.zero,
+                                            icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFDC2626)),
+                                            tooltip: 'Delete export',
+                                            onPressed: () => _deleteReportFile(file),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                      ],
+                    ),
+                    // --- SUB-SECTION : CSV Import Mapper ---
                     _buildSubSectionCard(
                       title: 'CSV Import Mapper',
                       subtitle: 'Select, map, and import your CSV data',

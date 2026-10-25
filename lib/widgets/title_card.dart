@@ -47,10 +47,8 @@ class _TitleCardState extends State<TitleCard> {
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // Read card visibility preference linked with AppSettingsCard
     final visible = prefs.getBool('titleCardVisible') ?? true;
 
-    // Prioritize widget.selectedOwner passed from DashboardScreen
     String activeOwner = 'User';
     if (widget.selectedOwner != null && widget.owners.contains(widget.selectedOwner)) {
       activeOwner = widget.selectedOwner!;
@@ -115,7 +113,6 @@ class _TitleCardState extends State<TitleCard> {
       return const SizedBox.shrink();
     }
 
-    // Format day of week e.g. "Tuesday," and date e.g. "Oct 20, 2026"[cite: 5]
     final currentDayOfWeek = DateFormat('EEEE,').format(DateTime.now());
     final currentDateFormatted = DateFormat('MMM d, yyyy').format(DateTime.now());
 
@@ -148,9 +145,40 @@ class _TitleCardState extends State<TitleCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Middle Row: Profile Picture Avatar with Zaznamity Logo Badge & Owner Name, with Day/Date perfectly aligned with the top edge of the avatar
+          // Top Row: Day of week and Date
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    currentDayOfWeek,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    currentDateFormatted,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white60,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12), // Moved half a row lower
+          // Main Row: Avatar with Zaznamity Logo & Welcome / Name aligned with the logo
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Column(
                 mainAxisSize: MainAxisSize.min,
@@ -177,7 +205,6 @@ class _TitleCardState extends State<TitleCard> {
                                 ),
                         ),
                       ),
-                      // Zaznamity Logo Badge in bottom right corner
                       Positioned(
                         bottom: 0,
                         right: 0,
@@ -216,7 +243,7 @@ class _TitleCardState extends State<TitleCard> {
               const SizedBox(width: 20),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
+                  padding: const EdgeInsets.only(top: 10.0), // Pushed down to align name with the badge row
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -248,34 +275,6 @@ class _TitleCardState extends State<TitleCard> {
                       ),
                     ],
                   ),
-                ),
-              ),
-              // Top Right: Day of week and Date perfectly inline with the top edge of the profile picture
-              Padding(
-                padding: const EdgeInsets.only(top: 2.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      currentDayOfWeek,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      currentDateFormatted,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white60,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ],

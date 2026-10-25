@@ -47,7 +47,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
 
   bool _isZaznamityMode = true;
 
-  // Linked liquid net pool preferences from settings
   final Map<String, bool> _liquidNetPools = {};
   
   final Map<String, String> _currencyFlags = {
@@ -72,10 +71,8 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     
-    // Gather all unique pool names from widget data to load their liquid net inclusion preferences
     Set<String> allPools = {};
     widget.totalPoolTotalsByCurrency.values.forEach((map) {
       allPools.addAll(map.keys);
@@ -135,26 +132,32 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     }
   }
 
-  double _calculateMonthlyExpenses(String currencyCode) {
+  double _calculateMonthlyTrend(String currencyCode) {
     final now = DateTime.now();
-    final pastLimit = now.subtract(const Duration(days: 90)); // 3-month rolling average
-    double totalExpense = 0;
-    int monthsCount = 3;
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    
+    double startOfMonthBalance = 0;
+    double currentBalance = 0;
 
     for (var tx in widget.transactions) {
-      if (tx.isConfirmed != 1 || tx.type != 'expense') continue;
+      if (tx.isConfirmed != 1) continue;
       String curr = tx.currencyCode.isNotEmpty ? tx.currencyCode : _primaryCurrency;
       if (curr != currencyCode) continue;
       if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
-
       if (_liquidNetPools[tx.pool] == false) continue;
 
-      final dt = DateTime.tryParse(tx.createdAt) ?? now;
-      if (dt.isAfter(pastLimit)) {
-        totalExpense += tx.amount;
+      final dt = DateTime.tryParse(tx.createdAt);
+      if (dt == null) continue;
+
+      double signedVal = tx.type == 'income' ? tx.amount : -tx.amount;
+      currentBalance += signedVal;
+      if (dt.isBefore(startOfMonth)) {
+        startOfMonthBalance += signedVal;
       }
     }
-    return totalExpense > 0 ? (totalExpense / monthsCount) : 1.0;
+
+    if (startOfMonthBalance == 0) return 0.0;
+    return ((currentBalance - startOfMonthBalance) / startOfMonthBalance.abs()) * 100;
   }
 
   void _showMetricInfo(BuildContext context, String title, String explanation) {
@@ -236,8 +239,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       }
     });
 
-    final monthlyBurn = _calculateMonthlyExpenses(currencyCode);
-    final emergencyRunwayMonths = monthlyBurn > 0 ? (currentLiquidNet / monthlyBurn) : 0.0;
+    final monthlyTrend = _calculateMonthlyTrend(currencyCode);
 
     final poolEntries = currentPools.entries.toList();
     List<List<MapEntry<String, double>>> poolRows = [];
@@ -311,7 +313,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
-                        color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                        color: _isZaznamityMode ? const Color(0xFF9D65FF) : const Color(0xFF582F95),
                       ),
                     ),
                   ],
@@ -327,7 +329,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'LIQUID NET ($currencyCode)',
+                'LIQUID NET',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
@@ -344,28 +346,28 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                   color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Emergency Runway: ${emergencyRunwayMonths.toStringAsFixed(1)} mos',
+                    'Trend: ${monthlyTrend >= 0 ? '+' : ''}${monthlyTrend.toStringAsFixed(1)}% vs. start of month',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
-                      color: emergencyRunwayMonths >= 6 ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                      color: monthlyTrend >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                     ),
                   ),
                   const SizedBox(width: 4),
                   InkWell(
                     onTap: () => _showMetricInfo(
                       context,
-                      'Emergency Runway',
-                      'Emergency Runway estimates how many months of baseline living expenses your total liquid net worth can support, based on your rolling 3-month average monthly expenses.',
+                      'Net Worth Trend',
+                      'Compares your current total liquid net balance against your baseline net balance recorded on the 1st day of the current month.',
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(2.0),
-                      child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF9EA3A3)),
+                      child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
                     ),
                   ),
                 ],
@@ -577,22 +579,28 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
-                    letterSpacing: 0.6,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              InkWell(
-                onTap: () => _showMetricInfo(context, infoTitle, infoExplanation),
-                child: Padding(
-                  padding: const EdgeInsets.all(2.0),
-                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
+                        letterSpacing: 0.6,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(width: 4),
+                    InkWell(
+                      onTap: () => _showMetricInfo(context, infoTitle, infoExplanation),
+                      child: Padding(
+                        padding: const EdgeInsets.all(2.0),
+                        child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

@@ -816,7 +816,10 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         onTap: () => _showInfoModal(
                           context,
                           'Period-over-Period Trend',
-                          'Compares net cash flow of the current selected date range against the exact preceding timeframe span.',
+                          'Compares net cash flow of the current selected date range against the exact preceding timeframe span.\n\n'
+                          'Green (▲ Positive %): Represents an increase in your net balance compared to the previous period. A positive value indicates higher savings, greater net inflows, or reduced net expenses over the prior timeframe.\n\n'
+                          'Red (▼ Negative %): Indicates a decrease in your net balance compared to the previous period. A negative value reflects lower net income, reduced total inflows, or higher relative spending during this period.\n\n'
+                          'Neutral / Gray: Means there was no change in net balance between the current and preceding periods, or no transaction history exists for the baseline timeframe.\n\n',
                         ),
                         child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
                       ),

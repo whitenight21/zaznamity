@@ -321,7 +321,7 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
@@ -523,13 +523,12 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                       height: 44,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFFF1F5F9),
+                          backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
                           foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         onPressed: () => _showAddLiabilityDialog(context),
-                        icon: const Icon(Icons.add, size: 16),
                         label: const Text('Add Liability', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       ),
                     ),

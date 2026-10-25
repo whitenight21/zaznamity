@@ -44,6 +44,12 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     _loadPrefs();
   }
 
+  @override
+  void didUpdateWidget(covariant SmartInsightsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadPrefs(); // Refreshes theme and currency preferences immediately
+  }
+
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
@@ -147,20 +153,81 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     );
   }
 
-  // --- COMPREHENSIVE OFFLINE FINANCIAL HEALTH ENGINE ---
+  void _showHealthBreakdownModal(BuildContext context, Map<String, dynamic> analysis) {
+    final int savingsPts = analysis['savingsPts'];
+    final int runwayPts = analysis['runwayPts'];
+    final int velocityPts = analysis['velocityPts'];
+    final int baseScore = analysis['baseScore'];
+    final int totalScore = analysis['healthScore'];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.health_and_safety_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Financial Health Breakdown',
+                style: TextStyle(
+                  color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Starting Baseline Score: +$baseScore pts', style: TextStyle(color: _isZaznamityMode ? Colors.white70 : Colors.black87, fontSize: 13)),
+            const SizedBox(height: 8),
+            Text('• Savings Rate Factor: ${savingsPts >= 0 ? "+$savingsPts" : savingsPts} pts', style: TextStyle(color: savingsPts >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171), fontSize: 13, fontWeight: FontWeight.bold)),
+            Text('• Emergency Runway Factor: ${runwayPts >= 0 ? "+$runwayPts" : runwayPts} pts', style: TextStyle(color: runwayPts >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171), fontSize: 13, fontWeight: FontWeight.bold)),
+            Text('• Cashflow Velocity Factor: ${velocityPts >= 0 ? "+$velocityPts" : velocityPts} pts', style: TextStyle(color: velocityPts >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171), fontSize: 13, fontWeight: FontWeight.bold)),
+            const Divider(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Final Computed Score:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                Text('$totalScore / 100', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: analysis['healthColor'])),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Map<String, dynamic> _computeSmartInsights() {
     final now = DateTime.now();
     final currentMonth = now.month;
     final currentYear = now.year;
     final int daysInMonth = DateTime(currentYear, currentMonth + 1, 0).day;
     final int currentDay = now.day;
+    final int daysRemaining = (daysInMonth - currentDay).clamp(1, 31);
 
     double currentMonthExpense = 0;
     double currentMonthIncome = 0;
     double prevMonthExpense = 0;
     double prevMonthIncome = 0;
 
-    // Same-day pacing for cashflow velocity comparison
     double currentMonthExpenseToDate = 0;
     double prevMonthExpenseToDate = 0;
     double prevMonthIncomeToDate = 0;
@@ -190,7 +257,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       LabelModel? matchLbl = widget.labels.where((l) => l.id == tx.labelId).firstOrNull;
       if (matchLbl != null) labelName = matchLbl.name.toLowerCase();
 
-      // Skip internal transfers if enabled
       if (_excludeTransfers && labelName == 'transfer') {
         continue;
       }
@@ -259,7 +325,17 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     double dailySpendRate = currentDay > 0 ? (currentMonthExpense / currentDay) : 0;
     double projectedMonthEndExpense = dailySpendRate * daysInMonth;
 
-    // Net Cashflow Velocity / Savings Trajectory Delta vs Last Month (to-date)
+    // 1. Get true available checking cash
+    double availableChecking = totalLiquidChecking;
+    // 2. Subtract estimated remaining fixed overhead for the rest of the month
+    // (You can factor in fixedOverhead or upcoming liabilities due this month)
+    double remainingFixedObligations = (fixedOverhead * 0.5); // Adjust based on un-triggered bills left this month
+    // 3. True safe spendable pool = Checking minus remaining mandatory bills minus safety reserve
+    double baselineReserveBuffer = monthlyBurnBaseline * 0.20;
+    double safeSpendablePool = (availableChecking - remainingFixedObligations - baselineReserveBuffer).clamp(0.0, double.infinity);
+    // 4. Spread safely across the full monthly cycle (or days remaining if you prefer a strict end-of-month cap)
+    double targetBufferAllowance = daysInMonth > 0 ? (safeSpendablePool / daysInMonth) : 0.0;
+
     double currentNetToDate = currentMonthIncome - currentMonthExpenseToDate;
     double prevNetToDate = prevMonthIncomeToDate - prevMonthExpenseToDate;
     double netCashflowVelocityDelta = currentNetToDate - prevNetToDate;
@@ -326,13 +402,12 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       });
     }
 
-    int healthScore = 70;
-    if (currentSavingsRate >= 30) healthScore += 15;
-    else if (currentSavingsRate < 0) healthScore -= 25;
-    if (emergencyRunwayMonths >= 6) healthScore += 15;
-    else if (emergencyRunwayMonths < 2) healthScore -= 15;
-    if (netCashflowVelocityDelta > 0) healthScore += 10;
-    healthScore = healthScore.clamp(10, 100);
+    int baseScore = 70;
+    int savingsPts = currentSavingsRate >= 30 ? 15 : (currentSavingsRate < 0 ? -25 : 0);
+    int runwayPts = emergencyRunwayMonths >= 6 ? 15 : (emergencyRunwayMonths < 2 ? -15 : 0);
+    int velocityPts = netCashflowVelocityDelta > 0 ? 10 : 0;
+
+    int healthScore = (baseScore + savingsPts + runwayPts + velocityPts).clamp(10, 100);
 
     String healthStatus = 'Stable';
     Color healthColor = const Color(0xFF38BDF8);
@@ -352,10 +427,15 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
 
     return {
       'healthScore': healthScore,
+      'baseScore': baseScore,
+      'savingsPts': savingsPts,
+      'runwayPts': runwayPts,
+      'velocityPts': velocityPts,
       'healthStatus': healthStatus,
       'healthColor': healthColor,
       'emergencyRunway': emergencyRunwayMonths,
       'projectedMonthEndExpense': projectedMonthEndExpense,
+      'targetBufferAllowance': targetBufferAllowance,
       'netCashflowVelocityDelta': netCashflowVelocityDelta,
       'needsExpense': needsExpense,
       'wantsExpense': wantsExpense,
@@ -375,6 +455,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     final Color scoreColor = analysis['healthColor'];
     final double runway = analysis['emergencyRunway'];
     final double projectedEnd = analysis['projectedMonthEndExpense'];
+    final double targetBufferAllowance = analysis['targetBufferAllowance'];
     final double velocityDelta = analysis['netCashflowVelocityDelta'];
     
     final double needs = analysis['needsExpense'];
@@ -413,7 +494,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -476,7 +556,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           ),
           const SizedBox(height: 14),
 
-          // OWNER DROPDOWN (matching IncomeExpensesByLabelsCard style)
           Container(
             height: 44,
             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -519,7 +598,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           ),
           const SizedBox(height: 14),
 
-          // HEALTH SCORE SUMMARY BAR
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -527,61 +605,128 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
             ),
-            child: Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: scoreColor.withValues(alpha: 0.15),
-                    border: Border.all(color: scoreColor, width: 2.5),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '$score',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: scoreColor),
+            child: InkWell(
+              onTap: () => _showHealthBreakdownModal(context, analysis),
+              child: Row(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: scoreColor.withValues(alpha: 0.15),
+                      border: Border.all(color: scoreColor, width: 2.5),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '$score',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: scoreColor),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'HEALTH STATUS: ',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                          ),
-                          Text(
-                            status.toUpperCase(),
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: scoreColor),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Heuristic evaluation based on emergency runway, burn velocity, and allocations.',
-                        style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.3),
-                      ),
-                    ],
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'HEALTH STATUS: ',
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                ),
+                                Text(
+                                  status.toUpperCase(),
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: scoreColor),
+                                ),
+                              ],
+                            ),
+                            InkWell(
+                              onTap: () => _showInfoDialog(
+                                context,
+                                'Financial Health Score',
+                                'Tap anywhere on this score badge to open the score breakdown modal and see exactly which metrics added or subtracted points from your total score.',
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(2.0),
+                                child: Icon(Icons.info_outline_rounded, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Tap to view score breakdown details.',
+                          style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.3),
+                        ),
+                      ],
+                    ),
                   ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // TARGET-BUFFER ALLOWANCE TILE
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.savings_rounded, color: _isZaznamityMode ? const Color(0xFF34D399) : Colors.green, size: 20),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'TARGET-BUFFER ALLOWANCE',
+                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), letterSpacing: 0.6),
+                            ),
+                            const SizedBox(width: 4),
+                            InkWell(
+                              onTap: () => _showInfoDialog(
+                                context,
+                                'Target-Buffer Allowance',
+                                'Calculates safe daily spending limits while automatically reserving a baseline safety buffer for next month\'s overhead from your checking and cash pools.',
+                              ),
+                              child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_formatCurrency(targetBufferAllowance)} / day',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
           const SizedBox(height: 14),
 
-          // KEY FINANCIAL VITALS GRID
           Row(
             children: [
               Expanded(
                 child: _buildVitalTile(
                   title: 'EMERGENCY RUNWAY',
                   infoTitle: 'Emergency Fund Runway',
-                  infoExplanation: 'Calculates how many months of baseline living expenses your current liquid checking and cash reserves can cover.\n\nImportance: Ensures you have a 3 to 6-month safety net to survive unexpected income interruptions without going into debt.',
+                  infoExplanation: 'Calculates how many months of baseline living expenses your current liquid checking and cash reserves can cover.',
                   value: '${runway.toStringAsFixed(1)} mos',
                   subtitle: 'Survival buffer',
                   icon: Icons.shield_outlined,
@@ -593,7 +738,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                 child: _buildVitalTile(
                   title: 'PROJECTED END-MONTH',
                   infoTitle: 'Month-End Run-Rate Projection',
-                  infoExplanation: 'Takes your spending velocity up to the current day and extrapolates your total expected outflow across the full month.\n\nImportance: Gives you early warning if you are pacing to overspend your monthly budget before month-end arrives.',
+                  infoExplanation: 'Extrapolates month-end outflow based on daily burn velocity.',
                   value: _formatCurrency(projectedEnd),
                   subtitle: 'Run-rate forecast',
                   icon: Icons.show_chart_rounded,
@@ -604,7 +749,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           ),
           const SizedBox(height: 10),
 
-          // NET CASHFLOW VELOCITY / SAVINGS TRAJECTORY TILE
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -631,7 +775,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                               onTap: () => _showInfoDialog(
                                 context,
                                 'Net Cashflow Velocity',
-                                'Compares your net cashflow (Income minus Expenses) up to the exact same day in the previous month.\n\nImportance: Tells you instantly whether you are accumulating wealth faster or slower compared to last month\'s momentum.',
+                                'Compares net cashflow up to the exact same day in the previous month.',
                               ),
                               child: Icon(Icons.info_outline, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
                             ),
@@ -660,7 +804,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           ),
           const SizedBox(height: 16),
 
-          // 50 / 30 / 20 RULE BREAKDOWN SECTION
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -669,11 +812,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), letterSpacing: 0.8),
               ),
               InkWell(
-                onTap: () => _showInfoDialog(
-                  context,
-                  '50/30/20 Rule Breakdown',
-                  'Categorizes your monthly outflows into Needs (50%: Housing, Utilities, Groceries, Debt), Wants (30%: Dining, Shopping), and Savings (20%).\n\nImportance: The gold-standard budgeting framework ensuring balanced lifestyle spending and financial security.',
-                ),
+                onTap: () => _showInfoDialog(context, '50/30/20 Rule', 'Categorizes monthly outflows into Needs, Wants, and Savings.'),
                 child: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
               ),
             ],
@@ -698,7 +837,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           ),
           const SizedBox(height: 16),
 
-          // FIXED VS VARIABLE OVERHEAD SECTION
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -707,11 +845,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), letterSpacing: 0.8),
               ),
               InkWell(
-                onTap: () => _showInfoDialog(
-                  context,
-                  'Fixed vs. Variable Burn Rate',
-                  'Separates mandatory fixed overhead from flexible discretionary spending. Configured in Settings -> Label Management -> Fixed vs. Discretionary.\n\nImportance: Shows your financial agility—high fixed overhead leaves less room to adjust if cashflow tightens.',
-                ),
+                onTap: () => _showInfoDialog(context, 'Fixed vs Variable', 'Separates mandatory overhead from discretionary spending.'),
                 child: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
               ),
             ],
@@ -749,7 +883,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           ),
           const SizedBox(height: 16),
 
-          // ALWAYS-VISIBLE SUGGESTIONS & COURSES OF ACTION
           Text(
             'SUGGESTIONS & COURSES OF ACTION',
             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), letterSpacing: 0.8),
@@ -810,12 +943,12 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.bolt_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                              const Icon(Icons.bolt_rounded, size: 12, color: Colors.white),
                               const SizedBox(width: 4),
                               Flexible(
                                 child: Text(
                                   'Action: $action',
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
                                 ),
                               ),
                             ],

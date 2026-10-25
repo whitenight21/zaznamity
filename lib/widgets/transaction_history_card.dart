@@ -9,6 +9,7 @@ import '../models/label.dart';
 
 class TransactionHistoryCard extends StatefulWidget {
   final List<TransactionModel> transactions;
+  final List<TransactionModel>? allTransactions;
   final List<LabelModel> labels;
   final List<String> owners;
   final List<String> pools;
@@ -42,6 +43,7 @@ class TransactionHistoryCard extends StatefulWidget {
   const TransactionHistoryCard({
     super.key,
     required this.transactions,
+    this.allTransactions,
     required this.labels,
     required this.owners,
     this.pools = const [],
@@ -145,6 +147,12 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     _minAmountController.dispose();
     _maxAmountController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant TransactionHistoryCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadPrefs();
   }
 
   void _onSearchChanged(String val) {
@@ -260,6 +268,49 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     } catch (_) {
       return const Color(0xFF4338CA);
     }
+  }
+
+  Map<int, double> _calculatePoolAfterBalances() {
+    Map<String, double> runningPoolBalances = {};
+    Map<int, double> afterBalances = {};
+
+    final sourceList = widget.allTransactions ?? widget.transactions;
+
+    final sortedTx = List<TransactionModel>.from(sourceList)
+      ..sort((a, b) {
+        final dtA = DateTime.tryParse(a.createdAt) ?? DateTime(2000);
+        final dtB = DateTime.tryParse(b.createdAt) ?? DateTime(2000);
+        int cmp = dtA.compareTo(dtB);
+        if (cmp != 0) return cmp;
+        return (a.id ?? 0).compareTo(b.id ?? 0);
+      });
+
+    for (var tx in sortedTx) {
+      if (tx.id == null) continue;
+
+      final rawPool = tx.pool.trim();
+      final poolName = rawPool.isEmpty ? 'checking' : rawPool.toLowerCase();
+      final currCode = (tx.currencyCode.isEmpty ? 'USD' : tx.currencyCode).toUpperCase();
+      final poolKey = '${poolName}_$currCode';
+
+      double currentBal = runningPoolBalances[poolKey] ?? 0.0;
+
+      double magnitude = tx.amount.abs();
+      double signedAmount = 0.0;
+
+      if (tx.type.toLowerCase() == 'income') {
+        signedAmount = magnitude;
+      } else if (tx.type.toLowerCase() == 'expense') {
+        signedAmount = -magnitude;
+      }
+
+      double newBal = currentBal + signedAmount;
+      
+      runningPoolBalances[poolKey] = newBal;
+      afterBalances[tx.id!] = newBal;
+    }
+
+    return afterBalances;
   }
 
   void _showDeleteConfirmation(BuildContext context, int transactionId) {
@@ -462,6 +513,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     final double? minAmount = double.tryParse(_minAmountController.text);
     final double? maxAmount = double.tryParse(_maxAmountController.text);
 
+    final afterPoolBalances = _calculatePoolAfterBalances();
+
     final filteredTransactions = widget.transactions.where((tx) {
       if (_debouncedQuery.isNotEmpty) {
         final desc = tx.description.toLowerCase();
@@ -628,7 +681,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 20),
 
-              // Row 1: Owner, Type
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -713,7 +765,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: Labels, Pools
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -805,7 +856,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 3: Currency, Date Range
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -967,11 +1017,9 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 4: Pending Button, Search Description Box, Clear Button (all height 44)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Pending Button
                   SizedBox(
                     width: boxWidth * 0.58,
                     height: 44,
@@ -981,7 +1029,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                             ? (_isZaznamityMode ? Colors.white : Colors.black87)
                             : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                         backgroundColor: _hideFuturePayments
-                            ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                            ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95))
                             : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC)),
                         side: BorderSide(
                           color: _hideFuturePayments
@@ -1017,7 +1065,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  // Search Description Box
                   Expanded(
                     child: SizedBox(
                       height: 44,
@@ -1043,7 +1090,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  // Clear Button
                   SizedBox(
                     width: boxWidth * 0.34,
                     height: 44,
@@ -1063,7 +1109,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 5: Min, Max Amount Fields
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1182,7 +1227,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
                         final isIncome = tx.type == 'income';
                         final amountString = '${isIncome ? '+' : '-'}$symbol${tx.amount.toStringAsFixed(2)}';
-                        
+
                         final bool timePassed = txDate.isBefore(DateTime.now());
                         final bool isFuture = txDate.isAfter(DateTime.now());
 
@@ -1253,6 +1298,42 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
+                                    tx.pool.toUpperCase(),
+                                    style: TextStyle(
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w600,
+                                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF7C3AED),
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        constraints: const BoxConstraints(),
+                                        padding: EdgeInsets.zero,
+                                        icon: Icon(Icons.edit, size: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                        tooltip: 'Edit',
+                                        onPressed: () => widget.onEditTransaction(tx),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      IconButton(
+                                        constraints: const BoxConstraints(),
+                                        padding: EdgeInsets.zero,
+                                        icon: const Icon(Icons.delete, size: 16, color: Color(0xFFEF4444)),
+                                        tooltip: 'Delete',
+                                        onPressed: () => _showDeleteConfirmation(context, tx.id!),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
                                     isFuture && !timePassed ? 'PENDING' : 'CONFIRMED',
                                     style: TextStyle(
                                       fontSize: 8,
@@ -1262,26 +1343,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                           : const Color(0xFF34D399),
                                       letterSpacing: 0.5,
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(width: 4),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    constraints: const BoxConstraints(),
-                                    padding: EdgeInsets.zero,
-                                    icon: Icon(Icons.edit, size: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                    tooltip: 'Edit',
-                                    onPressed: () => widget.onEditTransaction(tx),
-                                  ),
-                                  IconButton(
-                                    constraints: const BoxConstraints(),
-                                    padding: EdgeInsets.zero,
-                                    icon: const Icon(Icons.delete, size: 16, color: Color(0xFFEF4444)),
-                                    tooltip: 'Delete',
-                                    onPressed: () => _showDeleteConfirmation(context, tx.id!),
                                   ),
                                 ],
                               ),

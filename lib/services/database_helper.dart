@@ -283,6 +283,8 @@ class DatabaseHelper {
     final db = await database;
     final liabilities = await db.query('liabilities');
     final now = DateTime.now();
+    // Safety cap: Do not project further than 1 year ahead to prevent startup freezes
+    final maxAllowedProjection = DateTime(now.year + 1, now.month, now.day);
 
     for (var row in liabilities) {
       int id = row['id'] as int;
@@ -295,11 +297,15 @@ class DatabaseHelper {
       
       String? projectionEndDateStr = row['projection_end_date'] as String?;
       DateTime projectionEndDate = projectionEndDateStr != null && projectionEndDateStr.isNotEmpty
-          ? (DateTime.tryParse(projectionEndDateStr) ?? DateTime(now.year + 1, now.month, now.day))
-          : DateTime(now.year + 1, now.month, now.day);
+          ? (DateTime.tryParse(projectionEndDateStr) ?? maxAllowedProjection)
+          : maxAllowedProjection;
+
+      // Cap projection end date if it's too far out
+      if (projectionEndDate.isAfter(maxAllowedProjection)) {
+        projectionEndDate = maxAllowedProjection;
+      }
       
       String? lastProcessedStr = row['last_processed_date'] as String?;
-      
       DateTime lastProcessed = lastProcessedStr != null 
           ? (DateTime.tryParse(lastProcessedStr) ?? DateTime(now.year, now.month - 1, dueDay))
           : DateTime(now.year, now.month - 1, dueDay);
@@ -310,8 +316,10 @@ class DatabaseHelper {
       }
 
       bool updated = false;
+      int iterations = 0;
 
-      while (!nextDue.isAfter(projectionEndDate)) {
+      while (!nextDue.isAfter(projectionEndDate) && iterations < 24) {
+        iterations++;
         bool isPastOrPresent = !nextDue.isAfter(now);
 
         if (isPastOrPresent) {
@@ -324,7 +332,6 @@ class DatabaseHelper {
           if (balance < 0) balance = 0.0;
         }
 
-        // Strict duplicate protection checking both formats across exact timestamps
         final existingTx = await db.query(
           'transactions',
           where: '(description = ? OR description = ? OR description = ?) AND created_at = ?',
@@ -424,6 +431,60 @@ class DatabaseHelper {
         whereArgs: [oldLabelId],
       );
     }
+  }
+
+  Future<int> normalizePastTransfersToWithdrawalDeposit() async {
+    final db = await database;
+    
+    // Only target records that were explicitly transfers or past withdrawal/deposits
+    final List<Map<String, dynamic>> maps = await db.query(
+      'transactions',
+      where: 'description LIKE ? OR description LIKE ? OR description LIKE ? OR description LIKE ?',
+      whereArgs: ['%Transfer out%', '%Transfer in%', '%Withdrawal from%', '%Deposit into%'],
+      orderBy: 'created_at ASC, id ASC',
+    );
+
+    int updatedCount = 0;
+
+    await db.transaction((txn) async {
+      for (var map in maps) {
+        int id = map['id'];
+        String desc = map['description'] ?? '';
+        String pool = map['pool'] ?? '';
+        String type = map['type'] ?? '';
+
+        String newDesc = desc;
+
+        // Clean up descriptions safely without altering amounts or duplicating records
+        if (type == 'expense' || desc.contains('Transfer out') || desc.startsWith('Withdrawal from')) {
+          if (desc.contains(':') && !desc.startsWith('Withdrawal from')) {
+            final detail = desc.split(':').sublist(1).join(':').trim();
+            newDesc = 'Withdrawal from $pool${detail.isNotEmpty ? ': $detail' : ''}';
+          } else if (!desc.startsWith('Withdrawal from')) {
+            newDesc = 'Withdrawal from $pool';
+          }
+        } else if (type == 'income' || desc.contains('Transfer in') || desc.startsWith('Deposit into')) {
+          if (desc.contains(':') && !desc.startsWith('Deposit into')) {
+            final detail = desc.split(':').sublist(1).join(':').trim();
+            newDesc = 'Deposit into $pool${detail.isNotEmpty ? ': $detail' : ''}';
+          } else if (!desc.startsWith('Deposit into')) {
+            newDesc = 'Deposit into $pool';
+          }
+        }
+
+        if (newDesc != desc) {
+          await txn.update(
+            'transactions',
+            {'description': newDesc},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+          updatedCount++;
+        }
+      }
+    });
+
+    return updatedCount;
   }
 
   // Labels Methods

@@ -660,11 +660,11 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _isRecurring 
-                              ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                              ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)) // pressed box color - zaznamityMode ? yes : no
                               : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9)),
                           foregroundColor: _isRecurring 
                               ? Colors.white 
-                              : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)),
+                              : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)), // not pressed text color - zaznamityMode ? yes : no
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           elevation: 0,
@@ -835,7 +835,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                                 return FilterChip(
                                   label: Text(dayMap['label'] as String, style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                   selected: isSelected,
-                                  selectedColor: const Color(0xFFA855F7),
+                                  selectedColor: const Color(0xFF582F95),
                                   backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
                                   onSelected: (selected) {
                                     setState(() {
@@ -882,7 +882,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                                 return FilterChip(
                                   label: Text(monthMap['label'] as String, style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                   selected: isSelected,
-                                  selectedColor: const Color(0xFFA855F7),
+                                  selectedColor: const Color(0xFF582F95),
                                   backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
                                   onSelected: (selected) {
                                     setState(() {
@@ -910,7 +910,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                    backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -958,7 +958,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                         fit: BoxFit.contain,
                       ),
                       const SizedBox(width: 8),
-                      const Text('Save Zaznam  ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      const Text('  Save Zaznam    ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       Image.asset(
                         'assets/ZaznamityLogo_onlyZwhite.png',
                         height: 27,
