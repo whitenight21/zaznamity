@@ -39,6 +39,7 @@ class _CalendarCardState extends State<CalendarCard> {
   late DateTime _displayedMonth;
   String _calendarStartDay = 'Monday';
   bool _isZaznamityMode = true;
+  String _selectedPool = 'All Pools';
 
   @override
   void initState() {
@@ -110,7 +111,8 @@ class _CalendarCardState extends State<CalendarCard> {
             child: Text(
               'The calendar is fully interactive:\n\n'
               '• Press any day containing transaction data to jump directly to "All Zaznams".\n'
-              '• Selecting a day will automatically filter the transaction ledger to show all entries recorded for that specific date.',
+              '• Selecting a day will automatically filter the transaction ledger to show all entries recorded for that specific date.\n'
+              '• Use the pool dropdown to filter income and expense summaries by a specific financial pool.',
               style: TextStyle(
                 fontSize: 13,
                 color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
@@ -147,9 +149,21 @@ class _CalendarCardState extends State<CalendarCard> {
       }
     });
 
+    // Extract unique pools dynamically from transactions
+    final List<String> availablePools = widget.transactions
+        .map((tx) => tx.pool)
+        .where((pool) => pool.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
+    // Filter transactions by both Master Owner and selected Pool
     final filteredTransactions = widget.transactions.where((tx) {
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners') {
-        return tx.owner == widget.selectedOwner;
+        if (tx.owner != widget.selectedOwner) return false;
+      }
+      if (_selectedPool != 'All Pools') {
+        if (tx.pool.toLowerCase() != _selectedPool.toLowerCase()) return false;
       }
       return true;
     }).toList();
@@ -452,6 +466,7 @@ class _CalendarCardState extends State<CalendarCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // POOL DROPDOWN (Replaced Owner Dropdown)
                   SizedBox(
                     width: boxWidth,
                     child: Container(
@@ -464,23 +479,28 @@ class _CalendarCardState extends State<CalendarCard> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.person_outline_rounded, size: 20, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                          Icon(Icons.account_balance_wallet_outlined, size: 20, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 8),
                           Expanded(
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
-                                value: widget.selectedOwner ?? 'All Owners',
+                                value: _selectedPool,
                                 isDense: true,
                                 isExpanded: true,
                                 dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 items: [
-                                  DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
+                                  const DropdownMenuItem(value: 'All Pools', child: Text('All Pools')),
+                                  ...availablePools.map((pool) => DropdownMenuItem(
+                                        value: pool,
+                                        child: Text(pool.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                      )),
                                 ],
                                 onChanged: (val) {
                                   if (val != null) {
-                                    widget.onOwnerChanged(val == 'All Owners' ? null : val);
+                                    setState(() {
+                                      _selectedPool = val;
+                                    });
                                   }
                                 },
                               ),

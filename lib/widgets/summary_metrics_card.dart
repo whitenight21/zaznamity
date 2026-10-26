@@ -38,17 +38,16 @@ class SummaryMetricsCard extends StatefulWidget {
 }
 
 class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
-  late String _selectedOwner;
-  
   String _primaryCurrency = 'USD';
   String? _secondaryCurrency1;
   String? _secondaryCurrency2;
   String? _secondaryCurrency3;
 
   bool _isZaznamityMode = true;
-
   final Map<String, bool> _liquidNetPools = {};
-  
+  final Map<String, bool> _visiblePools = {};
+  bool _includeLiabilitiesInNetWorth = false;
+
   final Map<String, String> _currencyFlags = {
     'USD': '🇺🇸',
     'EUR': '🇪🇺',
@@ -65,7 +64,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   @override
   void initState() {
     super.initState();
-    _selectedOwner = widget.selectedOwner ?? 'All Owners';
     _loadPrefs();
   }
 
@@ -79,8 +77,10 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     });
 
     Map<String, bool> loadedPools = {};
+    Map<String, bool> loadedVisibility = {};
     for (var pool in allPools) {
       loadedPools[pool] = prefs.getBool('set_liquidNet_pool_$pool') ?? true;
+      loadedVisibility[pool] = prefs.getBool('set_visible_pool_$pool') ?? true;
     }
 
     if (mounted) {
@@ -90,19 +90,27 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         _secondaryCurrency1 = prefs.getString('secondaryCurrency1');
         _secondaryCurrency2 = prefs.getString('secondaryCurrency2');
         _secondaryCurrency3 = prefs.getString('secondaryCurrency3');
+        _includeLiabilitiesInNetWorth = prefs.getBool('include_liabilities_net_worth') ?? false;
         _liquidNetPools.addAll(loadedPools);
+        _visiblePools.addAll(loadedVisibility);
       });
     }
+  }
+
+  Future<void> _savePoolPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (var entry in _liquidNetPools.entries) {
+      await prefs.setBool('set_liquidNet_pool_${entry.key}', entry.value);
+    }
+    for (var entry in _visiblePools.entries) {
+      await prefs.setBool('set_visible_pool_${entry.key}', entry.value);
+    }
+    await prefs.setBool('include_liabilities_net_worth', _includeLiabilitiesInNetWorth);
   }
 
   @override
   void didUpdateWidget(covariant SummaryMetricsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.selectedOwner != oldWidget.selectedOwner) {
-      setState(() {
-        _selectedOwner = widget.selectedOwner ?? 'All Owners';
-      });
-    }
     _loadPrefs();
   }
 
@@ -143,7 +151,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       if (tx.isConfirmed != 1) continue;
       String curr = tx.currencyCode.isNotEmpty ? tx.currencyCode : _primaryCurrency;
       if (curr != currencyCode) continue;
-      if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
       if (_liquidNetPools[tx.pool] == false) continue;
 
       final dt = DateTime.tryParse(tx.createdAt);
@@ -158,6 +165,122 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
 
     if (startOfMonthBalance == 0) return 0.0;
     return ((currentBalance - startOfMonthBalance) / startOfMonthBalance.abs()) * 100;
+  }
+
+  void _showConfigDialog(BuildContext context, Set<String> availablePools) {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Configure Net Worth Pools',
+            style: TextStyle(
+              color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          content: SizedBox(
+            width: 320,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Check to include in Net Worth calculation. Tap the eye icon to show/hide individual pool cards:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    title: Text(
+                      'Factor Active Liabilities',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                    ),
+                    subtitle: Text(
+                      'Subtract outstanding loan balances from net worth',
+                      style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white70 : Colors.black54),
+                    ),
+                    value: _includeLiabilitiesInNetWorth,
+                    activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                    onChanged: (val) {
+                      setDialogState(() {
+                        _includeLiabilitiesInNetWorth = val ?? false;
+                      });
+                      setState(() {});
+                      _savePoolPrefs();
+                    },
+                  ),
+                  const Divider(),
+                  ...availablePools.map((pool) {
+                    bool isChecked = _liquidNetPools[pool] ?? true;
+                    bool isVisible = _visiblePools[pool] ?? true;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2.0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: CheckboxListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                pool.toUpperCase(),
+                                style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                              ),
+                              value: isChecked,
+                              activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                              onChanged: (val) {
+                                setDialogState(() {
+                                  _liquidNetPools[pool] = val ?? true;
+                                });
+                                setState(() {});
+                                _savePoolPrefs();
+                              },
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              isVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                              size: 18,
+                              color: isVisible
+                                  ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                                  : Colors.grey,
+                            ),
+                            tooltip: isVisible ? 'Visible on card' : 'Hidden on card',
+                            onPressed: () {
+                              setDialogState(() {
+                                _visiblePools[pool] = !isVisible;
+                              });
+                              setState(() {});
+                              _savePoolPrefs();
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showMetricInfo(BuildContext context, String title, String explanation) {
@@ -194,54 +317,32 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
 
   Widget _buildCurrencySection(String currencyCode, double availableWidth, double boxWidth, double fullWidth) {
     final flag = _currencyFlags[currencyCode] ?? '';
-    
     final totalPoolsForCurr = widget.totalPoolTotalsByCurrency[currencyCode] ?? {};
-    final ownerPoolsMap = widget.poolTotalsByCurrencyAndOwner[currencyCode] ?? {};
-    final breakdownCurrMap = widget.ownerBreakdownByCurrency[currencyCode] ?? {};
 
-    Map<String, double> currentPools;
-    List<Widget> wrapSubtitles = [];
+    // All available positive pools for permanent distribution rendering
+    Map<String, double> allPositivePools = Map.fromEntries(
+      totalPoolsForCurr.entries.where((e) => e.value > 0.0)
+    );
+    double totalAllPositiveFunds = allPositivePools.values.fold(0.0, (sum, val) => sum + val);
 
-    if (_selectedOwner == 'All Owners') {
-      currentPools = Map.fromEntries(
-        totalPoolsForCurr.entries.where((e) => e.value != 0.0)
-      );
-      
-      wrapSubtitles = breakdownCurrMap.entries.map((e) {
-        final ownerName = e.key;
-        final ownerPools = ownerPoolsMap[ownerName] ?? {};
-        double ownerLiquidNet = 0;
-        ownerPools.forEach((poolName, balance) {
-          if (_liquidNetPools[poolName] ?? true) {
-            ownerLiquidNet += balance;
-          }
-        });
-        return Text(
-          '$ownerName: ${_formatCurrency(ownerLiquidNet, currencyCode)}',
-          style: TextStyle(
-            fontSize: 12,
-            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
-            fontWeight: FontWeight.w700,
-          ),
-        );
-      }).toList();
-    } else {
-      final ownerPools = ownerPoolsMap[_selectedOwner] ?? {};
-      currentPools = Map.fromEntries(
-        ownerPools.entries.where((e) => e.value != 0.0)
-      );
-    }
+    // Pools contributing strictly to Net Worth calculation
+    Map<String, double> netWorthPools = Map.fromEntries(
+      totalPoolsForCurr.entries.where((e) => e.value != 0.0 && (_liquidNetPools[e.key] ?? true))
+    );
 
     double currentLiquidNet = 0;
-    currentPools.forEach((poolName, balance) {
-      if (_liquidNetPools[poolName] ?? true) {
-        currentLiquidNet += balance;
-      }
+    netWorthPools.forEach((poolName, balance) {
+      currentLiquidNet += balance;
     });
+
+    // Pools displayed on the card (filtered by eye visibility preference)
+    Map<String, double> displayedPools = Map.fromEntries(
+      totalPoolsForCurr.entries.where((e) => e.value != 0.0 && (_visiblePools[e.key] ?? true))
+    );
 
     final monthlyTrend = _calculateMonthlyTrend(currencyCode);
 
-    final poolEntries = currentPools.entries.toList();
+    final poolEntries = displayedPools.entries.toList();
     List<List<MapEntry<String, double>>> poolRows = [];
     for (int i = 0; i < poolEntries.length; i += 2) {
       poolRows.add(
@@ -259,65 +360,38 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             SizedBox(
-              width: boxWidth,
-              child: Container(
-                height: 48,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+              height: 44,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                  foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95),
+                  side: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                 ),
-                child: Row(
-                  children: [
-                    Icon(Icons.person_outline_rounded, size: 20, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedOwner,
-                          isDense: true,
-                          isExpanded: true,
-                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                          items: [
-                            DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                            ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
-                          ],
-                          onChanged: (val) {
-                            if (val != null) setState(() => _selectedOwner = val);
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                onPressed: () => _showConfigDialog(context, totalPoolsForCurr.keys.toSet()),
+                icon: const Icon(Icons.rule_rounded, size: 16),
+                label: const Text('Pools & Filters', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
               ),
             ),
-            SizedBox(
-              width: boxWidth,
-              child: Container(
-                height: 48,
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      flag,
-                      style: const TextStyle(fontSize: 28),
+            Container(
+              height: 44,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(flag, style: const TextStyle(fontSize: 24)),
+                  const SizedBox(width: 8),
+                  Text(
+                    currencyCode,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: _isZaznamityMode ? const Color(0xFF9D65FF) : const Color(0xFF582F95),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      currencyCode,
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: _isZaznamityMode ? const Color(0xFF9D65FF) : const Color(0xFF582F95),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -329,7 +403,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'LIQUID NET',
+                'LIQUID NET WORTH',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
@@ -375,29 +449,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
             ],
           ),
         ),
-        const SizedBox(height: 10),
-
-        if (_selectedOwner != 'All Owners') ...[
-          Center(
-            child: Text(
-              _selectedOwner.toUpperCase(),
-              style: TextStyle(
-                fontSize: 12,
-                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ] else if (wrapSubtitles.isNotEmpty) ...[
-          Center(
-            child: Wrap(
-              spacing: 14.0,
-              runSpacing: 4.0,
-              alignment: WrapAlignment.center,
-              children: wrapSubtitles,
-            ),
-          ),
-        ],
         const SizedBox(height: 16),
 
         ...poolRows.map((rowEntries) {
@@ -421,6 +472,57 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
             ),
           );
         }),
+
+        const SizedBox(height: 8),
+
+        // Permanent Wealth Distribution Percentage Pill (Always Visible across all positive funds)
+        if (totalAllPositiveFunds > 0 && allPositivePools.isNotEmpty) ...[
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'WEALTH DISTRIBUTION',
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600, letterSpacing: 0.6),
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: SizedBox(
+                  height: 10,
+                  child: Row(
+                    children: allPositivePools.entries.map((e) {
+                      double ratio = (e.value / totalAllPositiveFunds).clamp(0.0, 1.0);
+                      if (ratio <= 0) return const SizedBox.shrink();
+                      return Expanded(
+                        flex: (ratio * 100).round().clamp(1, 100),
+                        child: Container(color: _getPoolColor(e.key)),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 10,
+                runSpacing: 4,
+                children: allPositivePools.entries.map((e) {
+                  double pct = (e.value / totalAllPositiveFunds) * 100;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: _getPoolColor(e.key))),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${pct.toStringAsFixed(0)}% ${e.key}',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

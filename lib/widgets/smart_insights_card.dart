@@ -221,7 +221,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     final currentYear = now.year;
     final int daysInMonth = DateTime(currentYear, currentMonth + 1, 0).day;
     final int currentDay = now.day;
-    final int daysRemaining = (daysInMonth - currentDay).clamp(1, 31);
+    final double monthProgressRatio = currentDay / daysInMonth;
 
     double currentMonthExpense = 0;
     double currentMonthIncome = 0;
@@ -244,6 +244,9 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
 
     double fixedOverhead = 0;
     double variableSpending = 0;
+
+    // Mapping to track recurring bills across months for Price Hike Tracker
+    Map<String, Map<int, double>> recurringBillHistory = {};
 
     for (var tx in widget.transactions) {
       if (_selectedOwner != null && _selectedOwner!.isNotEmpty && _selectedOwner != 'All Owners' && tx.owner != _selectedOwner) {
@@ -269,6 +272,13 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       }
 
       if (dt == null) continue;
+
+      // Track recurring expenses by label name across months for Price Hike detection
+      if (tx.type == 'expense' && matchLbl != null && _isFixedExpenseLabel(matchLbl)) {
+        int monthKey = dt.year * 12 + dt.month;
+        recurringBillHistory.putIfAbsent(matchLbl.name, () => {});
+        recurringBillHistory[matchLbl.name]![monthKey] = (recurringBillHistory[matchLbl.name]![monthKey] ?? 0) + tx.amount;
+      }
 
       if (dt.year == currentYear && dt.month == currentMonth) {
         if (tx.type == 'expense') {
@@ -325,15 +335,10 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     double dailySpendRate = currentDay > 0 ? (currentMonthExpense / currentDay) : 0;
     double projectedMonthEndExpense = dailySpendRate * daysInMonth;
 
-    // 1. Get true available checking cash
     double availableChecking = totalLiquidChecking;
-    // 2. Subtract estimated remaining fixed overhead for the rest of the month
-    // (You can factor in fixedOverhead or upcoming liabilities due this month)
-    double remainingFixedObligations = (fixedOverhead * 0.5); // Adjust based on un-triggered bills left this month
-    // 3. True safe spendable pool = Checking minus remaining mandatory bills minus safety reserve
+    double remainingFixedObligations = (fixedOverhead * 0.5);
     double baselineReserveBuffer = monthlyBurnBaseline * 0.20;
     double safeSpendablePool = (availableChecking - remainingFixedObligations - baselineReserveBuffer).clamp(0.0, double.infinity);
-    // 4. Spread safely across the full monthly cycle (or days remaining if you prefer a strict end-of-month cap)
     double targetBufferAllowance = daysInMonth > 0 ? (safeSpendablePool / daysInMonth) : 0.0;
 
     double currentNetToDate = currentMonthIncome - currentMonthExpenseToDate;
@@ -352,6 +357,41 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     }
 
     List<Map<String, dynamic>> insights = [];
+
+    // 1. Price Hike Tracker Insight
+    int currentMonthKey = currentYear * 12 + currentMonth;
+    int prevMonthKey = prevYear * 12 + prevMonth;
+    recurringBillHistory.forEach((billName, history) {
+      double? currVal = history[currentMonthKey];
+      double? prevVal = history[prevMonthKey];
+      if (currVal != null && prevVal != null && prevVal > 0) {
+        double hikePct = ((currVal - prevVal) / prevVal) * 100;
+        if (hikePct >= 5) {
+          insights.add({
+            'type': 'warning',
+            'icon': Icons.trending_up_rounded,
+            'title': 'Price Hike Detected: $billName',
+            'message': '$billName increased by ${hikePct.toStringAsFixed(0)}% compared to last month (${_formatCurrency(prevVal)} → ${_formatCurrency(currVal)}).',
+            'action': 'Review subscription or utility billing terms.'
+          });
+        }
+      }
+    });
+
+    // 2. Discretionary Budget Breaker Alert
+    double flexibleBudgetCeiling = wantsExpense > 0 ? wantsExpense : (currentMonthExpense * 0.4);
+    if (flexibleBudgetCeiling > 0 && monthProgressRatio > 0) {
+      double flexibleSpendRatio = (wantsExpense / flexibleBudgetCeiling);
+      if (flexibleSpendRatio >= 0.8 && monthProgressRatio < 0.8) {
+        insights.add({
+          'type': 'warning',
+          'icon': Icons.warning_amber_rounded,
+          'title': 'Discretionary Budget Breaker',
+          'message': 'You have consumed over 80% of your flexible spending ceiling (${(flexibleSpendRatio * 100).toStringAsFixed(0)}%) with ${(1.0 - monthProgressRatio) * 100}% of the month still remaining.',
+            'action': 'Exercise strict discretionary caution for the rest of the month.'
+        });
+      }
+    }
 
     if (expenseDiffPercent > 15) {
       insights.add({
@@ -381,7 +421,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       });
     }
 
-    if (topCulpritAmount > 0) {
+    if (topCulpritAmount > 0 && insights.length < 3) {
       double culpritShare = currentMonthExpense > 0 ? (topCulpritAmount / currentMonthExpense) * 100 : 0;
       insights.add({
         'type': 'neutral',
@@ -498,18 +538,35 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'HEALTH & INSIGHTS',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                      letterSpacing: 0.8,
+                child: Row(
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'HEALTH & INSIGHTS',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                      onPressed: () => _showInfoDialog(
+                        context,
+                        'Metrics Calculation Frequency',
+                        '• Real-time Recalculation: Metrics refresh instantaneously whenever a transaction is added, edited, or confirmed.\n\n'
+                        '• Monthly Baselines: Monthly comparisons and spend-rate velocity metrics are re-anchored on the 1st day of each calendar month.',
+                      ),
+                      tooltip: 'Recalculation Guide',
+                      constraints: const BoxConstraints(),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ],
                 ),
               ),
               Row(
@@ -943,12 +1000,16 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.bolt_rounded, size: 12, color: Colors.white),
+                              Icon(Icons.bolt_rounded, size: 12, color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95)),
                               const SizedBox(width: 4),
                               Flexible(
                                 child: Text(
                                   'Action: $action',
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                  ),
                                 ),
                               ),
                             ],

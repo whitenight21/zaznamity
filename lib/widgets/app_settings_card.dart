@@ -264,7 +264,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     } catch (_) {}
   }
 
-Future<void> _loadSavedReports() async {
+  Future<void> _loadSavedReports() async {
     try {
       final directory = await getApplicationDocumentsDirectory();
 
@@ -316,23 +316,19 @@ Future<void> _loadSavedReports() async {
         }
       }
     } catch (e) {
-      // Debug print if any unexpected filesystem issue occurs
       debugPrint('Error loading saved reports/exports: $e');
     }
   }
 
-Future<void> _openReportFile(File file) async {
+  Future<void> _openReportFile(File file) async {
     try {
-      // Use OpenFile first for PDFs if it works, otherwise fallback to Share sheet for CSV/JSON
       final path = file.path.toLowerCase();
       if (path.endsWith('.pdf')) {
         final result = await OpenFile.open(file.path);
         if (result.type != ResultType.done) {
-          // Fallback to share sheet if open_file fails
           await _shareFile(file);
         }
       } else {
-        // For CSV and JSON backups, open via system share sheet so you can pick Sheets, Files, or Drive
         await _shareFile(file);
       }
     } catch (e) {
@@ -345,8 +341,6 @@ Future<void> _openReportFile(File file) async {
 
   Future<void> _shareFile(File file) async {
     try {
-      // Ensure share_plus is used to safely pass the sandboxed file to external apps
-      // Note: If you don't have share_plus imported yet, you can add `import 'package:share_plus/share_plus.dart';`
       await Share.shareXFiles([XFile(file.path)], text: 'Zaznamity Backup File');
     } catch (e) {
       if (!mounted) return;
@@ -374,9 +368,136 @@ Future<void> _openReportFile(File file) async {
     }
   }
 
-// --- PREVIEW & EXPORT WORKFLOW WITH DATE RANGE OPTIONS ---
+  // --- NEW UNIFIED DELETE MANAGER DIALOG (SECTION 5) ---
+  void _showDeleteManagerDialog() {
+    bool deleteLabels = false;
+    bool deleteOwners = false;
+    bool deletePools = false;
+    bool deleteZaznams = false;
+    bool wipeAll = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.delete_sweep_rounded, color: Color(0xFFDC2626)),
+              const SizedBox(width: 8),
+              Text(
+                'Delete Manager',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 380,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Select items to permanently remove from phone storage:',
+                    style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Delete All Labels', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                    value: wipeAll || deleteLabels,
+                    activeColor: const Color(0xFFDC2626),
+                    onChanged: wipeAll ? null : (val) => setModalState(() => deleteLabels = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Delete All Owners', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                    value: wipeAll || deleteOwners,
+                    activeColor: const Color(0xFFDC2626),
+                    onChanged: wipeAll ? null : (val) => setModalState(() => deleteOwners = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Delete All Pools', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                    value: wipeAll || deletePools,
+                    activeColor: const Color(0xFFDC2626),
+                    onChanged: wipeAll ? null : (val) => setModalState(() => deletePools = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Delete All Zaznams', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                    value: wipeAll || deleteZaznams,
+                    activeColor: const Color(0xFFDC2626),
+                    onChanged: wipeAll ? null : (val) => setModalState(() => deleteZaznams = val ?? false),
+                  ),
+                  const Divider(),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('WIPE ALL DATA FROM PHONE', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFDC2626))),
+                    subtitle: const Text('Performs complete factory reset of app database', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                    value: wipeAll,
+                    activeColor: const Color(0xFFDC2626),
+                    onChanged: (val) {
+                      setModalState(() {
+                        wipeAll = val ?? false;
+                        if (wipeAll) {
+                          deleteLabels = true;
+                          deleteOwners = true;
+                          deletePools = true;
+                          deleteZaznams = true;
+                        }
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                if (wipeAll || deleteZaznams) {
+                  widget.onDeleteBulkTransactions('all');
+                }
+                if (wipeAll || deleteLabels) {
+                  for (var l in List.from(widget.labels)) {
+                    widget.onDeleteLabel(l.id);
+                  }
+                }
+                if (wipeAll || deleteOwners) {
+                  widget.onSaveOwners(['Owner 1']);
+                }
+                if (wipeAll || deletePools) {
+                  widget.onSavePools({'checking': true, 'cash': true, 'savings': true});
+                }
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Delete operation executed successfully')),
+                  );
+                }
+              },
+              child: const Text('Execute Delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _showExportPreviewDialog(String format) async {
-    String selectedRangeMode = 'all'; // 'all', 'month', 'year', 'custom'
+    String selectedRangeMode = 'all';
     int selectedYear = DateTime.now().year;
     int selectedMonth = DateTime.now().month;
     DateTime customStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
@@ -384,8 +505,6 @@ Future<void> _openReportFile(File file) async {
 
     try {
       final allTxs = await DatabaseHelper.instance.getTransactions();
-      
-      // Map label IDs to names
       final Map<int, String> labelMap = {
         for (var l in widget.labels) l.id: l.name
       };
@@ -396,7 +515,6 @@ Future<void> _openReportFile(File file) async {
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (context, setStateModal) {
-            // Filter transactions based on selected range mode
             final filteredTxs = allTxs.where((tx) {
               final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
               if (selectedRangeMode == 'month') {
@@ -408,10 +526,9 @@ Future<void> _openReportFile(File file) async {
                 final endOfDay = DateTime(customEnd.year, customEnd.month, customEnd.day, 23, 59, 59);
                 return !txDate.isBefore(startOfDay) && !txDate.isAfter(endOfDay);
               }
-              return true; // 'all'
+              return true;
             }).toList();
 
-            // Build preview text for the first 2 rows
             String previewHeader = 'ID,CreatedAt,Type,Amount,Description,Owner,Pool,CurrencyCode,LabelId,LabelName,IsConfirmed\n';
             final previewRowsBuffer = StringBuffer();
             
@@ -533,7 +650,6 @@ Future<void> _openReportFile(File file) async {
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                       ),
                       const SizedBox(height: 6),
-                      // Horizontal scroll preview container
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
@@ -546,7 +662,7 @@ Future<void> _openReportFile(File file) async {
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(minWidth: 600),
                             child: Text(
-                              filteredTxs.isEmpty ? 'No transactions match the selected date range.' : previewContent,
+                              filteredTxs.isEmpty ? 'No zaznams match the selected date range.' : previewContent,
                               style: TextStyle(
                                 fontFamily: 'monospace',
                                 fontSize: 11,
@@ -599,7 +715,6 @@ Future<void> _openReportFile(File file) async {
     try {
       final allTxs = await DatabaseHelper.instance.getTransactions();
       
-      // Filter transactions matching the chosen range
       final filteredTxs = allTxs.where((tx) {
         final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
         if (rangeMode == 'month') {
@@ -623,7 +738,6 @@ Future<void> _openReportFile(File file) async {
 
       if (extension == 'csv') {
         final buffer = StringBuffer();
-        // Clear, fixed column headers matching data layout exactly
         buffer.writeln('ID,CreatedAt,Type,Amount,Description,Owner,Pool,CurrencyCode,LabelId,LabelName,IsConfirmed');
         
         for (var tx in filteredTxs) {
@@ -632,7 +746,6 @@ Future<void> _openReportFile(File file) async {
           final safePool = tx.pool.replaceAll('"', '""');
           final safeCurrency = tx.currencyCode.replaceAll('"', '""');
           
-          // Format expenses as negative numbers and income as positive numbers
           final double exportAmount = (tx.type.toLowerCase() == 'expense') 
               ? -tx.amount.abs() 
               : tx.amount.abs();
@@ -656,7 +769,6 @@ Future<void> _openReportFile(File file) async {
         }
         fileContent = buffer.toString();
       } else {
-        // JSON Export with resolved fields and sign-adjusted amounts
         final List<Map<String, dynamic>> txMaps = filteredTxs.map((tx) => {
           'id': tx.id,
           'createdAt': tx.createdAt,
@@ -691,6 +803,130 @@ Future<void> _openReportFile(File file) async {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Export failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _exportFullSystemBackup() async {
+    try {
+      final transactions = await DatabaseHelper.instance.getTransactions();
+      final liabilities = await DatabaseHelper.instance.getLiabilities();
+      
+      List<Map<String, dynamic>> savingsGoalsMaps = [];
+      try {
+        final goals = await DatabaseHelper.instance.getSavingsGoals();
+        for (var g in goals) {
+          savingsGoalsMaps.add((g as dynamic).toMap());
+        }
+      } catch (_) {}
+
+      List<Map<String, dynamic>> budgets = [];
+      try {
+        budgets = await DatabaseHelper.instance.getBudgets();
+      } catch (_) {}
+
+      final prefs = await SharedPreferences.getInstance();
+      final Map<String, dynamic> sharedPrefsData = {};
+      for (String key in prefs.getKeys()) {
+        final val = prefs.get(key);
+        if (val is bool || val is int || val is double || val is String || val is List<String>) {
+          sharedPrefsData[key] = val;
+        }
+      }
+
+      final Map<String, dynamic> fullBackup = {
+        'version': '1.0.0',
+        'exportDate': DateTime.now().toIso8601String(),
+        'preferences': sharedPrefsData,
+        'labels': widget.labels.map((l) => {'id': l.id, 'name': l.name, 'color': l.color}).toList(),
+        'liabilities': liabilities.map((l) => l.toMap()).toList(),
+        'savingsGoals': savingsGoalsMaps,
+        'budgets': budgets,
+        'transactions': transactions.map((t) => t.toMap()).toList(),
+      };
+
+      final jsonString = jsonEncode(fullBackup);
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final fileName = 'Zaznamity_FullSystemBackup_$timestamp.json';
+
+      final directory = await getApplicationDocumentsDirectory();
+      final savedFile = File('${directory.path}/$fileName');
+      await savedFile.writeAsString(jsonString, encoding: utf8);
+
+      await _loadSavedReports();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Full System Backup saved successfully: $fileName')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Full backup failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _importFullSystemBackup(File backupFile) async {
+    try {
+      final jsonString = await backupFile.readAsString();
+      final Map<String, dynamic> data = jsonDecode(jsonString);
+
+      // 1. Restore SharedPreferences
+      if (data.containsKey('preferences')) {
+        final prefs = await SharedPreferences.getInstance();
+        final Map<String, dynamic> prefsData = data['preferences'];
+        
+        for (var entry in prefsData.entries) {
+          final key = entry.key;
+          final value = entry.value;
+          if (value is bool) await prefs.setBool(key, value);
+          else if (value is int) await prefs.setInt(key, value);
+          else if (value is double) await prefs.setDouble(key, value);
+          else if (value is String) await prefs.setString(key, value);
+          else if (value is List) await prefs.setStringList(key, List<String>.from(value));
+        }
+      }
+
+      // 2. Restore Liabilities
+      if (data.containsKey('liabilities')) {
+        for (var item in data['liabilities']) {
+          final liability = LiabilityModel.fromMap(item);
+          await DatabaseHelper.instance.insertLiability(liability);
+        }
+      }
+
+      // 3. Restore Savings Goals
+      if (data.containsKey('savingsGoals')) {
+        for (var goal in data['savingsGoals']) {
+          try {
+            await DatabaseHelper.instance.insertSavingsGoal(goal);
+          } catch (_) {}
+        }
+      }
+
+      // 4. Restore Budgets
+      if (data.containsKey('budgets')) {
+        for (var budget in data['budgets']) {
+          try {
+            await DatabaseHelper.instance.updateBudget(budget['id'] ?? 1, ((budget['limit_amount'] ?? 0) as num).toDouble());
+          } catch (_) {}
+        }
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Full system state restored! Please restart app to apply settings.')),
+      );
+
+      _loadPrefs();
+      _loadLiabilities();
+      await _loadSavedReports();
+
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error importing full backup: $e')),
       );
     }
   }
@@ -963,19 +1199,14 @@ Future<void> _openReportFile(File file) async {
                     projectionEndDate: selectedProjectionDate.toIso8601String(),
                   );
 
-                  // Clear previous unconfirmed projected payments for this liability before reprojection
                   await DatabaseHelper.instance.deleteTransactionsByLabelOrDescription(liability.name);
-
                   await DatabaseHelper.instance.insertLiability(updatedLiability);
-                  
                   await DatabaseHelper.instance.updateExistingLiabilityTransactions(
                     liability.id!, 
                     liability.name, 
                     updatedLiability,
                   );
-
                   await DatabaseHelper.instance.checkAndApplyAutomaticLiabilityPayments();
-                  
                   await _loadLiabilities();
 
                   if (widget.onLiabilityUpdated != null) {
@@ -1609,7 +1840,7 @@ Future<void> _openReportFile(File file) async {
 
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Report saved to Downloads & Log: $fileName (${filteredTxs.length} transactions included)')),
+                    SnackBar(content: Text('Report saved to Downloads & Log: $fileName (${filteredTxs.length} zaznams included)')),
                   );
 
                 } catch (e) {
@@ -1627,151 +1858,6 @@ Future<void> _openReportFile(File file) async {
     );
   }
 
-  void _showBulkDeleteDialog() {
-    int selectedYear = DateTime.now().year;
-    int selectedMonth = DateTime.now().month;
-    String mode = 'month';
-
-    int selectedLabelId = widget.labels.isNotEmpty ? widget.labels.first.id : -1;
-    String selectedLabelName = widget.labels.isNotEmpty ? widget.labels.first.name : '';
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setStateModal) {
-          return AlertDialog(
-            backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Text(
-              'Delete Zaznams Configurator',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-              ),
-            ),
-            content: SizedBox(
-              width: 420,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Select scope for deletion:', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                    const SizedBox(height: 8),
-                    RadioListTile<String>(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('By Specific Month', style: TextStyle(fontSize: 13)),
-                      value: 'month',
-                      groupValue: mode,
-                      onChanged: (val) => setStateModal(() => mode = val!),
-                    ),
-                    RadioListTile<String>(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('By Specific Year', style: TextStyle(fontSize: 13)),
-                      value: 'year',
-                      groupValue: mode,
-                      onChanged: (val) => setStateModal(() => mode = val!),
-                    ),
-                    RadioListTile<String>(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('By Specific Label', style: TextStyle(fontSize: 13)),
-                      value: 'label',
-                      groupValue: mode,
-                      onChanged: (val) => setStateModal(() => mode = val!),
-                    ),
-                    RadioListTile<String>(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('All Transactions (Wipe All)', style: TextStyle(fontSize: 13, color: Color(0xFFDC2626))),
-                      value: 'all',
-                      groupValue: mode,
-                      onChanged: (val) => setStateModal(() => mode = val!),
-                    ),
-                    if (mode == 'month' || mode == 'year') ...[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<int>(
-                              initialValue: selectedYear,
-                              decoration: const InputDecoration(labelText: 'Year', isDense: true, border: OutlineInputBorder()),
-                              items: List.generate(11, (i) => 2020 + i).map((y) => DropdownMenuItem(value: y, child: Text('$y'))).toList(),
-                              onChanged: (val) => setStateModal(() => selectedYear = val ?? selectedYear),
-                            ),
-                          ),
-                          if (mode == 'month') ...[
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: DropdownButtonFormField<int>(
-                                initialValue: selectedMonth,
-                                decoration: const InputDecoration(labelText: 'Month', isDense: true, border: OutlineInputBorder()),
-                                items: List.generate(12, (i) => i + 1).map((m) => DropdownMenuItem(value: m, child: Text('$m'))).toList(),
-                                onChanged: (val) => setStateModal(() => selectedMonth = val ?? selectedMonth),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                    if (mode == 'label') ...[
-                      const SizedBox(height: 12),
-                      widget.labels.isEmpty
-                          ? Text('No labels available.', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white70 : Colors.black54))
-                          : DropdownButtonFormField<int>(
-                              initialValue: selectedLabelId,
-                              isExpanded: true,
-                              dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                              style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 13),
-                              decoration: const InputDecoration(labelText: 'Select Target Label', isDense: true, border: OutlineInputBorder()),
-                              items: widget.labels.map((l) {
-                                return DropdownMenuItem<int>(
-                                  value: l.id,
-                                  child: Text(l.name),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                if (val != null) {
-                                  selectedLabelId = val;
-                                  final match = widget.labels.firstWhere((l) => l.id == val);
-                                  selectedLabelName = match.name;
-                                }
-                              },
-                            ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  if (mode == 'month') {
-                    widget.onDeleteBulkTransactions('month', year: selectedYear, month: selectedMonth);
-                  } else if (mode == 'year') {
-                    widget.onDeleteBulkTransactions('year', year: selectedYear);
-                  } else if (mode == 'label') {
-                    if (widget.onDeleteTransactionsByLabel != null) {
-                      widget.onDeleteTransactionsByLabel!(selectedLabelId);
-                    }
-                  } else {
-                    widget.onDeleteBulkTransactions('all');
-                  }
-                },
-                child: const Text('Delete'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   void _showBulkEditLabelDialog() {
     String? oldLabelName = widget.labels.isNotEmpty ? widget.labels.first.name : null;
     final newLabelController = TextEditingController();
@@ -1780,7 +1866,7 @@ Future<void> _openReportFile(File file) async {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setStateModal) => AlertDialog(
-          title: const Text('Bulk Edit Transactions by Label', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          title: const Text('Bulk Edit Zaznams by Label', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2450,23 +2536,6 @@ Future<void> _openReportFile(File file) async {
                         ),
                       ],
                     ),
-                    _buildSubSectionCard(
-                      title: 'All Zaznams',
-                      subtitle: 'Data management & bulk operations',
-                      children: [
-                        Text('Zaznams Management - DANGER ZONE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFDC2626) : const Color(0xFFDC2626))),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
-                            onPressed: _showBulkDeleteDialog,
-                            icon: const Icon(Icons.delete_sweep, size: 16),
-                            label: const Text('Delete Zaznams Configurator', style: TextStyle(fontSize: 12)),
-                          ),
-                        ),
-                      ],
-                    ),
                   ],
                 ),
 
@@ -2920,13 +2989,13 @@ Future<void> _openReportFile(File file) async {
                 ),
 
                 // ==========================================
-                // GROUP 5: System Tools
+                // GROUP 5: System Tools (With Delete Manager)
                 // ==========================================
                 _buildMainCategoryGroup(
                   title: 'System Tools',
-                  subtitle: 'Zaznamity Reports, Data Backup, CSV imports, and About',
+                  subtitle: 'Zaznamity Reports, Delete Manager, Data Backup, CSV imports, and About',
                   children: [
-                // --- SUB-SECTION : ZAZNAMITY REPORTS ---
+                    // --- SUB-SECTION : ZAZNAMITY REPORTS ---
                     _buildSubSectionCard(
                       title: 'Zaznamity Reports',
                       subtitle: 'Generate PDF reports and manage created reports',
@@ -2999,16 +3068,49 @@ Future<void> _openReportFile(File file) async {
                               ),
                       ],
                     ),
-                    // --- SUB-SECTION : DATA EXPORT / BACKUP ---
+                    // --- SUB-SECTION : DELETE MANAGER ---
                     _buildSubSectionCard(
-                      title: 'Data Export / Backup',
-                      subtitle: 'One-click export of transactions to CSV or JSON',
+                      title: 'Delete Manager',
+                      subtitle: 'Manage deletion of labels, owners, pools, zaznams, or full data wipe',
                       children: [
                         Text(
-                          'Instantly export your complete ledger history into CSV format (for Excel/Spreadsheets) or JSON backup format. Files are saved securely in app documents storage.',
+                          'Centralized Delete Manager to safely remove all labels, owners, pools, zaznams, or perform a complete phone data wipe in one streamlined tool.',
                           style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
                         ),
                         const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFDC2626),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed: _showDeleteManagerDialog,
+                            icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+                            label: const Text('Open Delete Manager', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    // --- SUB-SECTION : DATA EXPORT / BACKUP ---
+                    _buildSubSectionCard(
+                      title: 'Data Export / Backup',
+                      subtitle: 'One-click export of transactions or complete system backups',
+                      children: [
+                        Text(
+                          'Securely export your data for backups or to migrate between devices.',
+                          style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        // --- SECTION 1: EXPORT ALL ZAZNAMS ONLY ---
+                        Text(
+                          'Export All Zaznams only (Transactions Ledger)',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                        ),
+                        const SizedBox(height: 6),
                         Row(
                           children: [
                             Expanded(
@@ -3041,6 +3143,30 @@ Future<void> _openReportFile(File file) async {
                           ],
                         ),
                         const SizedBox(height: 16),
+
+                        // --- SECTION 2: EXPORT FULL ZAZNAMITY BACKUP ---
+                        Text(
+                          'Export Full Zaznamity Backup (Transactions, Liabilities, Goals, Settings & All Data)',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                        ),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF7C3AED),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed: _exportFullSystemBackup,
+                            icon: const Icon(Icons.backup, size: 16),
+                            label: const Text('Full Backup', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // --- SAVED EXPORTS LIST LOG ---
                         Text(
                           'Created Exports / Backups',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
@@ -3105,7 +3231,7 @@ Future<void> _openReportFile(File file) async {
                       subtitle: 'Select, map, and import your CSV data',
                       children: [
                         Text(
-                          'Upload any CSV file, match your columns to Zaznamity fields, choose to create labels, owners and pools, and detect future transactions.\n\n'
+                          'Upload any CSV file, match your columns to Zaznamity fields, choose to create labels, owners and pools, and detect future zaznams.\n\n'
                           'This feature is designed to help you import your financial data from other sources into Zaznamity with ease and efficiency.\n\n'
                           'INSTRUCTIONS : Before importing your data, please select in "Currency Preferences" your Primary Currency. Then proceed to importing your data.\n\n'
                           'After importing, please allow some time for data parsing - more Zaznams imported require more time to parse data.\n\n' 

@@ -54,6 +54,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
   bool _isZaznamityMode = true;
   String _primaryCurrency = 'USD';
   final NumberFormat _currencyFormatter = NumberFormat('#,##0.00', 'en_US');
+  final Map<String, bool> _multiLabelFixedCategories = {};
 
   @override
   void initState() {
@@ -63,11 +64,18 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    
+    final fixedMap = <String, bool>{};
+    for (var label in widget.labels) {
+      fixedMap[label.name] = prefs.getBool('set_multilabel_fixed_${label.name}') ?? false;
+    }
+
     setState(() {
       _singleLabelDefaultRange = prefs.getString('set_singleLabel_range') ?? '';
       final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
       _isZaznamityMode = (themeStr == 'zaznamity');
       _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
+      _multiLabelFixedCategories.addAll(fixedMap);
     });
   }
 
@@ -84,6 +92,21 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
   String _formatAmount(double amount) {
     final symbol = _getCurrencySymbol(_primaryCurrency);
     return '$symbol${_currencyFormatter.format(amount)}';
+  }
+
+  bool _isFixedExpenseLabelByName(String labelName) {
+    if (_multiLabelFixedCategories.containsKey(labelName)) {
+      return _multiLabelFixedCategories[labelName] == true;
+    }
+    final lower = labelName.toLowerCase();
+    return lower.contains('rent') ||
+        lower.contains('housing') ||
+        lower.contains('utility') ||
+        lower.contains('utilities') ||
+        lower.contains('insurance') ||
+        lower.contains('loan') ||
+        lower.contains('mortgage') ||
+        lower.contains('bill');
   }
 
   DateTime? _getComputedStartDate() {
@@ -221,6 +244,49 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
 
     double outflowPercentage = totalGlobalOutflow > 0 ? (outflow / totalGlobalOutflow) * 100 : 0.0;
     double inflowPercentage = totalGlobalInflow > 0 ? (inflow / totalGlobalInflow) * 100 : 0.0;
+
+    // Projected Label Burn & Recurring Projection Calculation
+    final now = DateTime.now();
+    final currentMonthTxs = widget.transactions.where((tx) {
+      final txDate = DateTime.tryParse(tx.createdAt);
+      if (txDate == null || tx.isConfirmed != 1) return false;
+      if (txDate.year == now.year && txDate.month == now.month) {
+        if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) return false;
+        if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) return false;
+        return true;
+      }
+      return false;
+    }).toList();
+
+    double currentMonthLabelOutflow = 0;
+    for (var tx in currentMonthTxs) {
+      if (tx.type == 'expense') currentMonthLabelOutflow += tx.amount;
+    }
+
+    // Global monthly total outflow for contribution share
+    double globalCurrentMonthOutflow = 0;
+    for (var tx in widget.transactions) {
+      final txDate = DateTime.tryParse(tx.createdAt);
+      if (txDate == null || tx.isConfirmed != 1 || tx.type != 'expense') continue;
+      if (txDate.year == now.year && txDate.month == now.month) {
+        if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) continue;
+        globalCurrentMonthOutflow += tx.amount;
+      }
+    }
+
+    double labelBurnContributionShare = globalCurrentMonthOutflow > 0 ? (currentMonthLabelOutflow / globalCurrentMonthOutflow) * 100 : 0.0;
+
+    int currentDay = now.day;
+    int daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    double projectedMonthEndSpend = currentDay > 0 ? (currentMonthLabelOutflow / currentDay) * daysInMonth : currentMonthLabelOutflow;
+
+    // Label name resolution & Fixed/Discretionary tag determination
+    String selectedLabelName = 'Selected Label';
+    if (widget.selectedLabelId != null) {
+      final matchLbl = widget.labels.where((l) => l.id == widget.selectedLabelId).firstOrNull;
+      if (matchLbl != null) selectedLabelName = matchLbl.name;
+    }
+    bool isFixedLabel = _isFixedExpenseLabelByName(selectedLabelName);
 
     // Analytics: Average Transaction Size & Frequency Metrics
     double avgTransactionSize = filteredTxs.isNotEmpty ? (inflow + outflow) / filteredTxs.length : 0.0;
@@ -675,6 +741,82 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
               ),
               
               const SizedBox(height: 20),
+
+              // NEW SECTION: Forecasted Label Burn & Recurring Projection
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'LABEL BURN & FORECAST',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
+                      ),
+                      const SizedBox(width: 4),
+                      InkWell(
+                        onTap: () => _showInfoModal(
+                          context,
+                          'Label Burn & Forecast',
+                          'Projects expected total spend for the remainder of the month based on current day-to-day run-rate velocity.\n\n'
+                          'Tag: Displays whether the label is classified as Fixed (mandatory overhead) or Discretionary (flexible spending).\n\n'
+                          'Contribution: Shows what percentage this label contributes to your overall monthly outflow.',
+                        ),
+                        child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isFixedLabel 
+                          ? (_isZaznamityMode ? const Color(0xFF3B1E63) : const Color(0xFFE2E8F0))
+                          : (_isZaznamityMode ? const Color(0xFF1E3A8A).withValues(alpha: 0.4) : const Color(0xFFDBEAFE)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      isFixedLabel ? 'FIXED' : 'DISCRETIONARY',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        color: isFixedLabel
+                            ? (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))
+                            : (_isZaznamityMode ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    Column(
+                      children: [
+                        Text('Projected Month-End', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
+                        const SizedBox(height: 2),
+                        Text(_formatAmount(projectedMonthEndSpend), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                      ],
+                    ),
+                    Container(height: 25, width: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                    Column(
+                      children: [
+                        Text('Burn Contribution', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
+                        const SizedBox(height: 2),
+                        Text('${labelBurnContributionShare.toStringAsFixed(1)}% of burn', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 14),
               
               // SECTION 1: Average Transaction Size & Frequency Metrics Card
               Row(
@@ -816,10 +958,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         onTap: () => _showInfoModal(
                           context,
                           'Period-over-Period Trend',
-                          'Compares net cash flow of the current selected date range against the exact preceding timeframe span.\n\n'
-                          'Green (▲ Positive %): Represents an increase in your net balance compared to the previous period. A positive value indicates higher savings, greater net inflows, or reduced net expenses over the prior timeframe.\n\n'
-                          'Red (▼ Negative %): Indicates a decrease in your net balance compared to the previous period. A negative value reflects lower net income, reduced total inflows, or higher relative spending during this period.\n\n'
-                          'Neutral / Gray: Means there was no change in net balance between the current and preceding periods, or no transaction history exists for the baseline timeframe.\n\n',
+                          'Compares net cash flow of the current selected date range against the exact preceding timeframe span.',
                         ),
                         child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
                       ),
