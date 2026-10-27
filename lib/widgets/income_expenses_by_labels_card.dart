@@ -863,7 +863,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         child: Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: _isZaznamityMode ? const Color(0xFF1A332A) : const Color(0xFFECFDF5),
+                            color: _isZaznamityMode ? const Color.fromARGB(255, 17, 34, 28) : const Color(0xFFECFDF5),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(color: (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)).withValues(alpha: 0.6), width: 1.2),
                           ),
@@ -924,7 +924,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         child: Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: _isZaznamityMode ? const Color(0xFF3B1F23) : const Color(0xFFFEF2F2),
+                            color: _isZaznamityMode ? const Color.fromARGB(255, 40, 20, 23) : const Color(0xFFFEF2F2),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(color: (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)).withValues(alpha: 0.6), width: 1.2),
                           ),
@@ -994,7 +994,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         child: Container(
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: chartType == 'Bar' ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)) : Colors.transparent,
+                            color: chartType == 'Bar' ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)) : Colors.transparent,
                             borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
                           ),
                           child: Text(
@@ -1014,7 +1014,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         child: Container(
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: chartType == 'Donut' ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)) : Colors.transparent,
+                            color: chartType == 'Donut' ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)) : Colors.transparent,
                           ),
                           child: Text(
                             'Donut',
@@ -1033,7 +1033,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         child: Container(
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: chartType == 'Treemap' ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)) : Colors.transparent,
+                            color: chartType == 'Treemap' ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)) : Colors.transparent,
                             borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
                           ),
                           child: Text(

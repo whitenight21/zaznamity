@@ -19,9 +19,6 @@ class LiquidTrendChartCard extends StatefulWidget {
   final VoidCallback? onSelectStartDate;
   final VoidCallback? onSelectEndDate;
   final VoidCallback? onClearDateFilter;
-  final bool isWide;
-  final VoidCallback onToggleWidth;
-  final VoidCallback onHide;
 
   const LiquidTrendChartCard({
     super.key,
@@ -35,9 +32,6 @@ class LiquidTrendChartCard extends StatefulWidget {
     this.onSelectStartDate,
     this.onSelectEndDate,
     this.onClearDateFilter,
-    required this.isWide,
-    required this.onToggleWidth,
-    required this.onHide,
   });
 
   @override
@@ -60,10 +54,12 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
   DateTime? _lastStartDate;
   DateTime? _lastEndDate;
   MovingAverageFilter? _lastMaFilter;
+  bool? _lastShowFuture;
   String _lastPoolsKey = '';
   String _currencySymbol = '\$';
   String _dateRangeSetting = '30 Days';
   bool _showFuture = false;
+  bool _isZaznamityMode = true;
 
   @override
   void initState() {
@@ -74,13 +70,23 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     if (mounted) {
       setState(() {
         _currencySymbol = _getCurrencySymbol(primary);
         _dateRangeSetting = prefs.getString('set_liquidTrend_range') ?? '30 Days';
         _showFuture = prefs.getBool('set_liquidTrend_show_future') ?? false;
+        _isZaznamityMode = (savedTheme == 'zaznamity');
       });
     }
+  }
+
+  Future<void> _toggleShowFuture() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _showFuture = !_showFuture;
+    });
+    await prefs.setBool('set_liquidTrend_show_future', _showFuture);
   }
 
   @override
@@ -102,19 +108,20 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.info_outline_rounded, color: Color(0xFF582F95), size: 22),
+            Icon(Icons.info_outline_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), size: 22),
             const SizedBox(width: 8),
-            Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+            Expanded(child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)))),
           ],
         ),
-        content: Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4)),
+        content: Text(description, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155), height: 1.4)),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF582F95),
+              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
@@ -134,6 +141,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
         _lastStartDate == widget.startDate &&
         _lastEndDate == widget.endDate &&
         _lastMaFilter == _maFilter &&
+        _lastShowFuture == _showFuture &&
         _lastPoolsKey == poolsKey) {
       return;
     }
@@ -421,6 +429,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
     _lastStartDate = widget.startDate;
     _lastEndDate = widget.endDate;
     _lastMaFilter = _maFilter;
+    _lastShowFuture = _showFuture;
     _lastPoolsKey = poolsKey;
   }
 
@@ -438,24 +447,40 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
 
         return Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
@@ -464,56 +489,11 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 88, 47, 149),
+                          color: _isZaznamityMode ? Colors.white : const Color.fromARGB(255, 88, 47, 149),
                           letterSpacing: 0.8,
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6.0),
-                        child: SizedBox(
-                          height: 32,
-                          width: 32,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            onPressed: widget.onToggleWidth,
-                            icon: Icon(
-                              widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                              size: 18,
-                            ),
-                            tooltip: widget.isWide ? 'Narrow' : 'Wide',
-                          ),
-                        ),
-                      ),
-                      SizedBox(
-                        height: 32,
-                        width: 32,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: const Color(0xFFF1F5F9),
-                            foregroundColor: const Color(0xFF64748B),
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          onPressed: widget.onHide,
-                          icon: const Icon(
-                            Icons.visibility_off_outlined,
-                            size: 16,
-                          ),
-                          tooltip: 'Hide',
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
@@ -523,38 +503,45 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                 children: [
                   SizedBox(
                     width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: widget.selectedOwner ?? 'All Owners',
-                                isDense: true,
-                                isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: [
-                                  const DropdownMenuItem(value: 'All Owners', child: Text('All Owners')),
-                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
-                                ],
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    widget.onOwnerChanged?.call(val == 'All Owners' ? null : val);
-                                  }
-                                },
+                    child: InkWell(
+                      onTap: _toggleShowFuture,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: _showFuture
+                              ? (_isZaznamityMode ? const Color(0xFFA855F7).withValues(alpha: 0.25) : const Color(0xFF582F95).withValues(alpha: 0.15))
+                              : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC)),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: _showFuture
+                                ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                                : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _showFuture ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                              size: 16,
+                              color: _showFuture
+                                  ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                                  : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Pending',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _showFuture
+                                    ? (_isZaznamityMode ? Colors.white : const Color(0xFF582F95))
+                                    : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -566,12 +553,12 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                           child: Container(
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.horizontal(
                                 left: const Radius.circular(10),
                                 right: hasDateFilter ? Radius.zero : const Radius.circular(10),
                               ),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -585,7 +572,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
@@ -597,8 +584,8 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: hasDateFilter
-                                                ? const Color(0xFF1E293B)
-                                                : const Color(0xFF64748B),
+                                                ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
+                                                : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                             fontWeight: hasDateFilter
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
@@ -607,7 +594,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                         ),
                                       ),
                                       if (!hasDateFilter)
-                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                        Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                                     ],
                                   ),
                                 ),
@@ -621,9 +608,9 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                             height: 44,
                             width: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE2E8F0),
+                              color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
                               borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -663,9 +650,15 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                               width: double.infinity,
                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                               decoration: BoxDecoration(
-                                color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                                color: _isZaznamityMode
+                                    ? const Color(0xFF1E1333)
+                                    : (_cachedMonthlyVelocity >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2)),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: _cachedMonthlyVelocity >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
+                                border: Border.all(
+                                  color: _isZaznamityMode
+                                      ? Colors.white12
+                                      : (_cachedMonthlyVelocity >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
+                                ),
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -680,12 +673,12 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                         color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
                                       ),
                                       const SizedBox(width: 3),
-                                      const Text(
+                                      Text(
                                         'Velocity',
                                         style: TextStyle(
                                           fontSize: 9.5,
                                           fontWeight: FontWeight.bold,
-                                          color: Color(0xFF334155),
+                                          color: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
                                         ),
                                       ),
                                     ],
@@ -696,7 +689,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                     style: TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.bold,
-                                      color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                                      color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                                     ),
                                   ),
                                 ],
@@ -713,11 +706,11 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                 ),
                                 child: Container(
                                   padding: const EdgeInsets.all(2),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.white,
+                                  decoration: BoxDecoration(
+                                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(Icons.info_outline_rounded, size: 13, color: Color.fromARGB(255, 158, 158, 158)),
+                                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color.fromARGB(255, 158, 158, 158)),
                                 ),
                               ),
                             ),
@@ -734,9 +727,9 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                               width: double.infinity,
                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEFF6FF),
+                                color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFEFF6FF),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFFBFDBFE)),
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFBFDBFE)),
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -751,12 +744,12 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                         color: Color(0xFF2563EB),
                                       ),
                                       const SizedBox(width: 3),
-                                      const Text(
+                                      Text(
                                         'Runway',
                                         style: TextStyle(
                                           fontSize: 9.5,
                                           fontWeight: FontWeight.bold,
-                                          color: Color(0xFF334155),
+                                          color: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
                                         ),
                                       ),
                                     ],
@@ -764,10 +757,10 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                   const SizedBox(height: 1),
                                   Text(
                                     '${_cachedRunwayMonths.toStringAsFixed(1)} mos',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1D4ED8),
+                                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF1D4ED8),
                                     ),
                                   ),
                                 ],
@@ -784,11 +777,11 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                 ),
                                 child: Container(
                                   padding: const EdgeInsets.all(2),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.white,
+                                  decoration: BoxDecoration(
+                                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(Icons.info_outline_rounded, size: 13, color: Color.fromARGB(255, 158, 158, 158)),
+                                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color.fromARGB(255, 158, 158, 158)),
                                 ),
                               ),
                             ),
@@ -801,17 +794,17 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                           height: 48,
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Text(
+                              Text(
                                 'Moving average (days):',
-                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                               ),
                               const SizedBox(height: 2),
                               SingleChildScrollView(
@@ -819,7 +812,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                 child: Row(
                                   children: [
                                     ChoiceChip(
-                                      label: const Text('30', style: TextStyle(fontSize: 9.5)),
+                                      label: Text('30', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                       selected: _maFilter == MovingAverageFilter.days30,
                                       showCheckmark: false,
                                       onSelected: (selected) {
@@ -827,13 +820,14 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                           _maFilter = selected ? MovingAverageFilter.days30 : null;
                                         });
                                       },
-                                      selectedColor: Colors.amber.shade200,
+                                      selectedColor: _isZaznamityMode ? const Color(0xFFA855F7) : Colors.amber.shade200,
+                                      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : null,
                                       visualDensity: VisualDensity.compact,
                                       padding: EdgeInsets.zero,
                                     ),
                                     const SizedBox(width: 4),
                                     ChoiceChip(
-                                      label: const Text('90', style: TextStyle(fontSize: 9.5)),
+                                      label: Text('90', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                       selected: _maFilter == MovingAverageFilter.days90,
                                       showCheckmark: false,
                                       onSelected: (selected) {
@@ -841,13 +835,14 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                           _maFilter = selected ? MovingAverageFilter.days90 : null;
                                         });
                                       },
-                                      selectedColor: Colors.amber.shade200,
+                                      selectedColor: _isZaznamityMode ? const Color(0xFFA855F7) : Colors.amber.shade200,
+                                      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : null,
                                       visualDensity: VisualDensity.compact,
                                       padding: EdgeInsets.zero,
                                     ),
                                     const SizedBox(width: 4),
                                     ChoiceChip(
-                                      label: const Text('All', style: TextStyle(fontSize: 9.5)),
+                                      label: Text('All', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                       selected: _maFilter == MovingAverageFilter.all,
                                       showCheckmark: false,
                                       onSelected: (selected) {
@@ -855,7 +850,8 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                           _maFilter = selected ? MovingAverageFilter.all : null;
                                         });
                                       },
-                                      selectedColor: Colors.amber.shade200,
+                                      selectedColor: _isZaznamityMode ? const Color(0xFFA855F7) : Colors.amber.shade200,
+                                      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : null,
                                       visualDensity: VisualDensity.compact,
                                       padding: EdgeInsets.zero,
                                     ),
@@ -880,8 +876,8 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,
-                      getDrawingHorizontalLine: (value) => const FlLine(
-                        color: Color(0xFFF1F5F9),
+                      getDrawingHorizontalLine: (value) => FlLine(
+                        color: _isZaznamityMode ? Colors.white10 : const Color(0xFFF1F5F9),
                         strokeWidth: 1,
                       ),
                     ),
@@ -901,7 +897,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                   padding: const EdgeInsets.only(top: 8.0),
                                   child: Text(
                                     DateFormat('MMM d').format(date),
-                                    style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                                    style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                   ),
                                 );
                               }
@@ -917,7 +913,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                           getTitlesWidget: (value, meta) {
                             return Text(
                               '$_currencySymbol${value.toInt()}',
-                              style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                              style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                             );
                           },
                         ),

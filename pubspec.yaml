@@ -24,6 +24,7 @@ dependencies:
   share_plus: ^10.0.0 
   open_file: ^3.3.2 # or the latest version
   local_auth: ^3.0.1  # Add this line
+  image_picker: ^1.0.7  # or latest version
 
   cupertino_icons: ^1.0.8
 

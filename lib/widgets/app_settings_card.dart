@@ -19,6 +19,7 @@ import 'package:zaznamity/services/notification_service.dart';
 import 'package:zaznamity/widgets/settings/owner_management_modal.dart';
 import 'package:zaznamity/widgets/settings/pool_management_modal.dart';
 import 'package:zaznamity/widgets/csv_import_mapper_dialog.dart';
+import 'package:zaznamity/widgets/settings/history_display_settings_widget.dart';
 
 class AppSettingsCard extends StatefulWidget {
   final Map<String, bool> initialPools;
@@ -128,29 +129,46 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   List<LiabilityModel> _liabilitiesList = [];
 
   final List<Map<String, String>> _availableCurrencies = [
-    {'code': 'USD', 'name': '🇺🇸 US Dollar (\$)'},
+    // Primary / Major
     {'code': 'EUR', 'name': '🇪🇺 Euro (€)'},
-    {'code': 'JPY', 'name': '🇯🇵 Japanese Yen (¥)'},
-    {'code': 'GBP', 'name': '🇬🇧 British Pound (£)'},
-    {'code': 'CNY', 'name': '🇨🇳 Chinese Yuan (¥)'},
-    {'code': 'AUD', 'name': '🇦🇺 Australian Dollar (A\$)'},
+    {'code': 'USD', 'name': '🇺🇸 US Dollar (\$)'},
     {'code': 'CAD', 'name': '🇨🇦 Canadian Dollar (C\$)'},
+    {'code': 'GBP', 'name': '🇬🇧 British Pound (£)'},
+    // European Currencies
+    {'code': 'CZK', 'name': '🇨🇿 Czech Koruna (Kč)'},
+    {'code': 'HUF', 'name': '🇭🇺 Hungarian Forint (Ft)'},
+    {'code': 'PLN', 'name': '🇵🇱 Polish Zloty (zł)'},
     {'code': 'CHF', 'name': '🇨🇭 Swiss Franc (CHF)'},
+    {'code': 'RUB', 'name': '🇷🇺 Russian Ruble (₽)'},
+    // Asian Currencies
+    {'code': 'JPY', 'name': '🇯🇵 Japanese Yen (¥)'},
+    {'code': 'CNY', 'name': '🇨🇳 Chinese Yuan (¥)'},
     {'code': 'HKD', 'name': '🇭🇰 Hong Kong Dollar (HK\$)'},
     {'code': 'SGD', 'name': '🇸🇬 Singapore Dollar (S\$)'},
+    {'code': 'AUD', 'name': '🇦🇺 Australian Dollar (A\$)'},
+    // South American Currencies
+    {'code': 'BRL', 'name': '🇧🇷 Brazilian Real (R\$)'},
+    {'code': 'MXN', 'name': '🇲🇽 Mexican Peso (\$)'},
+    {'code': 'CLP', 'name': '🇨🇱 Chilean Peso (\$)'},
+    {'code': 'COP', 'name': '🇨🇴 Colombian Peso (\$)'},
   ];
 
-  // Preset Color Palette Options for Labels
   final List<String> _labelPalette = [
-    '#582F95', // Default Deep Purple
+    '#582F95', // Deep Purple
     '#A855F7', // Vivid Purple
+    '#6366F1', // Indigo
     '#3B82F6', // Blue
+    '#0284C7', // Light Blue
     '#06B6D4', // Cyan
-    '#10B981', // Emerald Green
+    '#10B981', // Emerald
+    '#059669', // Green
+    '#84CC16', // Lime
+    '#EAB308', // Yellow
     '#F59E0B', // Amber
+    '#F97316', // Orange
     '#EF4444', // Red
     '#EC4899', // Pink
-    '#8B5CF6', // Violet
+    '#D946EF', // Fuchsia
     '#64748B', // Slate Gray
   ];
   
@@ -787,7 +805,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       }
 
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final fileName = 'Zaznamity_Backup_$timestamp.$extension';
+      final fileName = 'Z_ExportZaznams_$timestamp.$extension';
 
       final directory = await getApplicationDocumentsDirectory();
       final savedFile = File('${directory.path}/$fileName');
@@ -847,7 +865,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
       final jsonString = jsonEncode(fullBackup);
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final fileName = 'Zaznamity_FullSystemBackup_$timestamp.json';
+      final fileName = 'Z_FullSystemBackup_$timestamp.json';
 
       final directory = await getApplicationDocumentsDirectory();
       final savedFile = File('${directory.path}/$fileName');
@@ -1023,7 +1041,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             color: _parseColor(hexCode),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: isSelected ? Colors.white : Colors.transparent,
+                              color: isSelected ? (_isZaznamityMode ? Colors.white : const Color(0xFF582F95)) : Colors.transparent,
                               width: 2.5,
                             ),
                             boxShadow: [
@@ -1035,9 +1053,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                 ),
                             ],
                           ),
-                          child: isSelected
-                              ? const Center(child: Icon(Icons.check, size: 16, color: Colors.white))
-                              : null,
                         ),
                       );
                     }).toList(),
@@ -1206,6 +1221,16 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     liability.name, 
                     updatedLiability,
                   );
+                  // NEW: Purge any generated liability transactions past the new projection end date
+                  final allTxs = await DatabaseHelper.instance.getTransactions();
+                  for (var tx in allTxs) {
+                    if (tx.description.contains(liability.name)) {
+                      final txDate = DateTime.tryParse(tx.createdAt);
+                      if (txDate != null && txDate.isAfter(selectedProjectionDate)) {
+                        await DatabaseHelper.instance.deleteTransaction(tx.id!);
+                      }
+                    }
+                  }
                   await DatabaseHelper.instance.checkAndApplyAutomaticLiabilityPayments();
                   await _loadLiabilities();
 
@@ -1245,142 +1270,202 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text('Configure Budgets', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95))),
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Configure Budgets',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+            ),
+          ),
           content: SizedBox(
-            width: 450,
-            child: budgets.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    child: Center(child: Text('No budgets configured yet. Create budgets in the Budgets card.', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)))),
-                  )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: budgets.length,
-                    itemBuilder: (context, index) {
-                      final b = budgets[index];
-                      final budgetId = b['id'] as int;
-                      final labelId = b['label_id'] ?? b['labelId'];
-                      double limitAmount = ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
-                      String owner = b['owner'] ?? _owners.firstOrNull ?? 'Shared';
-                      String currency = b['currency'] ?? _primaryCurrency;
-
-                      final labelObj = widget.labels.firstWhere(
-                        (l) => l.id == labelId,
-                        orElse: () => LabelModel(id: -1, name: b['label_name'] ?? 'General', color: '582F95'),
-                      );
-
-                      final limitController = TextEditingController(text: limitAmount.toStringAsFixed(0));
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(labelObj.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
-                                IconButton(
-                                  icon: Icon(Icons.delete_outline, size: 16, color: _isZaznamityMode ? const Color(0xFFEF4444) : const Color(0xFFDC2626)),
-                                  onPressed: () async {
-                                    await DatabaseHelper.instance.deleteBudget(budgetId);
-                                    final updated = await DatabaseHelper.instance.getBudgets();
-                                    setDialogState(() => budgets = updated);
-                                  },
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                Expanded(
-                                  flex: 2,
-                                  child: TextField(
-                                    controller: limitController,
-                                    keyboardType: TextInputType.number,
-                                    style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 12),
-                                    decoration: const InputDecoration(labelText: 'Amount Limit', isDense: true, border: OutlineInputBorder()),
-                                    onChanged: (val) {
-                                      final parsed = double.tryParse(val);
-                                      if (parsed != null) {
-                                        b['limit_amount'] = parsed;
-                                      }
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  flex: 2,
-                                  child: DropdownButtonFormField<String>(
-                                    initialValue: _owners.contains(owner) ? owner : (_owners.isNotEmpty ? _owners.first : owner),
-                                    dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                    style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 12),
-                                    decoration: const InputDecoration(labelText: 'Owner', isDense: true, border: OutlineInputBorder()),
-                                    items: _owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))))).toList(),
-                                    onChanged: (val) {
-                                      if (val != null) {
-                                        setDialogState(() => owner = val);
-                                        b['owner'] = val;
-                                      }
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  flex: 2,
-                                  child: DropdownButtonFormField<String>(
-                                    initialValue: [_primaryCurrency, if (_secondaryCurrency1 != null) _secondaryCurrency1!, if (_secondaryCurrency2 != null) _secondaryCurrency2!].contains(currency) ? currency : _primaryCurrency,
-                                    dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                    style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 12),
-                                    decoration: const InputDecoration(labelText: 'Currency', isDense: true, border: OutlineInputBorder()),
-                                    items: [
-                                      _primaryCurrency,
-                                      if (_secondaryCurrency1 != null) _secondaryCurrency1!,
-                                      if (_secondaryCurrency2 != null) _secondaryCurrency2!,
-                                      if (_secondaryCurrency3 != null) _secondaryCurrency3!,
-                                    ].map((c) => DropdownMenuItem(value: c, child: Text(c, style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))))).toList(),
-                                    onChanged: (val) {
-                                      if (val != null) {
-                                        setDialogState(() => currency = val);
-                                        b['currency'] = val;
-                                      }
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(50, 24)),
-                                onPressed: () async {
-                                  final finalLimit = double.tryParse(limitController.text) ?? limitAmount;
-                                  await DatabaseHelper.instance.updateBudget(budgetId, finalLimit);
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Budget updated successfully')));
-                                  }
-                                },
-                                child: Text('Save Changes', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Active Budgets',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                    ),
                   ),
+                  const SizedBox(height: 6),
+                  budgets.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: Text(
+                            'No budgets configured yet. Create budgets in the Budgets card.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: budgets.length,
+                          itemBuilder: (context, index) {
+                            final b = budgets[index];
+                            final budgetId = b['id'] as int;
+                            final labelId = b['label_id'] ?? b['labelId'];
+                            double limitAmount = ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
+                            String currency = b['currency'] ?? _primaryCurrency;
+
+                            final labelObj = widget.labels.firstWhere(
+                              (l) => l.id == labelId,
+                              orElse: () => LabelModel(id: -1, name: b['label_name'] ?? 'General', color: '582F95'),
+                            );
+
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                labelObj.name,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                ),
+                              ),
+                              subtitle: Text(
+                                'Limit: $currency ${limitAmount.toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                                ),
+                              ),
+                              trailing: IconButton(
+                                icon: Icon(
+                                  Icons.edit,
+                                  size: 16,
+                                  color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF64748B),
+                                ),
+                                onPressed: () => _showEditSingleBudgetDialog(b, () async {
+                                  final updated = await DatabaseHelper.instance.getBudgets();
+                                  setDialogState(() => budgets = updated);
+                                }),
+                                tooltip: 'Edit Budget Parameters',
+                              ),
+                            );
+                          },
+                        ),
+                ],
+              ),
+            ),
           ),
           actions: [
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+              ),
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditSingleBudgetDialog(Map<String, dynamic> budgetMap, VoidCallback onUpdated) {
+    final budgetId = budgetMap['id'] as int;
+    final labelId = budgetMap['label_id'] ?? budgetMap['labelId'];
+    double limitAmount = ((budgetMap['limit_amount'] ?? budgetMap['limitAmount'] ?? 0) as num).toDouble();
+    String owner = budgetMap['owner'] ?? _owners.firstOrNull ?? 'Shared';
+    String currency = budgetMap['currency'] ?? _primaryCurrency;
+
+    final labelObj = widget.labels.firstWhere(
+      (l) => l.id == labelId,
+      orElse: () => LabelModel(id: -1, name: budgetMap['label_name'] ?? 'General', color: '582F95'),
+    );
+
+    final limitController = TextEditingController(text: limitAmount.toStringAsFixed(0));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateModal) => AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Edit Budget: ${labelObj.name}',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+            ),
+          ),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: limitController,
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 13),
+                    decoration: const InputDecoration(labelText: 'Amount Limit', isDense: true, border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: _owners.contains(owner) ? owner : (_owners.isNotEmpty ? _owners.first : owner),
+                    dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 13),
+                    decoration: const InputDecoration(labelText: 'Owner', isDense: true, border: OutlineInputBorder()),
+                    items: _owners.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+                    onChanged: (val) {
+                      if (val != null) setStateModal(() => owner = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: [_primaryCurrency, if (_secondaryCurrency1 != null) _secondaryCurrency1!, if (_secondaryCurrency2 != null) _secondaryCurrency2!, if (_secondaryCurrency3 != null) _secondaryCurrency3!].contains(currency) ? currency : _primaryCurrency,
+                    dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 13),
+                    decoration: const InputDecoration(labelText: 'Currency', isDense: true, border: OutlineInputBorder()),
+                    items: [
+                      _primaryCurrency,
+                      if (_secondaryCurrency1 != null) _secondaryCurrency1!,
+                      if (_secondaryCurrency2 != null) _secondaryCurrency2!,
+                      if (_secondaryCurrency3 != null) _secondaryCurrency3!,
+                    ].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                    onChanged: (val) {
+                      if (val != null) setStateModal(() => currency = val);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                final finalLimit = double.tryParse(limitController.text) ?? limitAmount;
+                await DatabaseHelper.instance.updateBudget(budgetId, finalLimit);
+                Navigator.pop(ctx);
+                onUpdated();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Budget updated successfully')));
+                }
+              },
+              child: const Text('Save Changes'),
             ),
           ],
         ),
@@ -2141,8 +2226,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       ],
                     ),
                     _buildSubSectionCard(
-                      title: 'Navigation Bar Customization',
-                      subtitle: 'Configure shortcuts: 2 left and 2 right',
+                      title: 'Navigation Bar Show/Hide and Customization',
+                      subtitle: 'Swipe down anywhere on the Navigation Bar to hide it - click on purple tab to bring it back into view. Configure shortcuts on the Navigation Bar: 2 left and 2 right',
                       children: [
                         Text('Left Slot 1 (Fixed)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                         const SizedBox(height: 4),
@@ -2413,7 +2498,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       title: 'Budgets',
                       subtitle: 'Budget configurator and rollover preferences',
                       children: [
-                        Text('Configure Existing Budgets', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95))),
+                        Text('Configure Existing Budgets', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                         const SizedBox(height: 4),
                         SizedBox(
                           width: double.infinity,
@@ -2532,6 +2617,18 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                               final prefs = await SharedPreferences.getInstance();
                               await prefs.setString('calendarStartDay', val);
                             }
+                          },
+                        ),
+                      ],
+                    ),
+                    _buildSubSectionCard(
+                      title: 'All Zaznams',
+                      subtitle: 'Configure compact All Zaznams display view and quick toggle on and off in All Zaznams card',
+                      children: [
+                        HistoryDisplaySettingsWidget(
+                          isZaznamityMode: _isZaznamityMode,
+                          onPrefsChanged: () {
+                            setState(() {});
                           },
                         ),
                       ],
@@ -2669,7 +2766,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             ),
                             const SizedBox(width: 10),
                             ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                              style: ElevatedButton.styleFrom(backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)),
                               onPressed: () {
                                 if (_newLabelController.text.trim().isNotEmpty) {
                                   widget.onAddLabel(_newLabelController.text.trim());
@@ -2771,7 +2868,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 10),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -2793,7 +2890,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 10),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -2865,7 +2962,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   children: [
                     _buildSubSectionCard(
                       title: 'Security',
-                      subtitle: 'Secure app with a 4-digit PIN code',
+                      subtitle: 'Secure app with a 4-digit Passcode',
                       children: [
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
@@ -2892,7 +2989,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                   obscureText: !_isPinVisible,
                                   style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 13),
                                   decoration: const InputDecoration(
-                                    labelText: 'Set 4-Digit PIN',
+                                    labelText: 'Set 4-Digit Passcode',
                                     border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
                                     isDense: true,
                                     counterText: '',
@@ -2928,7 +3025,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                   size: 16,
                                 ),
                                 label: Text(
-                                  _isPinVisible ? 'Hide PIN' : 'Show PIN',
+                                  _isPinVisible ? 'Hide ' : 'Show',
                                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                                 ),
                               ),
@@ -2993,7 +3090,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 // ==========================================
                 _buildMainCategoryGroup(
                   title: 'System Tools',
-                  subtitle: 'Zaznamity Reports, Delete Manager, Data Backup, CSV imports, and About',
+                  subtitle: 'Zaznamity Reports, Delete Manager, Data Export & Backup, CSV Imports, and About',
                   children: [
                     // --- SUB-SECTION : ZAZNAMITY REPORTS ---
                     _buildSubSectionCard(
@@ -3010,7 +3107,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -3097,17 +3194,17 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     // --- SUB-SECTION : DATA EXPORT / BACKUP ---
                     _buildSubSectionCard(
                       title: 'Data Export / Backup',
-                      subtitle: 'One-click export of transactions or complete system backups',
+                      subtitle: 'One-click export of Zaznams or complete system backups',
                       children: [
                         Text(
-                          'Securely export your data for backups or to migrate between devices.',
+                          'Securely export your data for backups or to migrate between devices. Export All Zaznams history to CSV or JSON, or Export a Full System Backup (All Zaznams, Liabilities, Goals, Settings & Saved Preferences))',
                           style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
                         ),
                         const SizedBox(height: 12),
                         
                         // --- SECTION 1: EXPORT ALL ZAZNAMS ONLY ---
                         Text(
-                          'Export All Zaznams only (Transactions Ledger)',
+                          'Export All Zaznams only (ledger history)',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                         ),
                         const SizedBox(height: 6),
@@ -3130,7 +3227,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             Expanded(
                               child: ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: _isZaznamityMode ? const Color(0xFF3B1E63) : const Color(0xFF475569),
+                                  backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(vertical: 10),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -3146,22 +3243,22 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
                         // --- SECTION 2: EXPORT FULL ZAZNAMITY BACKUP ---
                         Text(
-                          'Export Full Zaznamity Backup (Transactions, Liabilities, Goals, Settings & All Data)',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                          'Export Full Zaznamity Backup',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)),
                         ),
                         const SizedBox(height: 6),
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF7C3AED),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 10),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
                             onPressed: _exportFullSystemBackup,
                             icon: const Icon(Icons.backup, size: 16),
-                            label: const Text('Full Backup', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            label: const Text('Full System Backup', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -3169,7 +3266,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         // --- SAVED EXPORTS LIST LOG ---
                         Text(
                           'Created Exports / Backups',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)),
                         ),
                         const SizedBox(height: 4),
                         _savedExportsList.isEmpty
@@ -3243,7 +3340,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -3261,8 +3358,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                 },
                               );
                             },
-                            icon: const Icon(Icons.alt_route, size: 18),
-                            label: const Text('CSV Import Mapper', style: TextStyle(fontWeight: FontWeight.bold)),
+                            icon: const Icon(Icons.alt_route, size: 16),
+                            label: const Text('CSV Import Mapper', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                           ),
                         ),
                       ],

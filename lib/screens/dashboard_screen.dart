@@ -31,6 +31,7 @@ import '../widgets/savings_goals_card.dart';
 import '../widgets/title_card.dart';
 import '../widgets/liabilities_card.dart'; 
 import '../widgets/smart_insights_card.dart';
+import '../widgets/what_if_scenario_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -158,6 +159,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     CardConfig(id: 'future_metrics', title: 'Future Metrics', key: GlobalKey()),
     CardConfig(id: 'liabilities_card', title: 'Liabilities', key: GlobalKey()),    
     CardConfig(id: 'savings_goals', title: 'Savings Goals', key: GlobalKey()),
+    CardConfig(id: 'what_if_scenario', title: 'What-If Lab', key: GlobalKey()),
     CardConfig(id: 'label_focus', title: 'Label Analysis', key: GlobalKey()),
     CardConfig(id: 'income_expenses_labels', title: 'Labels Analytics', key: GlobalKey()),
     CardConfig(id: 'new_entry', title: 'New Zaznam', key: GlobalKey()),
@@ -402,32 +404,36 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       }
     });
 
+    // 1. Correctly map every card ID to its respective tab index
     int targetTab = 0;
     if (['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(cardId)) {
       targetTab = 0;
     } else if (['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(cardId)) {
       targetTab = 1;
-    } else if (['label_focus', 'income_expenses_labels', 'calendar'].contains(cardId)) {
-      targetTab = 2;
+    } else if (['label_focus', 'income_expenses_labels', 'calendar', 'what_if_scenario'].contains(cardId)) {
+      targetTab = 2; // Analytics tab
     } else {
-      targetTab = 3;
+      targetTab = 3; // Actions tab
     }
 
+    // 2. Animate tab transition smoothly
     _tabController.animateTo(
       targetTab,
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeInOut,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOutCubic,
     );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // 3. Wait for tab view animation & layout pass to complete before scrolling smoothly
+    Future.delayed(const Duration(milliseconds: 220), () {
+      if (!mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final context = cardConfig.key.currentContext;
         if (context != null) {
           Scrollable.ensureVisible(
             context,
-            alignment: 0.08,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
+            alignment: 0.1,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeInOutCubic,
           );
         }
       });
@@ -491,7 +497,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           builder: (stateContext, setModalState) {
             final metricsCards = cards.where((c) => ['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(c.id)).toList();
             final trendsCards = cards.where((c) => ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
-            final analyticsCards = cards.where((c) => ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
+            final analyticsCards = cards.where((c) => ['label_focus', 'income_expenses_labels', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
             final actionsCards = cards.where((c) => ['new_entry', 'transfer', 'history'].contains(c.id)).toList();
             final settingsCard = cards.firstWhere((c) => c.id == 'settings', orElse: () => CardConfig(id: 'settings', title: 'Zaznamity Settings', key: GlobalKey()));
 
@@ -1399,6 +1405,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     required DateTime? repeatUntilDate,
     required DateTime date,
     required String currencyCode,
+    required String? receiptPath,
   }) async {
     if (amount <= 0) return;
 
@@ -1456,6 +1463,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         isConfirmed: 1,
         isSavings: pool == 'savings' ? 1 : 0,
         currencyCode: currencyCode,
+        receiptPath: receiptPath,
       );
       await DatabaseHelper.instance.insertTransaction(newTx);
     }
@@ -2135,7 +2143,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             setState(() => card.isVisible = false);
             _saveCardLayoutPreferences();
           },
-          onSubmit: (description, amount, type, labelId, owner, pool, isRecurring, frequency, dayOfMonth, excludedWeekdays, excludedMonths, repeatUntilDate, date, currencyCode) {
+          onSubmit: (description, amount, type, labelId, owner, pool, isRecurring, frequency, dayOfMonth, excludedWeekdays, excludedMonths, repeatUntilDate, date, currencyCode, receiptPath) {
             _handleNewZaznamSubmit(
               description: description,
               amount: amount,
@@ -2151,7 +2159,25 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               repeatUntilDate: repeatUntilDate,
               date: date,
               currencyCode: currencyCode,
+              receiptPath: receiptPath,
             );
+          },
+        );
+      case 'what_if_scenario':
+        return WhatIfScenarioCard(
+          owners: _owners,
+          selectedOwner: _globalSelectedOwner,
+          transactions: _transactions,
+          liabilities: _liabilities,
+          basePrognosis: _totalPrognosis,
+          isWide: card.isWide,
+          onToggleWidth: () {
+            setState(() => card.isWide = !card.isWide);
+            _saveCardLayoutPreferences();
+          },
+          onHide: () {
+            setState(() => card.isVisible = false);
+            _saveCardLayoutPreferences();
           },
         );
       case 'transfer':
@@ -2208,15 +2234,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
             _navigateToCard('history');
           },
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
         );
       case 'trend_chart':
         return LiquidTrendChartCard(
@@ -2239,15 +2256,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _trendStartDate = null;
             _trendEndDate = null;
           }),
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
         );
       case 'savings_chart':
         return SavingsChartCard(
@@ -2270,15 +2278,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _savingsChartStartDate = null;
             _savingsChartEndDate = null;
           }),
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
         );
       case 'pools_analytics':
         return PoolsAnalyticsCard(
@@ -2301,15 +2300,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _savingsChartStartDate = null;
             _savingsChartEndDate = null;
           }),
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
         );
       case 'calendar':
         return CalendarCard(
@@ -2346,7 +2336,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             remainingBalance: item.remainingBalance,
             monthlyInstallment: item.monthlyInstallment,
             interestRate: item.interestRate,
-            dueDay: item.dueDay ?? 1,
+            dueDay: item.dueDay,
             owner: item.owner,
           )).toList(),
           owners: _owners,
@@ -2407,15 +2397,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _sankeyEndDate = null;
             _sankeySelectedPool = null;
           }),
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
         );
       case 'income_expenses_labels':
         return IncomeExpensesByLabelsCard(
@@ -2497,15 +2478,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           onDeleteTransaction: _deleteTransaction,
           onEditTransaction: showEditTransactionDialog,
           onConfirmTransaction: _confirmTransaction,
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
         );
       default:
         return const SizedBox.shrink();
@@ -2515,7 +2487,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   void _showZoomOutSnapshotModal() {
     final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(c.id)).toList();
     final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
-    final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
+    final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
     final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'history', 'settings'].contains(c.id)).toList();
 
     showDialog(
@@ -2818,7 +2790,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
                               final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'smart_insights', 'liabilities_card', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
                               final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
-                              final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar'].contains(c.id)).toList();
+                              final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
                               final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'history', 'settings'].contains(c.id)).toList();
 
                               return TabBarView(

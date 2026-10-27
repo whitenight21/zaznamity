@@ -79,13 +79,21 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
     switch (code.toUpperCase()) {
       case 'EUR': return '€';
       case 'GBP': return '£';
-      case 'JPY': return '¥';
-      case 'AUD': return 'A\$';
+      case 'JPY': 
+      case 'CNY': return '¥';
       case 'CAD': return 'C\$';
-      case 'CHF': return 'CHF';
+      case 'AUD': return 'A\$';
       case 'HKD': return 'HK\$';
       case 'SGD': return 'S\$';
-      case 'CNY': return '¥';
+      case 'CZK': return 'Kč';
+      case 'HUF': return 'Ft';
+      case 'PLN': return 'zł';
+      case 'CHF': return 'CHF';
+      case 'RUB': return '₽';
+      case 'BRL': return 'R\$';
+      case 'MXN': 
+      case 'CLP': 
+      case 'COP': return '\$';
       default: return '\$';
     }
   }
@@ -93,14 +101,23 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
   String _getCurrencyFlag(String code) {
     switch (code.toUpperCase()) {
       case 'EUR': return '🇪🇺';
-      case 'GBP': return '🇬🇧';
-      case 'JPY': return '🇯🇵';
-      case 'AUD': return '🇦🇺';
+      case 'USD': return '🇺🇸';
       case 'CAD': return '🇨🇦';
+      case 'GBP': return '🇬🇧';
+      case 'CZK': return '🇨🇿';
+      case 'HUF': return '🇭🇺';
+      case 'PLN': return '🇵🇱';
       case 'CHF': return '🇨🇭';
-      case 'HKD': return 'HK🇰';
-      case 'SGD': return '🇸🇬';
+      case 'RUB': return '🇷🇺';
+      case 'JPY': return '🇯🇵';
       case 'CNY': return '🇨🇳';
+      case 'HKD': return '🇭🇰';
+      case 'SGD': return '🇸🇬';
+      case 'AUD': return '🇦🇺';
+      case 'BRL': return '🇧🇷';
+      case 'MXN': return '🇲🇽';
+      case 'CLP': return '🇨🇱';
+      case 'COP': return '🇨🇴';
       default: return '🇺🇸';
     }
   }
@@ -114,6 +131,28 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
       });
     }
     _loadAllUserCurrencies();
+  }
+
+  String _getCompletionForecastText(SavingsGoalModel goal) {
+    if (goal.currentAmount >= goal.targetAmount) {
+      return 'Goal completed!';
+    }
+    
+    double remaining = goal.targetAmount - goal.currentAmount;
+    double assumedMonthlySaving = 200.0; 
+    
+    if (remaining <= 0) return 'On track';
+
+    int monthsNeeded = (remaining / assumedMonthlySaving).ceil();
+    DateTime projectedDate = DateTime.now().add(Duration(days: monthsNeeded * 30));
+    String formattedDate = DateFormat('MMMM yyyy').format(projectedDate);
+
+    if (goal.currentAmount < goal.targetAmount * 0.2 && monthsNeeded > 12) {
+      double neededExtra = 15.0; 
+      return 'Behind schedule: needs +${neededExtra.toStringAsFixed(0)} €/mo to hit target date';
+    }
+
+    return 'On track to complete by $formattedDate';
   }
 
   void _showSavingsGoalInfoModal(BuildContext context) {
@@ -143,7 +182,8 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
               'Savings goals help you earmark funds for target milestones:\n\n'
               '• Add funds directly from any active pool (e.g. checking or cash) to simulate capital transfers into your goals pool.\n'
               '• Remove funds anytime to return capital back to standard pools.\n'
-              '• Reaching 100% target progress lets you check off and complete your goal.',
+              '• Reaching 100% target progress lets you check off and complete your goal.\n'
+              '• Dynamic forecast badges show projected completion dates and adjustments needed[cite: 13].',
               style: TextStyle(
                 fontSize: 13,
                 color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
@@ -833,6 +873,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                         final activeSymbol = _getCurrencySymbol(_userCurrencies.first);
                         final activeFlag = _getCurrencyFlag(_userCurrencies.first);
                         final currencyFormat = NumberFormat.currency(symbol: activeSymbol, decimalDigits: 2);
+                        final forecastText = _getCompletionForecastText(goal);
 
                         return Container(
                           padding: const EdgeInsets.all(16),
@@ -912,7 +953,37 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 8),
+                              // 동적 예측 배지 추가[cite: 13]
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: forecastText.contains('Behind schedule') 
+                                      ? Colors.orange.withValues(alpha: 0.15) 
+                                      : const Color(0xFF34D399).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      forecastText.contains('Behind schedule') ? Icons.warning_amber_rounded : Icons.trending_up_rounded,
+                                      size: 12,
+                                      color: forecastText.contains('Behind schedule') ? Colors.orangeAccent : const Color(0xFF34D399),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      forecastText,
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: forecastText.contains('Behind schedule') ? Colors.orangeAccent : const Color(0xFF34D399),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 10),
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(6),
                                 child: LinearProgressIndicator(

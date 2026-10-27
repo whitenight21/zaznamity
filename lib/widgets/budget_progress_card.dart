@@ -49,16 +49,24 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
   bool _isZaznamityMode = true;
 
   final Map<String, String> _currencyFlags = {
-    'USD': '🇺🇸',
     'EUR': '🇪🇺',
-    'JPY': '🇯🇵',
-    'GBP': '🇬🇧',
-    'CNY': '🇨🇳',
-    'AUD': '🇦🇺',
+    'USD': '🇺🇸',
     'CAD': '🇨🇦',
+    'GBP': '🇬🇧',
+    'CZK': '🇨🇿',
+    'HUF': '🇭🇺',
+    'PLN': '🇵🇱',
     'CHF': '🇨🇭',
+    'RUB': '🇷🇺',
+    'JPY': '🇯🇵',
+    'CNY': '🇨🇳',
     'HKD': '🇭🇰',
     'SGD': '🇸🇬',
+    'AUD': '🇦🇺',
+    'BRL': '🇧🇷',
+    'MXN': '🇲🇽',
+    'CLP': '🇨🇱',
+    'COP': '🇨🇴',
   };
 
   @override
@@ -95,7 +103,21 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
     switch (code.toUpperCase()) {
       case 'EUR': return '€';
       case 'GBP': return '£';
-      case 'JPY': return '¥';
+      case 'JPY': 
+      case 'CNY': return '¥';
+      case 'CAD': return 'C\$';
+      case 'AUD': return 'A\$';
+      case 'HKD': return 'HK\$';
+      case 'SGD': return 'S\$';
+      case 'CZK': return 'Kč';
+      case 'HUF': return 'Ft';
+      case 'PLN': return 'zł';
+      case 'CHF': return 'CHF';
+      case 'RUB': return '₽';
+      case 'BRL': return 'R\$';
+      case 'MXN': 
+      case 'CLP': 
+      case 'COP': return '\$';
       default: return '\$';
     }
   }

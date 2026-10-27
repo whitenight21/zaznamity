@@ -5,6 +5,9 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/label.dart';
 import '../models/transaction_model.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 class NewZaznamCard extends StatefulWidget {
   final List<LabelModel> labels;
@@ -27,6 +30,7 @@ class NewZaznamCard extends StatefulWidget {
     DateTime? repeatUntilDate,
     DateTime date,
     String currencyCode,
+    String? receiptPath,
   ) onSubmit;
   final VoidCallback? onHide;
   final VoidCallback? onToggleWidth;
@@ -62,21 +66,31 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   int _dayOfMonth = 1;
   DateTime? _repeatUntilDate;
 
+  String? _attachedReceiptPath;
+
   String _selectedCurrency = 'USD';
   List<String> _availableCurrencies = ['USD'];
   bool _isZaznamityMode = true;
 
   final Map<String, String> _currencyFlags = {
-    'USD': '🇺🇸',
     'EUR': '🇪🇺',
-    'JPY': '🇯🇵',
-    'GBP': '🇬🇧',
-    'CNY': '🇨🇳',
-    'AUD': '🇦🇺',
+    'USD': '🇺🇸',
     'CAD': '🇨🇦',
+    'GBP': '🇬🇧',
+    'CZK': '🇨🇿',
+    'HUF': '🇭🇺',
+    'PLN': '🇵🇱',
     'CHF': '🇨🇭',
+    'RUB': '🇷🇺',
+    'JPY': '🇯🇵',
+    'CNY': '🇨🇳',
     'HKD': '🇭🇰',
     'SGD': '🇸🇬',
+    'AUD': '🇦🇺',
+    'BRL': '🇧🇷',
+    'MXN': '🇲🇽',
+    'CLP': '🇨🇱',
+    'COP': '🇨🇴',
   };
 
   final List<int> _excludedWeekdays = []; 
@@ -124,6 +138,20 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
         _selectedCurrency = primary;
       });
     }
+  }
+
+  Future<void> _pickReceipt(ImageSource source) async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: source, imageQuality: 80);
+    if (pickedFile == null) return;
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final fileName = 'receipt_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final savedImage = await File(pickedFile.path).copy('${appDir.path}/$fileName');
+
+    setState(() {
+      _attachedReceiptPath = savedImage.path;
+    });
   }
 
   String _resolveOwner() {
@@ -177,14 +205,29 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
       _excludedWeekdays.clear();
       _excludedMonths.clear();
       _currentInputAmount = 0.0;
+      _attachedReceiptPath = null;
     });
   }
 
   String _getCurrencySymbol(String code) {
-    switch (code) {
+    switch (code.toUpperCase()) {
       case 'EUR': return '€';
       case 'GBP': return '£';
-      case 'JPY': return '¥';
+      case 'JPY': 
+      case 'CNY': return '¥';
+      case 'CAD': return 'C\$';
+      case 'AUD': return 'A\$';
+      case 'HKD': return 'HK\$';
+      case 'SGD': return 'S\$';
+      case 'CZK': return 'Kč';
+      case 'HUF': return 'Ft';
+      case 'PLN': return 'zł';
+      case 'CHF': return 'CHF';
+      case 'RUB': return '₽';
+      case 'BRL': return 'R\$';
+      case 'MXN': 
+      case 'CLP': 
+      case 'COP': return '\$';
       default: return '\$';
     }
   }
@@ -263,60 +306,51 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.onToggleWidth != null)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6.0),
-                          child: SizedBox(
-                            height: 32,
-                            width: 32,
-                            child: IconButton(
-                              style: IconButton.styleFrom(
-                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                                padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              onPressed: widget.onToggleWidth,
-                              icon: Icon(
-                                widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                                size: 18,
-                              ),
-                              tooltip: widget.isWide ? 'Narrow' : 'Wide',
-                            ),
-                          ),
-                        ),
-                      if (widget.onHide != null)
-                        SizedBox(
-                          height: 32,
-                          width: 32,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            onPressed: widget.onHide,
-                            icon: const Icon(
-                              Icons.visibility_off_outlined,
-                              size: 16,
-                            ),
-                            tooltip: 'Hide',
-                          ),
-                        ),
-                    ],
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
 
-              // Row 1: Date & Time Selectors
+              // Row 1: Owner, Date, Time
               Row(
                 children: [
+                  Expanded(
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.person_outline_rounded, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String?>(
+                                value: widget.owners.contains(_owner) ? _owner : (widget.owners.isNotEmpty ? widget.owners.first : null),
+                                isDense: true,
+                                isExpanded: true,
+                                icon: const SizedBox.shrink(),
+                                iconSize: 0,
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                items: widget.owners.map((o) => DropdownMenuItem<String?>(
+                                  value: o,
+                                  child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                )).toList(),
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _owner = val);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: InkWell(
                       onTap: () async {
@@ -336,7 +370,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
                         height: 44,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
                         decoration: BoxDecoration(
                           color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
@@ -344,12 +378,12 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.calendar_today_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                            const SizedBox(width: 6),
+                            Icon(Icons.calendar_today_rounded, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 4),
                             Expanded(
                               child: Text(
                                 DateFormat('MM/dd/yyyy').format(_selectedDate),
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -358,7 +392,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: InkWell(
                       onTap: () async {
@@ -371,7 +405,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
                         height: 44,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
                         decoration: BoxDecoration(
                           color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
@@ -379,12 +413,12 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.access_time_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                            const SizedBox(width: 6),
+                            Icon(Icons.access_time_rounded, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 4),
                             Expanded(
                               child: Text(
                                 _selectedTime.format(context),
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -397,13 +431,13 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: Owners & Expense/Income Dropdown
+              // Row 2: Label (text black on white theme), Pool, Type (purple switch toggle)
               Row(
                 children: [
                   Expanded(
                     child: Container(
                       height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
                         color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
@@ -411,25 +445,24 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 6),
+                          Icon(Icons.label_outline_rounded, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                          const SizedBox(width: 4),
                           Expanded(
                             child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String?>(
-                                value: widget.owners.contains(_owner) ? _owner : (widget.owners.isNotEmpty ? widget.owners.first : null),
+                              child: DropdownButton<int?>(
+                                value: _selectedLabelId,
                                 isDense: true,
                                 isExpanded: true,
+                                icon: const SizedBox.shrink(),
+                                iconSize: 0,
                                 dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                items: widget.owners.map((o) => DropdownMenuItem<String?>(
-                                  value: o,
-                                  child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black),
+                                hint: Text('Label', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.black)),
+                                items: widget.labels.map((l) => DropdownMenuItem<int?>(
+                                  value: l.id, 
+                                  child: Text(l.name, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black))
                                 )).toList(),
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    setState(() => _owner = val);
-                                  }
-                                },
+                                onChanged: (val) => setState(() => _selectedLabelId = val),
                               ),
                             ),
                           ),
@@ -437,11 +470,11 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Container(
                       height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
                         color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
@@ -449,21 +482,77 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.swap_vert_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 6),
+                          Icon(Icons.layers_outlined, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                          const SizedBox(width: 4),
                           Expanded(
                             child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _type,
+                              child: DropdownButton<String?>(
+                                value: _selectedPool,
                                 isDense: true,
                                 isExpanded: true,
+                                icon: const SizedBox.shrink(),
+                                iconSize: 0,
                                 dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                items: [
-                                  DropdownMenuItem(value: 'income', child: Text('Income (+)', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                  DropdownMenuItem(value: 'expense', child: Text('Expense (-)', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                ],
-                                onChanged: (val) => setState(() => _type = val ?? 'expense'),
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                hint: Text('Pool', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                items: widget.pools.map((p) => DropdownMenuItem<String?>(value: p, child: Text(p.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
+                                onChanged: (val) => setState(() => _selectedPool = val ?? widget.pools.first),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                      height: 44,
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() => _type = 'expense'),
+                              child: Container(
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: _type == 'expense' ? const Color(0xFF582F95) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  'Expense',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: _type == 'expense' ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() => _type = 'income'),
+                              child: Container(
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: _type == 'income' ? const Color(0xFF582F95) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  'Income',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: _type == 'income' ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -475,13 +564,13 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 3: All Labels & Pool
+              // Row 3: Currency, Recurring (Dismisses keyboard), Attach Receipt
               Row(
                 children: [
                   Expanded(
                     child: Container(
                       height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
                         color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
@@ -489,19 +578,27 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.label_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 6),
+                          Text(_currencyFlags[_selectedCurrency] ?? '💵', style: const TextStyle(fontSize: 14)),
+                          const SizedBox(width: 4),
                           Expanded(
                             child: DropdownButtonHideUnderline(
-                              child: DropdownButton<int?>(
-                                value: _selectedLabelId,
+                              child: DropdownButton<String>(
+                                value: _selectedCurrency,
                                 isDense: true,
                                 isExpanded: true,
+                                icon: const SizedBox.shrink(),
+                                iconSize: 0,
                                 dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                hint: Text('Select Label', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                items: widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
-                                onChanged: (val) => setState(() => _selectedLabelId = val),
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                items: _availableCurrencies.map((c) {
+                                  return DropdownMenuItem(
+                                    value: c,
+                                    child: Text('$c (${_getCurrencySymbol(c)})', style: TextStyle(fontSize: 10.5, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _selectedCurrency = val);
+                                },
                               ),
                             ),
                           ),
@@ -509,35 +606,92 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Container(
+                    child: SizedBox(
                       height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.layers_outlined, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String?>(
-                                value: _selectedPool,
-                                isDense: true,
-                                isExpanded: true,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                hint: Text('Select Pool', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                items: widget.pools.map((p) => DropdownMenuItem<String?>(value: p, child: Text(p.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
-                                onChanged: (val) => setState(() => _selectedPool = val ?? widget.pools.first),
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isRecurring 
+                              ? const Color(0xFF582F95)
+                              : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9)),
+                          foregroundColor: _isRecurring 
+                              ? Colors.white 
+                              : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
+                        onPressed: () {
+                          FocusScope.of(context).unfocus();
+                          setState(() => _isRecurring = !_isRecurring);
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _isRecurring ? Icons.check_circle_rounded : Icons.repeat_rounded, 
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
+                            const Flexible(
+                              child: Text(
+                                'Recurring',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10.5),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SizedBox(
+                      height: 44,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95),
+                          backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          side: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () {
+                          showModalBottomSheet(
+                            context: context,
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                            builder: (ctx) => SafeArea(
+                              child: Wrap(
+                                children: [
+                                  ListTile(
+                                    leading: const Icon(Icons.camera_alt, color: Color(0xFFA855F7)),
+                                    title: Text('Take Photo', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      _pickReceipt(ImageSource.camera);
+                                    },
+                                  ),
+                                  ListTile(
+                                    leading: const Icon(Icons.photo_library, color: Color(0xFFA855F7)),
+                                    title: Text('Choose from Gallery', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      _pickReceipt(ImageSource.gallery);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.attach_file_rounded, size: 14),
+                        label: Text(
+                          _attachedReceiptPath != null ? 'Attached ✓' : 'Receipt',
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
                   ),
@@ -611,87 +765,6 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                   ),
                 ),
               ],
-              const SizedBox(height: 12),
-
-              // Row 5: Currency & Recurring Button
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(_currencyFlags[_selectedCurrency] ?? '💵', style: const TextStyle(fontSize: 16)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedCurrency,
-                                isDense: true,
-                                isExpanded: true,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                items: _availableCurrencies.map((c) {
-                                  return DropdownMenuItem(
-                                    value: c,
-                                    child: Text('$c (${_getCurrencySymbol(c)})', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                                  );
-                                }).toList(),
-                                onChanged: (val) {
-                                  if (val != null) setState(() => _selectedCurrency = val);
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: SizedBox(
-                      height: 44,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isRecurring 
-                              ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)) // pressed box color - zaznamityMode ? yes : no
-                              : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9)),
-                          foregroundColor: _isRecurring 
-                              ? Colors.white 
-                              : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)), // not pressed text color - zaznamityMode ? yes : no
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          elevation: 0,
-                        ),
-                        onPressed: () => setState(() => _isRecurring = !_isRecurring),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              _isRecurring ? Icons.check_circle_rounded : Icons.repeat_rounded, 
-                              size: 16,
-                            ),
-                            const SizedBox(width: 6),
-                            const Flexible(
-                              child: Text(
-                                'Recurring',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
 
               if (_isRecurring) ...[
                 const SizedBox(height: 12),
@@ -718,6 +791,8 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                                 DropdownButtonFormField<String>(
                                   initialValue: _frequency,
                                   isExpanded: true,
+                                  icon: const SizedBox.shrink(),
+                                  iconSize: 0,
                                   dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                   style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : Colors.black87),
                                   decoration: InputDecoration(
@@ -792,6 +867,8 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                             DropdownButtonFormField<int>(
                               initialValue: _dayOfMonth,
                               isExpanded: true,
+                              icon: const SizedBox.shrink(),
+                              iconSize: 0,
                               dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                               style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : Colors.black87),
                               decoration: InputDecoration(
@@ -905,18 +982,20 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ],
               const SizedBox(height: 16),
 
-              // Save Zaznam Action Button
+              // Save Zaznam Action Button (Dismisses keyboard immediately)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                    backgroundColor: const Color(0xFF582F95),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
                   onPressed: () {
+                    FocusScope.of(context).unfocus();
+
                     final amount = double.tryParse(_amountController.text) ?? 0.0;
                     if (amount <= 0) return;
 
@@ -944,6 +1023,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                       _repeatUntilDate,
                       baseDate,
                       _selectedCurrency,
+                      _attachedReceiptPath,
                     );
 
                     _clearForm();

@@ -16,6 +16,7 @@ class CalendarCard extends StatefulWidget {
   final Function(DateTime) onDateSelected;
   final GlobalKey? historyKey;
   final VoidCallback? onClearFilters;
+  final ValueChanged<Set<String>>? onPoolsChanged; // Added to reset pools to all
 
   const CalendarCard({
     super.key,
@@ -29,6 +30,7 @@ class CalendarCard extends StatefulWidget {
     required this.onDateSelected,
     this.historyKey,
     this.onClearFilters,
+    this.onPoolsChanged,
   });
 
   @override
@@ -74,6 +76,15 @@ class _CalendarCardState extends State<CalendarCard> {
       widget.onClearFilters!();
     }
 
+    // Automatically select all pools by default when clicking a calendar date
+    if (widget.onPoolsChanged != null) {
+      final allPools = widget.transactions
+          .map((tx) => tx.pool)
+          .where((pool) => pool.isNotEmpty)
+          .toSet();
+      widget.onPoolsChanged!(allPools);
+    }
+
     widget.onDateSelected(currentDate);
 
     if (widget.historyKey != null && widget.historyKey!.currentContext != null) {
@@ -111,7 +122,7 @@ class _CalendarCardState extends State<CalendarCard> {
             child: Text(
               'The calendar is fully interactive:\n\n'
               '• Press any day containing transaction data to jump directly to "All Zaznams".\n'
-              '• Selecting a day will automatically filter the transaction ledger to show all entries recorded for that specific date.\n'
+              '• Selecting a day will automatically filter the transaction ledger to show all entries recorded for that specific date with all pools visible by default.\n'
               '• Use the pool dropdown to filter income and expense summaries by a specific financial pool.',
               style: TextStyle(
                 fontSize: 13,
@@ -149,7 +160,6 @@ class _CalendarCardState extends State<CalendarCard> {
       }
     });
 
-    // Extract unique pools dynamically from transactions
     final List<String> availablePools = widget.transactions
         .map((tx) => tx.pool)
         .where((pool) => pool.isNotEmpty)
@@ -157,7 +167,6 @@ class _CalendarCardState extends State<CalendarCard> {
         .toList()
       ..sort();
 
-    // Filter transactions by both Master Owner and selected Pool
     final filteredTransactions = widget.transactions.where((tx) {
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners') {
         if (tx.owner != widget.selectedOwner) return false;
@@ -466,7 +475,6 @@ class _CalendarCardState extends State<CalendarCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // POOL DROPDOWN (Replaced Owner Dropdown)
                   SizedBox(
                     width: boxWidth,
                     child: Container(

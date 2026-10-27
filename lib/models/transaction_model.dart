@@ -13,7 +13,8 @@ class TransactionModel {
   final int? recurringDay;
   final String? recurringEndDate;
   final int isConfirmed;
-  final String currencyCode; // Added multi-currency support
+  final String currencyCode; // Multi-currency support
+  final String? receiptPath; // Receipt / document attachment path
 
   // Joined fields
   final String? labelName;
@@ -34,9 +35,10 @@ class TransactionModel {
     this.recurringDay,
     this.recurringEndDate,
     this.isConfirmed = 1,
-    this.currencyCode = 'USD', // Default fallback
+    this.currencyCode = 'USD',
     this.labelName,
     this.labelColor,
+    this.receiptPath,
   });
 
   factory TransactionModel.fromMap(Map<String, dynamic> map) {
@@ -58,6 +60,7 @@ class TransactionModel {
       currencyCode: map['currency_code'] ?? 'USD',
       labelName: map['label_name'],
       labelColor: map['label_color'],
+      receiptPath: map['receipt_path'], // Correctly loaded from SQLite
     );
   }
 
@@ -78,6 +81,7 @@ class TransactionModel {
       'recurring_end_date': recurringEndDate,
       'is_confirmed': isConfirmed,
       'currency_code': currencyCode,
+      'receipt_path': receiptPath, // Correctly saved to SQLite
     };
   }
 }

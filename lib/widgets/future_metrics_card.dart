@@ -55,6 +55,9 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
   bool _excludeTransfers = true;
   String _primaryCurrency = 'USD';
 
+  // What-if Scenario / Simulate Income Delay state
+  double _incomeDelayMultiplier = 1.0; // 1.0 = normal, 0.5 = 50% drop, 0.0 = zero income
+
   @override
   void initState() {
     super.initState();
@@ -175,8 +178,11 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
       if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
       final dt = DateTime.tryParse(tx.createdAt);
       if (dt != null && dt.isAfter(now) && dt.isBefore(next30Days)) {
-        if (tx.type == 'income') netShift += tx.amount;
-        if (tx.type == 'expense') netShift -= tx.amount;
+        if (tx.type == 'income') {
+          netShift += (tx.amount * _incomeDelayMultiplier);
+        } else if (tx.type == 'expense') {
+          netShift -= tx.amount;
+        }
       }
     }
 
@@ -198,6 +204,196 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
       }
     }
     return count;
+  }
+
+  // Calculate Runway Depletion Date & Danger Zone Timeline[cite: 13]
+  Map<String, dynamic> _calculateRunwayDepletionInfo() {
+    final now = DateTime.now();
+    
+    // Get current liquid checking balance (or prognosis baseline)
+    double startingBalance = _selectedOwner == 'All Owners'
+        ? widget.totalPrognosis
+        : (widget.prognosisByOwner[_selectedOwner] ?? 0.0);
+
+    // Collect all upcoming scheduled transactions sorted by date
+    List<Map<String, dynamic>> scheduledTxs = [];
+    for (var tx in widget.transactions) {
+      if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
+      final dt = DateTime.tryParse(tx.createdAt);
+      if (dt != null && dt.isAfter(now)) {
+        double amt = tx.amount;
+        if (tx.type == 'income') {
+          amt *= _incomeDelayMultiplier;
+        }
+        scheduledTxs.add({
+          'date': dt,
+          'netAmount': tx.type == 'income' ? amt : -amt,
+          'description': tx.description,
+        });
+      }
+    }
+
+    scheduledTxs.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+
+    double runningBalance = startingBalance;
+    DateTime? deficitDate;
+
+    for (var item in scheduledTxs) {
+      final DateTime dt = item['date'];
+      final double netAmt = item['netAmount'];
+      runningBalance += netAmt;
+
+      if (runningBalance < 0) {
+        deficitDate = dt;
+        break;
+      }
+    }
+
+    // If no explicit transaction pushes it below zero, estimate based on average daily burn rate
+    if (deficitDate == null && scheduledTxs.isEmpty) {
+      final burnAndSavings = _calculateBurnAndSavingsRate();
+      final monthlyBurn = burnAndSavings['burnRate'] ?? 0.0;
+      final dailyBurn = monthlyBurn / 30.0;
+      if (dailyBurn > 0 && startingBalance > 0) {
+        int daysLeft = (startingBalance / dailyBurn).floor();
+        deficitDate = now.add(Duration(days: daysLeft));
+      }
+    }
+
+    return {
+      'hasDeficit': deficitDate != null || startingBalance < 0,
+      'deficitDate': deficitDate,
+      'startingBalance': startingBalance,
+    };
+  }
+
+  void _showWhatIfScenarioModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            double simulatedShift = _calculate30DayNetShift();
+            final runwayInfo = _calculateRunwayDepletionInfo();
+            final DateTime? defDate = runwayInfo['deficitDate'];
+
+            return Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Simulate Income Delay / What-If',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close, color: _isZaznamityMode ? Colors.white70 : Colors.black54),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Slide to simulate a temporary drop or delay in upcoming incoming cash flows over the next 30 days:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Income Multiplier:', style: TextStyle(fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                      Text('${(_incomeDelayMultiplier * 100).toStringAsFixed(0)}% of Expected', style: TextStyle(fontWeight: FontWeight.bold, color: const Color(0xFFA855F7))),
+                    ],
+                  ),
+                  Slider(
+                    value: _incomeDelayMultiplier,
+                    min: 0.0,
+                    max: 1.0,
+                    divisions: 10,
+                    activeColor: const Color(0xFFA855F7),
+                    inactiveColor: _isZaznamityMode ? Colors.white24 : Colors.grey.shade300,
+                    onChanged: (val) {
+                      setModalState(() {
+                        _incomeDelayMultiplier = val;
+                      });
+                      setState(() {});
+                    },
+                  ),
+                  const SizedBox(height: 15),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Simulated 30-Day Net Shift:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            Text(
+                              '${simulatedShift >= 0 ? '+' : ''}${_formatCurrency(simulatedShift)}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: simulatedShift >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Projected Deficit Date:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            Text(
+                              defDate != null ? DateFormat('MMM dd, yyyy').format(defDate) : 'No Deficit Projected',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: defDate != null ? const Color(0xFFF87171) : const Color(0xFF34D399),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Apply Scenario'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showMetricInfo(BuildContext context, String title, String explanation) {
@@ -289,6 +485,10 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         final savingsRate = burnAndSavings['savingsRate'] ?? 0.0;
         final net30Shift = _calculate30DayNetShift();
         final upcomingCount = _calculateUpcomingScheduledCount();
+        
+        // Danger Zone & Runway calculation[cite: 13]
+        final runwayInfo = _calculateRunwayDepletionInfo();
+        final DateTime? deficitDate = runwayInfo['deficitDate'];
 
         final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
 
@@ -346,6 +546,24 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Quick-Action Toggle Button for What-If Scenario[cite: 13]
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4.0),
+                        child: SizedBox(
+                          height: 28,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            ),
+                            onPressed: () => _showWhatIfScenarioModal(context),
+                            icon: const Icon(Icons.tune_rounded, size: 12),
+                            label: const Text('What-If', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ),
                       if (widget.onToggleWidth != null)
                         Padding(
                           padding: const EdgeInsets.only(right: 4.0),
@@ -568,6 +786,66 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                 ],
               ),
               const SizedBox(height: 12),
+
+              // CASH FLOW "DANGER ZONE" TIMELINE & RUNWAY DEPLETION TICKER[cite: 13]
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: deficitDate != null 
+                      ? const Color(0xFF7F1D1D).withValues(alpha: 0.3) 
+                      : (_isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC)),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: deficitDate != null ? const Color(0xFFF87171) : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          deficitDate != null ? Icons.warning_rounded : Icons.shield_rounded,
+                          size: 16,
+                          color: deficitDate != null ? const Color(0xFFF87171) : const Color(0xFF34D399),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'RUNWAY DEPLETION DATE:',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        InkWell(
+                          onTap: () => _showMetricInfo(
+                            context,
+                            'RUNWAY DEPLETION DATE',
+                            'Scans your scheduled outflows against your liquid checking balance to project the exact calendar date you might hit a cash deficit if no income arrives.',
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(2.0),
+                            child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      deficitDate != null ? DateFormat('MMM dd, yyyy').format(deficitDate) : 'Stable (> 1 Year)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: deficitDate != null ? const Color(0xFFF87171) : const Color(0xFF34D399),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
 
               // 30-DAY NET LIQUIDITY SHIFT BAR WITH EXPLANATION INFO CIRCLE
               Container(

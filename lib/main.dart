@@ -67,7 +67,6 @@ class _SplashScreenState extends State<SplashScreen> {
   bool _pinEnabled = false;
   String _savedPin = "1234";
   String _enteredPin = "";
-  bool _isDarkMode = false;
 
   @override
   void initState() {
@@ -79,7 +78,6 @@ class _SplashScreenState extends State<SplashScreen> {
     final prefs = await SharedPreferences.getInstance();
     
     // Load preferences
-    _isDarkMode = prefs.getBool('isDarkMode') ?? false;
     _pinEnabled = prefs.getBool('biometricsEnabled') ?? false;
     _savedPin = prefs.getString('savedPin') ?? "1234";
 
@@ -224,17 +222,17 @@ class _SplashScreenState extends State<SplashScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: row.map((val) {
-                        if (val.isEmpty) return const SizedBox(width: 57, height: 52);
+                        if (val.isEmpty) return const SizedBox(width: 64, height: 64);
                         return Container(
-                          margin: const EdgeInsets.all(4),
-                          width: 57,
-                          height: 52,
+                          margin: const EdgeInsets.all(6),
+                          width: 64,
+                          height: 64,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.white.withValues(alpha: 0.15),
                               foregroundColor: Colors.white,
                               elevation: 0,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                              shape: const CircleBorder(),
                               padding: EdgeInsets.zero,
                             ),
                             onPressed: () {
@@ -246,7 +244,16 @@ class _SplashScreenState extends State<SplashScreen> {
                                 _onKeyTap(val);
                               }
                             },
-                            child: Text(val, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                            child: val == '⌫'
+                                ? const Icon(Icons.backspace_outlined, size: 20, color: Colors.white70)
+                                : Text(
+                                    val,
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w300,
+                                      color: Colors.white,
+                                    ),
+                                  ),
                           ),
                         );
                       }).toList(),

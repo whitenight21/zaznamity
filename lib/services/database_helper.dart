@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 8,
+      version: 9, // Incremented version to support receipt_path
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -57,7 +57,8 @@ class DatabaseHelper {
         recurring_day INTEGER,
         recurring_end_date TEXT,
         is_confirmed INTEGER DEFAULT 1,
-        currency_code TEXT DEFAULT 'EUR'
+        currency_code TEXT DEFAULT 'EUR',
+        receipt_path TEXT
       );
     ''');
 
@@ -162,6 +163,11 @@ class DatabaseHelper {
     if (oldVersion < 8) {
       try {
         await db.execute('ALTER TABLE liabilities ADD COLUMN projection_end_date TEXT;');
+      } catch (_) {}
+    }
+    if (oldVersion < 9) {
+      try {
+        await db.execute('ALTER TABLE transactions ADD COLUMN receipt_path TEXT;');
       } catch (_) {}
     }
   }
@@ -283,7 +289,6 @@ class DatabaseHelper {
     final db = await database;
     final liabilities = await db.query('liabilities');
     final now = DateTime.now();
-    // Safety cap: Do not project further than 1 year ahead to prevent startup freezes
     final maxAllowedProjection = DateTime(now.year + 1, now.month, now.day);
 
     for (var row in liabilities) {
@@ -300,7 +305,6 @@ class DatabaseHelper {
           ? (DateTime.tryParse(projectionEndDateStr) ?? maxAllowedProjection)
           : maxAllowedProjection;
 
-      // Cap projection end date if it's too far out
       if (projectionEndDate.isAfter(maxAllowedProjection)) {
         projectionEndDate = maxAllowedProjection;
       }
@@ -436,7 +440,6 @@ class DatabaseHelper {
   Future<int> normalizePastTransfersToWithdrawalDeposit() async {
     final db = await database;
     
-    // Only target records that were explicitly transfers or past withdrawal/deposits
     final List<Map<String, dynamic>> maps = await db.query(
       'transactions',
       where: 'description LIKE ? OR description LIKE ? OR description LIKE ? OR description LIKE ?',
@@ -455,7 +458,6 @@ class DatabaseHelper {
 
         String newDesc = desc;
 
-        // Clean up descriptions safely without altering amounts or duplicating records
         if (type == 'expense' || desc.contains('Transfer out') || desc.startsWith('Withdrawal from')) {
           if (desc.contains(':') && !desc.startsWith('Withdrawal from')) {
             final detail = desc.split(':').sublist(1).join(':').trim();

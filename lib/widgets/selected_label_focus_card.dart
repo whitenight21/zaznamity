@@ -288,13 +288,10 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
     }
     bool isFixedLabel = _isFixedExpenseLabelByName(selectedLabelName);
 
-    // Analytics: Average Transaction Size & Frequency Metrics
-    double avgTransactionSize = filteredTxs.isNotEmpty ? (inflow + outflow) / filteredTxs.length : 0.0;
     int durationDays = effectiveStartDate != null && effectiveEndDate != null 
         ? effectiveEndDate.difference(effectiveStartDate).inDays + 1 
         : 30;
     if (durationDays < 1) durationDays = 1;
-    double frequencyPerWeek = (filteredTxs.length / durationDays) * 7;
 
     // Analytics: Top Spending/Income Contributors (Breakdown by Description)
     Map<String, double> descriptionTotals = {};
@@ -810,65 +807,6 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         Text('Burn Contribution', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
                         const SizedBox(height: 2),
                         Text('${labelBurnContributionShare.toStringAsFixed(1)}% of burn', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 14),
-              
-              // SECTION 1: Average Transaction Size & Frequency Metrics Card
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'TRANSACTION DYNAMICS',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
-                      ),
-                      const SizedBox(width: 4),
-                      InkWell(
-                        onTap: () => _showInfoModal(
-                          context,
-                          'Transaction Dynamics',
-                          'Shows the average size per transaction and the frequency rate (transactions per week) over the selected date span.',
-                        ),
-                        child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    'Count: ${filteredTxs.length}',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    Column(
-                      children: [
-                        Text('Average Size', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
-                        const SizedBox(height: 2),
-                        Text(_formatAmount(avgTransactionSize), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
-                      ],
-                    ),
-                    Container(height: 25, width: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                    Column(
-                      children: [
-                        Text('Frequency Rate', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
-                        const SizedBox(height: 2),
-                        Text('${frequencyPerWeek.toStringAsFixed(1)} / week', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
                       ],
                     ),
                   ],

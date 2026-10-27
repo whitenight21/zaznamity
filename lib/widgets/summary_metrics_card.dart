@@ -49,16 +49,24 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   bool _includeLiabilitiesInNetWorth = false;
 
   final Map<String, String> _currencyFlags = {
-    'USD': '🇺🇸',
     'EUR': '🇪🇺',
-    'JPY': '🇯🇵',
-    'GBP': '🇬🇧',
-    'CNY': '🇨🇳',
-    'AUD': '🇦🇺',
+    'USD': '🇺🇸',
     'CAD': '🇨🇦',
+    'GBP': '🇬🇧',
+    'CZK': '🇨🇿',
+    'HUF': '🇭🇺',
+    'PLN': '🇵🇱',
     'CHF': '🇨🇭',
+    'RUB': '🇷🇺',
+    'JPY': '🇯🇵',
+    'CNY': '🇨🇳',
     'HKD': '🇭🇰',
     'SGD': '🇸🇬',
+    'AUD': '🇦🇺',
+    'BRL': '🇧🇷',
+    'MXN': '🇲🇽',
+    'CLP': '🇨🇱',
+    'COP': '🇨🇴',
   };
 
   @override

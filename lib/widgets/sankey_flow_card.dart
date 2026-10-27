@@ -20,9 +20,6 @@ class SankeyFlowCard extends StatefulWidget {
   final Function(DateTime?, DateTime?)? onDateRangeChanged;
   final ValueChanged<String?> onOwnerChanged;
   final VoidCallback onClearDateFilter;
-  final VoidCallback? onHide;
-  final bool isWide;
-  final VoidCallback? onToggleWidth;
 
   const SankeyFlowCard({
     super.key,
@@ -38,9 +35,6 @@ class SankeyFlowCard extends StatefulWidget {
     this.onDateRangeChanged,
     required this.onOwnerChanged,
     required this.onClearDateFilter,
-    this.onHide,
-    this.isWide = false,
-    this.onToggleWidth,
   });
 
   @override
@@ -50,6 +44,7 @@ class SankeyFlowCard extends StatefulWidget {
 class _SankeyFlowCardState extends State<SankeyFlowCard> {
   String _flowMode = 'Expenses';
   String _dateRangeSetting = '30 Days';
+  bool _isZaznamityMode = true;
 
   List<MapEntry<String, double>> _cachedSortedSources = [];
   List<MapEntry<String, double>> _cachedSortedTargets = [];
@@ -72,9 +67,11 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final setting = prefs.getString('set_sankey_range') ?? '30 Days';
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     if (mounted) {
       setState(() {
         _dateRangeSetting = setting;
+        _isZaznamityMode = (savedTheme == 'zaznamity');
       });
       if (widget.startDate == null && widget.endDate == null && widget.onDateRangeChanged != null) {
         final now = DateTime.now();
@@ -246,24 +243,40 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
 
         return Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
@@ -272,62 +285,11 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF582F95),
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                           letterSpacing: 0.8,
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.onToggleWidth != null)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6.0),
-                          child: SizedBox(
-                            height: 32,
-                            width: 32,
-                            child: IconButton(
-                              style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFFF1F5F9),
-                                foregroundColor: const Color(0xFF64748B),
-                                padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              onPressed: widget.onToggleWidth,
-                              icon: Icon(
-                                widget.isWide
-                                    ? Icons.fullscreen_exit
-                                    : Icons.fullscreen,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                        ),
-                      if (widget.onHide != null)
-                        SizedBox(
-                          height: 32,
-                          width: 32,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            onPressed: widget.onHide,
-                            icon: const Icon(
-                              Icons.visibility_off_outlined,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                    ],
                   ),
                 ],
               ),
@@ -341,13 +303,13 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -355,17 +317,18 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                                 value: widget.selectedOwner,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                hint: Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                                 items: [
-                                  const DropdownMenuItem<String?>(
+                                  DropdownMenuItem<String?>(
                                     value: null,
-                                    child: Text('All Owners'),
+                                    child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                   ),
                                   ...widget.owners.map(
                                     (owner) => DropdownMenuItem<String?>(
                                       value: owner,
-                                      child: Text(owner),
+                                      child: Text(owner, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                     ),
                                   ),
                                 ],
@@ -385,12 +348,12 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                           child: Container(
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.horizontal(
                                 left: const Radius.circular(10),
                                 right: hasDateFilter ? Radius.zero : const Radius.circular(10),
                               ),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -404,7 +367,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
@@ -414,8 +377,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: hasDateFilter
-                                                ? const Color(0xFF1E293B)
-                                                : const Color(0xFF64748B),
+                                                ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
+                                                : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                             fontWeight: hasDateFilter
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
@@ -424,7 +387,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                                         ),
                                       ),
                                       if (!hasDateFilter)
-                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                        Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                                     ],
                                   ),
                                 ),
@@ -438,9 +401,9 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                             height: 44,
                             width: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE2E8F0),
+                              color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
                               borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -469,13 +432,13 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.swap_vert_rounded, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.swap_vert_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -483,10 +446,11 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                                 value: _flowMode,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                items: const [
-                                  DropdownMenuItem(value: 'Expenses', child: Text('Expense')),
-                                  DropdownMenuItem(value: 'Income', child: Text('Income')),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                items: [
+                                  DropdownMenuItem(value: 'Expenses', child: Text('Expense', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                  DropdownMenuItem(value: 'Income', child: Text('Income', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
                                 ],
                                 onChanged: (val) {
                                   if (val != null) {
@@ -508,13 +472,13 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                       height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.account_balance_wallet_outlined, size: 16, color: Color(0xFF582F95)),
+                          Icon(Icons.account_balance_wallet_outlined, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: DropdownButtonHideUnderline(
@@ -522,17 +486,18 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                                 value: widget.selectedPool,
                                 isDense: true,
                                 isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                hint: Text('All Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                                 items: [
-                                  const DropdownMenuItem<String?>(
+                                  DropdownMenuItem<String?>(
                                     value: null,
-                                    child: Text('All Pools'),
+                                    child: Text('All Pools', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                   ),
                                   ...widget.pools.map(
                                     (pool) => DropdownMenuItem<String?>(
                                       value: pool,
-                                      child: Text(pool.toUpperCase()),
+                                      child: Text(pool.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                     ),
                                   ),
                                 ],
@@ -548,12 +513,12 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
               ),
               const SizedBox(height: 20),
               _cachedSortedSources.isEmpty || _cachedSortedTargets.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Padding(
-                        padding: EdgeInsets.all(32.0),
+                        padding: const EdgeInsets.all(32.0),
                         child: Text(
                           'No transaction flows match current filters.',
-                          style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                          style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 12),
                         ),
                       ),
                     )
@@ -561,9 +526,9 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
                         ),
                         child: SizedBox(
                           height: _cachedDynamicHeight,
@@ -574,6 +539,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> {
                               targets: _cachedSortedTargets,
                               flows: _cachedFlows,
                               currencyFormat: currencyFormat,
+                              isZaznamityMode: _isZaznamityMode,
                             ),
                           ),
                         ),
@@ -592,12 +558,14 @@ class SankeyDiagramPainter extends CustomPainter {
   final List<MapEntry<String, double>> targets;
   final List<Map<String, dynamic>> flows;
   final NumberFormat currencyFormat;
+  final bool isZaznamityMode;
 
   SankeyDiagramPainter({
     required this.sources,
     required this.targets,
     required this.flows,
     required this.currencyFormat,
+    required this.isZaznamityMode,
   });
 
   @override
@@ -660,13 +628,20 @@ class SankeyDiagramPainter extends CustomPainter {
       targetOffsets[tgt.key] = targetRects[tgt.key]!.top;
     }
 
-    final List<Color> ribbonColors = [
-      const Color(0xFFCBD5E1),
-      const Color(0xFF93C5FD),
-      const Color(0xFFFDE68A),
-      const Color(0xFFBBF7D0),
-      const Color(0xFFFBCFE8),
-    ];
+    final List<Color> ribbonColors = isZaznamityMode
+        ? [
+            const Color(0xFFA855F7).withValues(alpha: 0.3),
+            const Color(0xFFC4B5FD).withValues(alpha: 0.3),
+            const Color(0xFF7C3AED).withValues(alpha: 0.3),
+            const Color(0xFF9333EA).withValues(alpha: 0.3),
+          ]
+        : [
+            const Color(0xFFCBD5E1),
+            const Color(0xFF93C5FD),
+            const Color(0xFFFDE68A),
+            const Color(0xFFBBF7D0),
+            const Color(0xFFFBCFE8),
+          ];
 
     int colorIndex = 0;
     for (var flow in flows) {
@@ -702,19 +677,19 @@ class SankeyDiagramPainter extends CustomPainter {
       );
       path.close();
 
-      paintRibbon.color = ribbonColors[colorIndex % ribbonColors.length].withValues(alpha: 0.55);
+      paintRibbon.color = ribbonColors[colorIndex % ribbonColors.length];
       canvas.drawPath(path, paintRibbon);
       colorIndex++;
     }
 
-    paintNode.color = const Color(0xFF582F95);
+    paintNode.color = isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95);
     for (var entry in sourceRects.entries) {
       canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
       
       TextPainter tp = TextPainter(
         text: TextSpan(
           text: '${entry.key}\n${currencyFormat.format(sources.firstWhere((s) => s.key == entry.key).value)}',
-          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+          style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)),
         ),
         textDirection: ui.TextDirection.ltr,
         textAlign: TextAlign.left,
@@ -723,14 +698,14 @@ class SankeyDiagramPainter extends CustomPainter {
       tp.paint(canvas, Offset(entry.value.right + 6, entry.value.top + (entry.value.height / 2) - 10));
     }
 
-    paintNode.color = const Color.fromARGB(255, 62, 0, 103);
+    paintNode.color = isZaznamityMode ? const Color(0xFF7C3AED) : const Color.fromARGB(255, 62, 0, 103);
     for (var entry in targetRects.entries) {
       canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
 
       TextPainter tp = TextPainter(
         text: TextSpan(
           text: '${entry.key}\n${currencyFormat.format(targets.firstWhere((t) => t.key == entry.key).value)}',
-          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+          style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)),
         ),
         textDirection: ui.TextDirection.ltr,
         textAlign: TextAlign.right,

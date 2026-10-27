@@ -117,7 +117,8 @@ class _TitleCardState extends State<TitleCard> {
     final currentDateFormatted = DateFormat('MMM d, yyyy').format(DateTime.now());
 
     return Container(
-      padding: const EdgeInsets.all(22),
+      // Reduced card height padding by 10% (from 22 to ~20)[cite: 13]
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
@@ -145,37 +146,40 @@ class _TitleCardState extends State<TitleCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Top Row: Day of week and Date
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    currentDayOfWeek,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                      letterSpacing: 0.4,
+          // Top Row: Day of week and Date (Moved down further)
+          Padding(
+            padding: const EdgeInsets.only(top: 18.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      currentDayOfWeek,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                        letterSpacing: 0.4,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    currentDateFormatted,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white60,
-                      letterSpacing: 0.4,
+                    const SizedBox(height: 5),
+                    Text(
+                      currentDateFormatted,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white60,
+                        letterSpacing: 0.4,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12), // Moved half a row lower
+          const SizedBox(height: 12), // Reduced gap for 10% height reduction[cite: 13]
           // Main Row: Avatar with Zaznamity Logo & Welcome / Name aligned with the logo
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -193,14 +197,14 @@ class _TitleCardState extends State<TitleCard> {
                           child: _avatarPath != null && File(_avatarPath!).existsSync()
                               ? Image.file(
                                   File(_avatarPath!),
-                                  width: 88,
-                                  height: 88,
+                                  width: 92.4, // Enlarged by 5% (88 * 1.05)[cite: 13]
+                                  height: 92.4,
                                   fit: BoxFit.cover,
                                 )
                               : Image.asset(
                                   'assets/ZaznamityLogoFULL.jpg',
-                                  width: 88,
-                                  height: 88,
+                                  width: 92.4, // Enlarged by 5% (88 * 1.05)[cite: 13]
+                                  height: 92.4,
                                   fit: BoxFit.cover,
                                 ),
                         ),
@@ -243,12 +247,13 @@ class _TitleCardState extends State<TitleCard> {
               const SizedBox(width: 20),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 10.0), // Pushed down to align name with the badge row
+                  padding: const EdgeInsets.only(top: 9.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Welcome moved higher by 5% (using negative vertical offset)[cite: 13]
                       Transform.translate(
-                        offset: const Offset(-7.0, 0.0),
+                        offset: const Offset(-7.0, -3.0),
                         child: const Text(
                           'Welcome,',
                           style: TextStyle(
@@ -260,8 +265,9 @@ class _TitleCardState extends State<TitleCard> {
                         ),
                       ),
                       const SizedBox(height: 4),
+                      // Name moved right by approximately one letter "a" (~16 pixels left padding)[cite: 13]
                       Padding(
-                        padding: const EdgeInsets.only(left: 4.0),
+                        padding: const EdgeInsets.only(left: 16.0),
                         child: Text(
                           _displayName,
                           style: const TextStyle(
@@ -279,7 +285,7 @@ class _TitleCardState extends State<TitleCard> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18), // Reduced gap for 10% height reduction[cite: 13]
           const Center(
             child: Text(
               'RECORD • TRACK • FOCUS',

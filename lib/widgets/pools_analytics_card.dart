@@ -17,9 +17,6 @@ class PoolsAnalyticsCard extends StatefulWidget {
   final VoidCallback onSelectStartDate;
   final VoidCallback onSelectEndDate;
   final VoidCallback onClearDateFilter;
-  final bool isWide;
-  final VoidCallback onToggleWidth;
-  final VoidCallback onHide;
 
   const PoolsAnalyticsCard({
     super.key,
@@ -33,9 +30,6 @@ class PoolsAnalyticsCard extends StatefulWidget {
     required this.onSelectStartDate,
     required this.onSelectEndDate,
     required this.onClearDateFilter,
-    required this.isWide,
-    required this.onToggleWidth,
-    required this.onHide,
   });
 
   @override
@@ -48,6 +42,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
   String _dateRangeSetting = '30 Days';
   bool _showOnlyFunded = false;
   bool _showFuture = false;
+  bool _isZaznamityMode = true;
 
   @override
   void initState() {
@@ -60,16 +55,26 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     setState(() {
       _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
       _dateRangeSetting = prefs.getString('set_poolsTrends_range') ?? '30 Days';
       _showOnlyFunded = prefs.getBool('set_poolsTrends_funded_only') ?? false;
       _showFuture = prefs.getBool('set_poolsTrends_show_future') ?? false;
+      _isZaznamityMode = (savedTheme == 'zaznamity');
 
       for (var key in widget.pools.keys) {
         _visiblePools[key] = prefs.getBool('set_poolsTrends_pool_visible_$key') ?? true;
       }
     });
+  }
+
+  Future<void> _toggleShowFuture() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _showFuture = !_showFuture;
+    });
+    await prefs.setBool('set_poolsTrends_show_future', _showFuture);
   }
 
   @override
@@ -101,24 +106,40 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
 
         return Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+          decoration: _isZaznamityMode
+              ? BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                )
+              : BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
@@ -127,56 +148,11 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF582F95),
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                           letterSpacing: 0.8,
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6.0),
-                        child: SizedBox(
-                          height: 32,
-                          width: 32,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              foregroundColor: const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            onPressed: widget.onToggleWidth,
-                            icon: Icon(
-                              widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                              size: 18,
-                            ),
-                            tooltip: widget.isWide ? 'Narrow' : 'Wide',
-                          ),
-                        ),
-                      ),
-                      SizedBox(
-                        height: 32,
-                        width: 32,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: const Color(0xFFF1F5F9),
-                            foregroundColor: const Color(0xFF64748B),
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          onPressed: widget.onHide,
-                          icon: const Icon(
-                            Icons.visibility_off_outlined,
-                            size: 16,
-                          ),
-                          tooltip: 'Hide',
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
@@ -187,35 +163,45 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                 children: [
                   SizedBox(
                     width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String?>(
-                                value: widget.selectedOwner,
-                                isDense: true,
-                                isExpanded: true,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                                hint: const Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Color(0xFF64748B))),
-                                items: [
-                                  const DropdownMenuItem<String?>(value: null, child: Text('All Owners')),
-                                  ...widget.owners.map((o) => DropdownMenuItem<String?>(value: o, child: Text(o))),
-                                ],
-                                onChanged: widget.onOwnerChanged,
+                    child: InkWell(
+                      onTap: _toggleShowFuture,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: _showFuture
+                              ? (_isZaznamityMode ? const Color(0xFFA855F7).withValues(alpha: 0.25) : const Color(0xFF582F95).withValues(alpha: 0.15))
+                              : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC)),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: _showFuture
+                                ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                                : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _showFuture ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                              size: 16,
+                              color: _showFuture
+                                  ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                                  : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Pending',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _showFuture
+                                    ? (_isZaznamityMode ? Colors.white : const Color(0xFF582F95))
+                                    : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -227,12 +213,12 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                           child: Container(
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.horizontal(
                                 left: const Radius.circular(10),
                                 right: hasDateFilter ? Radius.zero : const Radius.circular(10),
                               ),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -246,7 +232,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF582F95)),
+                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
@@ -258,8 +244,8 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: hasDateFilter
-                                                ? const Color(0xFF1E293B)
-                                                : const Color(0xFF64748B),
+                                                ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
+                                                : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                             fontWeight: hasDateFilter
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
@@ -268,7 +254,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                                         ),
                                       ),
                                       if (!hasDateFilter)
-                                        const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF94A3B8)),
+                                        Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                                     ],
                                   ),
                                 ),
@@ -282,9 +268,9 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                             height: 44,
                             width: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE2E8F0),
+                              color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
                               borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
                             child: Material(
                               color: Colors.transparent,
@@ -304,11 +290,11 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                 ],
               ),
               const SizedBox(height: 16),
-              const Divider(color: Color(0xFFE2E8F0)),
+              Divider(color: _isZaznamityMode ? Colors.white24 : const Color(0xFFE2E8F0)),
               const SizedBox(height: 12),
 
               widget.pools.keys.isEmpty
-                  ? const Text('No pools available.', style: TextStyle(color: Color(0xFF64748B), fontSize: 13))
+                  ? Text('No pools available.', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13))
                   : ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -388,8 +374,11 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
         if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && tx.owner != widget.selectedOwner) continue;
         final txDate = DateTime.tryParse(tx.createdAt);
         if (txDate != null && txDate.isBefore(startClean)) {
-          if (tx.isConfirmed == 1) {
-            initialBalance += (tx.type == 'income' ? tx.amount : -tx.amount);
+          final isFutureTx = txDate.isAfter(now);
+          if (!isFutureTx || _showFuture) {
+            if (tx.isConfirmed == 1 || (isFutureTx && _showFuture)) {
+              initialBalance += (tx.type == 'income' ? tx.amount : -tx.amount);
+            }
           }
         }
       }
@@ -406,14 +395,88 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
     List<FlSpot> spots = [];
     List<DateTime> spotDates = [];
 
+    List<LineChartBarData> lineBars = [];
+    List<FlSpot> currentSegmentSpots = [];
+    Color? currentSegmentColor;
+    bool currentIsDashed = false;
+
     for (int i = 0; i < sortedTxs.length; i++) {
       final t = sortedTxs[i];
-      if (t.isConfirmed == 1) {
-        runningTotal += (t.type == 'income' ? t.amount : -t.amount);
-      }
+      runningTotal += (t.type == 'income' ? t.amount : -t.amount);
+      
       final txDate = DateTime.tryParse(t.createdAt) ?? now;
       spots.add(FlSpot(i.toDouble(), runningTotal));
       spotDates.add(txDate);
+
+      final isFuture = txDate.isAfter(now);
+      Color targetColor = isFuture
+          ? const Color.fromARGB(255, 147, 51, 234)
+          : (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95));
+      bool targetDashed = isFuture;
+
+      if (i == 0) {
+        currentSegmentSpots.add(FlSpot(i.toDouble(), runningTotal));
+        currentSegmentColor = targetColor;
+        currentIsDashed = targetDashed;
+        if (sortedTxs.length == 1) {
+          currentSegmentSpots.insert(0, FlSpot(0, runningTotal - (t.type == 'income' ? t.amount : -t.amount)));
+        }
+      } else {
+        if (currentSegmentColor != targetColor || currentIsDashed != targetDashed) {
+          final prevSpot = currentSegmentSpots.last;
+          currentSegmentSpots.add(FlSpot(i.toDouble(), runningTotal));
+
+          lineBars.add(
+            LineChartBarData(
+              spots: List.from(currentSegmentSpots),
+              isCurved: false,
+              color: currentSegmentColor ?? const Color(0xFF582F95),
+              barWidth: 2,
+              dotData: const FlDotData(show: false),
+              dashArray: currentIsDashed ? [6, 4] : null,
+              belowBarData: BarAreaData(show: false),
+            ),
+          );
+
+          currentSegmentSpots = [prevSpot, FlSpot(i.toDouble(), runningTotal)];
+          currentSegmentColor = targetColor;
+          currentIsDashed = targetDashed;
+        } else {
+          currentSegmentSpots.add(FlSpot(i.toDouble(), runningTotal));
+        }
+      }
+    }
+
+    if (currentSegmentSpots.isNotEmpty && lineBars.isEmpty) {
+      if (currentSegmentSpots.length == 1) {
+        currentSegmentSpots.insert(0, FlSpot(0, currentSegmentSpots[0].y));
+      }
+      lineBars.add(
+        LineChartBarData(
+          spots: currentSegmentSpots,
+          isCurved: true,
+          color: currentSegmentColor ?? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+          barWidth: 2,
+          dotData: const FlDotData(show: false),
+          dashArray: currentIsDashed ? [6, 4] : null,
+          belowBarData: BarAreaData(
+            show: true,
+            color: (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)).withValues(alpha: 0.1),
+          ),
+        ),
+      );
+    } else if (currentSegmentSpots.isNotEmpty) {
+      lineBars.add(
+        LineChartBarData(
+          spots: currentSegmentSpots,
+          isCurved: true,
+          color: currentSegmentColor ?? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+          barWidth: 2,
+          dotData: const FlDotData(show: false),
+          dashArray: currentIsDashed ? [6, 4] : null,
+          belowBarData: BarAreaData(show: false),
+        ),
+      );
     }
 
     if (spots.length == 1) {
@@ -422,6 +485,14 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
     } else if (spots.isEmpty) {
       spots.add(const FlSpot(0, 0));
       spotDates.add(now);
+      lineBars = [
+        LineChartBarData(
+          spots: const [FlSpot(0, 0), FlSpot(1, 0)],
+          color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+          barWidth: 2,
+          dotData: const FlDotData(show: false),
+        )
+      ];
     }
 
     double poolBalance = runningTotal;
@@ -430,9 +501,9 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -442,14 +513,14 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
             children: [
               Text(
                 poolKey.toUpperCase(),
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
               ),
               Text(
                 _formatCurrency(poolBalance, _primaryCurrency),
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  color: poolBalance >= 0 ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                  color: poolBalance >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                 ),
               ),
             ],
@@ -481,19 +552,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                     },
                   ),
                 ),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: spots,
-                    isCurved: true,
-                    color: const Color(0xFF582F95),
-                    barWidth: 2,
-                    dotData: const FlDotData(show: false),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: const Color(0xFF582F95).withValues(alpha: 0.1),
-                    ),
-                  ),
-                ],
+                lineBarsData: lineBars,
               ),
             ),
           ),

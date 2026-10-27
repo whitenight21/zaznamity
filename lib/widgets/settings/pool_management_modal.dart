@@ -254,7 +254,7 @@ class _PoolManagementModalState extends State<PoolManagementModal> {
               const SizedBox(width: 8),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                  backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 ),

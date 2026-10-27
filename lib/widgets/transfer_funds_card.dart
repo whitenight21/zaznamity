@@ -67,16 +67,24 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
   String _rateTimestamp = 'Just now';
 
   final Map<String, String> _currencyFlags = {
-    'USD': '🇺🇸',
     'EUR': '🇪🇺',
-    'JPY': '🇯🇵',
-    'GBP': '🇬🇧',
-    'CNY': '🇨🇳',
-    'AUD': '🇦🇺',
+    'USD': '🇺🇸',
     'CAD': '🇨🇦',
+    'GBP': '🇬🇧',
+    'CZK': '🇨🇿',
+    'HUF': '🇭🇺',
+    'PLN': '🇵🇱',
     'CHF': '🇨🇭',
+    'RUB': '🇷🇺',
+    'JPY': '🇯🇵',
+    'CNY': '🇨🇳',
     'HKD': '🇭🇰',
     'SGD': '🇸🇬',
+    'AUD': '🇦🇺',
+    'BRL': '🇧🇷',
+    'MXN': '🇲🇽',
+    'CLP': '🇨🇱',
+    'COP': '🇨🇴',
   };
 
   @override
@@ -120,11 +128,15 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
       setState(() {
         _isZaznamityMode = (savedTheme == 'zaznamity');
         _availableCurrencies = currencies;
-        _fromCurrency = primary;
-        _toCurrency = primary;
+        if (!_availableCurrencies.contains(_fromCurrency)) {
+          _fromCurrency = primary;
+        }
+        if (!_availableCurrencies.contains(_toCurrency)) {
+          _toCurrency = primary;
+        }
       });
     }
-    _fetchExchangeRate(primary, primary);
+    _fetchExchangeRate(_fromCurrency, _toCurrency);
   }
 
   Future<void> _fetchExchangeRate(String from, String to) async {
@@ -145,8 +157,8 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
     double? rate;
     try {
       final response = await http.get(
-        Uri.parse('https://api.exchangerate-api.com/v4/latest/$from'),
-      ).timeout(const Duration(seconds: 3));
+        Uri.parse('https://open.er-api.com/v6/latest/$from'),
+      ).timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -183,12 +195,122 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
       'CNY': 7.23,
       'HKD': 7.82,
       'SGD': 1.35,
+      'CZK': 23.2,
+      'HUF': 365.0,
+      'PLN': 3.98,
+      'RUB': 92.0,
+      'BRL': 5.05,
+      'MXN': 16.7,
+      'CLP': 950.0,
+      'COP': 3900.0,
     };
 
     final double toUSDFrom = ratesToUSD[from.toUpperCase()] ?? 1.0;
     final double toUSDTo = ratesToUSD[to.toUpperCase()] ?? 1.0;
 
     return toUSDTo / toUSDFrom;
+  }
+
+  void _showExchangeRateInfoDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.info_outline, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+            const SizedBox(width: 8),
+            Text(
+              'Exchange Rates Explained',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.access_time, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Latest Rate Refresh: $_rateTimestamp',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '• Mid-Market Rate (App Default):',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'The app fetches live interbank mid-market rates (the midpoint wholesale rate used between global financial institutions).',
+                style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.3),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '• Retail Exchange Rates (Kiosks & Banks):',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Physical currency exchange booths, kiosks, and commercial banks apply retail margins and spreads (e.g. giving 0.867 EUR per USD instead of the mid-market 0.92 EUR).',
+                style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.3),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '• Manual Override:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'You can tap directly into the Exchange Rate text box and type your exact kiosk/bank rate so your ledger balances reflect real-world cash conversions.',
+                style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.3),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _resolveOwner() {
@@ -202,7 +324,21 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
     switch (code.toUpperCase()) {
       case 'EUR': return '€';
       case 'GBP': return '£';
-      case 'JPY': return '¥';
+      case 'JPY': 
+      case 'CNY': return '¥';
+      case 'CAD': return 'C\$';
+      case 'AUD': return 'A\$';
+      case 'HKD': return 'HK\$';
+      case 'SGD': return 'S\$';
+      case 'CZK': return 'Kč';
+      case 'HUF': return 'Ft';
+      case 'PLN': return 'zł';
+      case 'CHF': return 'CHF';
+      case 'RUB': return '₽';
+      case 'BRL': return 'R\$';
+      case 'MXN': 
+      case 'CLP': 
+      case 'COP': return '\$';
       default: return '\$';
     }
   }
@@ -289,18 +425,30 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'TRANSFER FUNDS',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                          letterSpacing: 0.8,
+                    child: Row(
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'TRANSFER FUNDS',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 6),
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: Icon(Icons.info_outline, size: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                          tooltip: 'Rate Explanation',
+                          onPressed: _showExchangeRateInfoDialog,
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -672,18 +820,19 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 5: Transfer Fee, Exchange Rate, and Net Preview
+              // Row 5: Transfer Fee, Exchange Rate, Net Preview (Equal size boxes with Net Preview font size)
               Row(
                 children: [
                   Expanded(
+                    flex: 1,
                     child: TextField(
                       controller: _feeController,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12, fontWeight: FontWeight.bold),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         isDense: true,
                         labelText: 'Transfer Fee',
-                        labelStyle: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                        labelStyle: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                         hintText: '0.00',
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
@@ -695,17 +844,25 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
+                    flex: 1,
                     child: TextField(
                       controller: _rateController,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12, fontWeight: FontWeight.bold),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         isDense: true,
-                        labelText: _isFetchingRate ? 'Fetching rate...' : 'Exchange Rate',
-                        labelStyle: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                        counterText: 'As of: $_rateTimestamp',
-                        counterStyle: TextStyle(fontSize: 7.5, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
+                        labelText: _isFetchingRate ? 'Fetching...' : 'Exchange Rate',
+                        labelStyle: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                        suffixIcon: IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: _isFetchingRate
+                              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                              : Icon(Icons.refresh_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                          tooltip: 'Refresh Exchange Rate',
+                          onPressed: _isFetchingRate ? null : () => _fetchExchangeRate(_fromCurrency, _toCurrency),
+                        ),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
@@ -715,6 +872,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
+                    flex: 1,
                     child: InputDecorator(
                       decoration: InputDecoration(
                         isDense: true,
@@ -740,14 +898,14 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 6: Amount & Description
+              // Row 6: Amount & Description (Matching NewZaznam Card Font & Style)
               Row(
                 children: [
                   Expanded(
                     flex: 4,
                     child: TextField(
                       controller: _amountController,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         isDense: true,
@@ -766,7 +924,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                     flex: 6,
                     child: TextField(
                       controller: _descController,
-                      style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                      style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                       decoration: InputDecoration(
                         isDense: true,
                         hintText: 'Description',
