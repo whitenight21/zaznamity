@@ -634,34 +634,56 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6.0),
-                        child: SizedBox(
-                          height: 32,
-                          width: 32,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: useCustomView 
-                                  ? const Color(0xFF582F95) 
-                                  : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9)),
-                              foregroundColor: useCustomView 
-                                  ? Colors.white 
-                                  : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      Container(
+                        height: 28,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 4),
+                            Text(
+                              activeOwner != null && activeOwner.isNotEmpty ? activeOwner : 'All Owners',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                              ),
                             ),
-                            onPressed: () async {
-                              setState(() {
-                                _displayPrefs.isCustomFilterEnabled = !_displayPrefs.isCustomFilterEnabled;
-                              });
-                              await _displayPrefs.save();
-                            },
-                            icon: Icon(
-                              useCustomView ? Icons.tune : Icons.tune_outlined,
-                              size: 16,
-                            ),
-                            tooltip: useCustomView ? 'Custom Compact View Active' : 'Full View Active',
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        height: 28,
+                        width: 28,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: useCustomView 
+                                ? const Color(0xFF582F95) 
+                                : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9)),
+                            foregroundColor: useCustomView 
+                                ? Colors.white 
+                                : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                           ),
+                          onPressed: () async {
+                            setState(() {
+                              _displayPrefs.isCustomFilterEnabled = !_displayPrefs.isCustomFilterEnabled;
+                            });
+                            await _displayPrefs.save();
+                          },
+                          icon: Icon(
+                            useCustomView ? Icons.tune : Icons.tune_outlined,
+                            size: 14,
+                          ),
+                          tooltip: useCustomView ? 'Custom Compact View Active' : 'Full View Active',
                         ),
                       ),
                     ],

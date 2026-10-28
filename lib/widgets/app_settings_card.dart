@@ -14,6 +14,7 @@ import 'package:intl/intl.dart';
 import 'package:zaznamity/models/card_config.dart';
 import 'package:zaznamity/models/label.dart';
 import 'package:zaznamity/models/liability_model.dart';
+import 'package:zaznamity/models/savings_goal_model.dart';
 import 'package:zaznamity/services/database_helper.dart';
 import 'package:zaznamity/services/notification_service.dart';
 import 'package:zaznamity/widgets/settings/owner_management_modal.dart';
@@ -127,6 +128,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   List<File> _savedReportsList = [];
   List<File> _savedExportsList = []; // New separate list for CSV & JSON backups
   List<LiabilityModel> _liabilitiesList = [];
+  List<SavingsGoalModel> _savingsGoalsList = [];
 
   final List<Map<String, String>> _availableCurrencies = [
     // Primary / Major
@@ -205,6 +207,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     _loadPrefs();
     _loadSavedReports();
     _loadLiabilities();
+    _loadSavingsGoals();
   }
 
   @override
@@ -278,6 +281,15 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       final dbLiabilities = await DatabaseHelper.instance.getLiabilities();
       setState(() {
         _liabilitiesList = dbLiabilities;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadSavingsGoals() async {
+    try {
+      final dbGoals = await DatabaseHelper.instance.getSavingsGoals();
+      setState(() {
+        _savingsGoalsList = dbGoals;
       });
     } catch (_) {}
   }
@@ -386,7 +398,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     }
   }
 
-  // --- NEW UNIFIED DELETE MANAGER DIALOG (SECTION 5) ---
   void _showDeleteManagerDialog() {
     bool deleteLabels = false;
     bool deleteOwners = false;
@@ -885,70 +896,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     }
   }
 
-  Future<void> _importFullSystemBackup(File backupFile) async {
-    try {
-      final jsonString = await backupFile.readAsString();
-      final Map<String, dynamic> data = jsonDecode(jsonString);
-
-      // 1. Restore SharedPreferences
-      if (data.containsKey('preferences')) {
-        final prefs = await SharedPreferences.getInstance();
-        final Map<String, dynamic> prefsData = data['preferences'];
-        
-        for (var entry in prefsData.entries) {
-          final key = entry.key;
-          final value = entry.value;
-          if (value is bool) await prefs.setBool(key, value);
-          else if (value is int) await prefs.setInt(key, value);
-          else if (value is double) await prefs.setDouble(key, value);
-          else if (value is String) await prefs.setString(key, value);
-          else if (value is List) await prefs.setStringList(key, List<String>.from(value));
-        }
-      }
-
-      // 2. Restore Liabilities
-      if (data.containsKey('liabilities')) {
-        for (var item in data['liabilities']) {
-          final liability = LiabilityModel.fromMap(item);
-          await DatabaseHelper.instance.insertLiability(liability);
-        }
-      }
-
-      // 3. Restore Savings Goals
-      if (data.containsKey('savingsGoals')) {
-        for (var goal in data['savingsGoals']) {
-          try {
-            await DatabaseHelper.instance.insertSavingsGoal(goal);
-          } catch (_) {}
-        }
-      }
-
-      // 4. Restore Budgets
-      if (data.containsKey('budgets')) {
-        for (var budget in data['budgets']) {
-          try {
-            await DatabaseHelper.instance.updateBudget(budget['id'] ?? 1, ((budget['limit_amount'] ?? 0) as num).toDouble());
-          } catch (_) {}
-        }
-      }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Full system state restored! Please restart app to apply settings.')),
-      );
-
-      _loadPrefs();
-      _loadLiabilities();
-      await _loadSavedReports();
-
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error importing full backup: $e')),
-      );
-    }
-  }
-
   Future<void> _saveNavPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     _leftNavItems[0] = 'owner';
@@ -1221,7 +1168,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     liability.name, 
                     updatedLiability,
                   );
-                  // NEW: Purge any generated liability transactions past the new projection end date
                   final allTxs = await DatabaseHelper.instance.getTransactions();
                   for (var tx in allTxs) {
                     if (tx.description.contains(liability.name)) {
@@ -1251,6 +1197,106 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 }
               },
               child: const Text('Save Changes & Reproject'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditSavingsGoalDialog(SavingsGoalModel goal) {
+    final nameController = TextEditingController(text: goal.name);
+    final targetController = TextEditingController(text: goal.targetAmount.toString());
+    String selectedOwner = _owners.contains(goal.owner) ? goal.owner : (_owners.isNotEmpty ? _owners.first : 'Shared');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateModal) => AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Edit Savings Goal: ${goal.name}',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+            ),
+          ),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 13),
+                    decoration: const InputDecoration(labelText: 'Goal Name', isDense: true, border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: targetController,
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 13),
+                    decoration: const InputDecoration(labelText: 'Target Amount', isDense: true, border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedOwner,
+                    dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 13),
+                    decoration: const InputDecoration(labelText: 'Owner', isDense: true, border: OutlineInputBorder()),
+                    items: _owners.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+                    onChanged: (val) {
+                      if (val != null) setStateModal(() => selectedOwner = val);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                try {
+                  final updatedGoal = SavingsGoalModel(
+                    id: goal.id,
+                    name: nameController.text.trim(),
+                    targetAmount: double.tryParse(targetController.text) ?? goal.targetAmount,
+                    currentAmount: goal.currentAmount,
+                    owner: selectedOwner,
+                  );
+
+                  await DatabaseHelper.instance.insertSavingsGoal(updatedGoal);
+                  await _loadSavingsGoals();
+
+                  if (widget.onLiabilityUpdated != null) {
+                    widget.onLiabilityUpdated!();
+                  }
+
+                  if (!context.mounted) return;
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Savings goal updated successfully'))
+                  );
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error updating savings goal: $e'))
+                  );
+                }
+              },
+              child: const Text('Save Changes'),
             ),
           ],
         ),
@@ -1313,7 +1359,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           itemCount: budgets.length,
                           itemBuilder: (context, index) {
                             final b = budgets[index];
-                            final budgetId = b['id'] as int;
                             final labelId = b['label_id'] ?? b['labelId'];
                             double limitAmount = ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
                             String currency = b['currency'] ?? _primaryCurrency;
@@ -2495,24 +2540,184 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       ],
                     ),
                     _buildSubSectionCard(
-                      title: 'Budgets',
-                      subtitle: 'Budget configurator and rollover preferences',
+                      title: 'Savings Goals',
+                      subtitle: 'Edit target amounts, names, and assigned owners for active savings goals',
                       children: [
-                        Text('Configure Existing Budgets', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                        const SizedBox(height: 4),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                            onPressed: _showConfigureBudgetsDialog,
-                            icon: const Icon(Icons.tune, size: 16),
-                            label: const Text('Configure Budgets', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        Text(
+                          'Active Savings Goals',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
                           ),
+                        ),
+                        const SizedBox(height: 6),
+                        _savingsGoalsList.isEmpty
+                            ? Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                child: Text(
+                                  'No savings goals configured yet.',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8),
+                                  ),
+                                ),
+                              )
+                            : ListView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: _savingsGoalsList.length,
+                                itemBuilder: (context, index) {
+                                  final goal = _savingsGoalsList[index];
+                                  return ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(
+                                      goal.name,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      'Target: €${goal.targetAmount.toStringAsFixed(2)} | Saved: €${goal.currentAmount.toStringAsFixed(2)} (${goal.owner})',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.edit,
+                                            size: 16,
+                                            color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF64748B),
+                                          ),
+                                          onPressed: () => _showEditSavingsGoalDialog(goal),
+                                          tooltip: 'Edit Savings Goal',
+                                        ),
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.delete,
+                                            size: 16,
+                                            color: _isZaznamityMode ? const Color(0xFFEF4444) : const Color(0xFFDC2626),
+                                          ),
+                                          onPressed: () async {
+                                            if (goal.id != null) {
+                                              await DatabaseHelper.instance.deleteSavingsGoal(goal.id!);
+                                              await _loadSavingsGoals();
+                                              if (widget.onLiabilityUpdated != null) {
+                                                widget.onLiabilityUpdated!();
+                                              }
+                                            }
+                                          },
+                                          tooltip: 'Delete Savings Goal',
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                      ],
+                    ),
+                    _buildSubSectionCard(
+                      title: 'Budgets',
+                      subtitle: 'Edit target amounts, limits, and assigned owners for active budgets',
+                      children: [
+                        Text(
+                          'Active Budgets',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        FutureBuilder<List<Map<String, dynamic>>>(
+                          future: DatabaseHelper.instance.getBudgets(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                child: Text(
+                                  'No budgets configured yet.',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8),
+                                  ),
+                                ),
+                              );
+                            }
+                            final budgetsList = snapshot.data!;
+                            return ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: budgetsList.length,
+                              itemBuilder: (context, index) {
+                                final b = budgetsList[index];
+                                final budgetId = b['id'] as int;
+                                final labelId = b['label_id'] ?? b['labelId'];
+                                double limitAmount = ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
+                                String owner = b['owner'] ?? (_owners.isNotEmpty ? _owners.first : 'Shared');
+                                String currency = b['currency'] ?? _primaryCurrency;
+
+                                final labelObj = widget.labels.firstWhere(
+                                  (l) => l.id == labelId,
+                                  orElse: () => LabelModel(id: -1, name: b['label_name'] ?? 'General', color: '582F95'),
+                                );
+
+                                return ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(
+                                    labelObj.name,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                      color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    'Limit: $currency ${limitAmount.toStringAsFixed(2)} ($owner)',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                                    ),
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.edit,
+                                          size: 16,
+                                          color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                        ),
+                                        onPressed: () => _showEditSingleBudgetDialog(b, () => setState(() {})),
+                                        tooltip: 'Edit Budget',
+                                      ),
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.delete,
+                                          size: 16,
+                                          color: _isZaznamityMode ? const Color(0xFFEF4444) : const Color(0xFFDC2626),
+                                        ),
+                                        onPressed: () async {
+                                          await DatabaseHelper.instance.deleteBudget(budgetId);
+                                          setState(() {});
+                                          if (widget.onLiabilityUpdated != null) {
+                                            widget.onLiabilityUpdated!();
+                                          }
+                                        },
+                                        tooltip: 'Delete Budget',
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+                          },
                         ),
                         const SizedBox(height: 8),
                         SwitchListTile(
@@ -3092,7 +3297,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   title: 'System Tools',
                   subtitle: 'Zaznamity Reports, Delete Manager, Data Export & Backup, CSV Imports, and About',
                   children: [
-                    // --- SUB-SECTION : ZAZNAMITY REPORTS ---
                     _buildSubSectionCard(
                       title: 'Zaznamity Reports',
                       subtitle: 'Generate PDF reports and manage created reports',
@@ -3165,7 +3369,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                               ),
                       ],
                     ),
-                    // --- SUB-SECTION : DELETE MANAGER ---
                     _buildSubSectionCard(
                       title: 'Delete Manager',
                       subtitle: 'Manage deletion of labels, owners, pools, zaznams, or full data wipe',
@@ -3191,7 +3394,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         ),
                       ],
                     ),
-                    // --- SUB-SECTION : DATA EXPORT / BACKUP ---
                     _buildSubSectionCard(
                       title: 'Data Export / Backup',
                       subtitle: 'One-click export of Zaznams or complete system backups',
@@ -3201,8 +3403,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
                         ),
                         const SizedBox(height: 12),
-                        
-                        // --- SECTION 1: EXPORT ALL ZAZNAMS ONLY ---
                         Text(
                           'Export All Zaznams only (ledger history)',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
@@ -3240,8 +3440,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           ],
                         ),
                         const SizedBox(height: 16),
-
-                        // --- SECTION 2: EXPORT FULL ZAZNAMITY BACKUP ---
                         Text(
                           'Export Full Zaznamity Backup',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)),
@@ -3262,8 +3460,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           ),
                         ),
                         const SizedBox(height: 16),
-
-                        // --- SAVED EXPORTS LIST LOG ---
                         Text(
                           'Created Exports / Backups',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)),
@@ -3322,7 +3518,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                               ),
                       ],
                     ),
-                    // --- SUB-SECTION : CSV Import Mapper ---
                     _buildSubSectionCard(
                       title: 'CSV Import Mapper',
                       subtitle: 'Select, map, and import your CSV data',

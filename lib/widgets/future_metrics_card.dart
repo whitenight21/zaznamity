@@ -20,10 +20,7 @@ class FutureMetricsCard extends StatefulWidget {
   final DateTime? endDate;
   final Function(DateTime?, DateTime?)? onDateRangeChanged;
   final VoidCallback onClearDateFilter;
-
-  final bool isWide;
-  final VoidCallback? onToggleWidth;
-  final VoidCallback? onHide;
+  final VoidCallback? onShowPendingZaznams;
 
   const FutureMetricsCard({
     super.key,
@@ -39,9 +36,7 @@ class FutureMetricsCard extends StatefulWidget {
     this.endDate,
     this.onDateRangeChanged,
     required this.onClearDateFilter,
-    this.isWide = false,
-    this.onToggleWidth,
-    this.onHide,
+    this.onShowPendingZaznams,
   });
 
   @override
@@ -54,9 +49,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
   bool _isZaznamityMode = true;
   bool _excludeTransfers = true;
   String _primaryCurrency = 'USD';
-
-  // What-if Scenario / Simulate Income Delay state
-  double _incomeDelayMultiplier = 1.0; // 1.0 = normal, 0.5 = 50% drop, 0.0 = zero income
+  bool _isCollapsed = false;
 
   @override
   void initState() {
@@ -74,8 +67,17 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         _dateRangeSetting = prefs.getString('set_futureMetrics_range') ?? '90 Days';
         _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
         _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
+        _isCollapsed = prefs.getBool('set_futureMetrics_collapsed') ?? false;
       });
     }
+  }
+
+  Future<void> _toggleCollapse() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isCollapsed = !_isCollapsed;
+    });
+    await prefs.setBool('set_futureMetrics_collapsed', _isCollapsed);
   }
 
   @override
@@ -179,7 +181,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
       final dt = DateTime.tryParse(tx.createdAt);
       if (dt != null && dt.isAfter(now) && dt.isBefore(next30Days)) {
         if (tx.type == 'income') {
-          netShift += (tx.amount * _incomeDelayMultiplier);
+          netShift += tx.amount;
         } else if (tx.type == 'expense') {
           netShift -= tx.amount;
         }
@@ -206,25 +208,19 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     return count;
   }
 
-  // Calculate Runway Depletion Date & Danger Zone Timeline[cite: 13]
   Map<String, dynamic> _calculateRunwayDepletionInfo() {
     final now = DateTime.now();
     
-    // Get current liquid checking balance (or prognosis baseline)
     double startingBalance = _selectedOwner == 'All Owners'
         ? widget.totalPrognosis
         : (widget.prognosisByOwner[_selectedOwner] ?? 0.0);
 
-    // Collect all upcoming scheduled transactions sorted by date
     List<Map<String, dynamic>> scheduledTxs = [];
     for (var tx in widget.transactions) {
       if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
       final dt = DateTime.tryParse(tx.createdAt);
       if (dt != null && dt.isAfter(now)) {
         double amt = tx.amount;
-        if (tx.type == 'income') {
-          amt *= _incomeDelayMultiplier;
-        }
         scheduledTxs.add({
           'date': dt,
           'netAmount': tx.type == 'income' ? amt : -amt,
@@ -249,7 +245,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
       }
     }
 
-    // If no explicit transaction pushes it below zero, estimate based on average daily burn rate
     if (deficitDate == null && scheduledTxs.isEmpty) {
       final burnAndSavings = _calculateBurnAndSavingsRate();
       final monthlyBurn = burnAndSavings['burnRate'] ?? 0.0;
@@ -265,135 +260,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
       'deficitDate': deficitDate,
       'startingBalance': startingBalance,
     };
-  }
-
-  void _showWhatIfScenarioModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            double simulatedShift = _calculate30DayNetShift();
-            final runwayInfo = _calculateRunwayDepletionInfo();
-            final DateTime? defDate = runwayInfo['deficitDate'];
-
-            return Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Simulate Income Delay / What-If',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.close, color: _isZaznamityMode ? Colors.white70 : Colors.black54),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Slide to simulate a temporary drop or delay in upcoming incoming cash flows over the next 30 days:',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Income Multiplier:', style: TextStyle(fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                      Text('${(_incomeDelayMultiplier * 100).toStringAsFixed(0)}% of Expected', style: TextStyle(fontWeight: FontWeight.bold, color: const Color(0xFFA855F7))),
-                    ],
-                  ),
-                  Slider(
-                    value: _incomeDelayMultiplier,
-                    min: 0.0,
-                    max: 1.0,
-                    divisions: 10,
-                    activeColor: const Color(0xFFA855F7),
-                    inactiveColor: _isZaznamityMode ? Colors.white24 : Colors.grey.shade300,
-                    onChanged: (val) {
-                      setModalState(() {
-                        _incomeDelayMultiplier = val;
-                      });
-                      setState(() {});
-                    },
-                  ),
-                  const SizedBox(height: 15),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Simulated 30-Day Net Shift:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                            Text(
-                              '${simulatedShift >= 0 ? '+' : ''}${_formatCurrency(simulatedShift)}',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: simulatedShift >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Projected Deficit Date:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                            Text(
-                              defDate != null ? DateFormat('MMM dd, yyyy').format(defDate) : 'No Deficit Projected',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: defDate != null ? const Color(0xFFF87171) : const Color(0xFF34D399),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                        foregroundColor: Colors.white,
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Apply Scenario'),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
   }
 
   void _showMetricInfo(BuildContext context, String title, String explanation) {
@@ -486,7 +352,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         final net30Shift = _calculate30DayNetShift();
         final upcomingCount = _calculateUpcomingScheduledCount();
         
-        // Danger Zone & Runway calculation[cite: 13]
         final runwayInfo = _calculateRunwayDepletionInfo();
         final DateTime? deficitDate = runwayInfo['deficitDate'];
 
@@ -529,430 +394,441 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'FUTURE METRICS',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                          letterSpacing: 0.8,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'FUTURE METRICS',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 4),
+                        InkWell(
+                          onTap: () => _showMetricInfo(
+                            context,
+                            'ABOUT FUTURE METRICS & PREDICTIONS',
+                            'This card aggregates forward-looking financial forecasting and risk indicators.\n\n• Nature of Data: These figures represent predictive modeling and trend extrapolations rather than absolute certainties.\n• Basis of Calculation: Projections are computed using a combination of past historical Zaznams, future scheduled recurring/recorded entries, and average burn-rate modeling.\n• Disclaimer: Actual financial outcomes may differ due to unexpected expenses or variable income shifts. This tool provides analytical insight and does not constitute certified professional financial advice.',
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(2.0),
+                            child: Icon(Icons.info_outline_rounded, size: 15, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Quick-Action Toggle Button for What-If Scenario[cite: 13]
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4.0),
-                        child: SizedBox(
-                          height: 28,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      Container(
+                        height: 28,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 4),
+                            Text(
+                              _selectedOwner,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                              ),
                             ),
-                            onPressed: () => _showWhatIfScenarioModal(context),
-                            icon: const Icon(Icons.tune_rounded, size: 12),
-                            label: const Text('What-If', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                          ),
+                          ],
                         ),
                       ),
-                      if (widget.onToggleWidth != null)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4.0),
-                          child: SizedBox(
-                            height: 28,
-                            width: 28,
-                            child: IconButton(
-                              style: IconButton.styleFrom(
-                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                                padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                              ),
-                              onPressed: widget.onToggleWidth,
-                              icon: Icon(
-                                widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                                size: 16,
-                              ),
-                              tooltip: widget.isWide ? 'Narrow' : 'Wide',
-                            ),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        height: 28,
+                        width: 28,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                           ),
-                        ),
-                      if (widget.onHide != null)
-                        SizedBox(
-                          height: 28,
-                          width: 28,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            ),
-                            onPressed: widget.onHide,
-                            icon: const Icon(
-                              Icons.visibility_off_outlined,
-                              size: 14,
-                            ),
-                            tooltip: 'Hide',
+                          onPressed: _toggleCollapse,
+                          icon: Icon(
+                            _isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded,
+                            size: 16,
                           ),
+                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
                         ),
+                      ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              if (!_isCollapsed) ...[
+                const SizedBox(height: 12),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedOwner,
-                                isDense: true,
-                                isExpanded: true,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                items: [
-                                  DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
-                                ],
-                                onChanged: (val) {
-                                  if (val != null) setState(() => _selectedOwner = val);
-                                },
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedOwner,
+                                  isDense: true,
+                                  isExpanded: true,
+                                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                  items: [
+                                    DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                    ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
+                                  ],
+                                  onChanged: (val) {
+                                    if (val != null) setState(() => _selectedOwner = val);
+                                  },
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.horizontal(
-                                left: const Radius.circular(10),
-                                right: hasDateFilter ? Radius.zero : const Radius.circular(10),
-                              ),
-                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () => _pickDateRange(context),
+                    SizedBox(
+                      width: boxWidth,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                                 borderRadius: BorderRadius.horizontal(
                                   left: const Radius.circular(10),
                                   right: hasDateFilter ? Radius.zero : const Radius.circular(10),
                                 ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          hasDateFilter
-                                              ? '${DateFormat('MM/dd').format(widget.startDate!)} - ${DateFormat('MM/dd').format(widget.endDate!)}'
-                                              : 'Select Date Range',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: hasDateFilter
-                                                ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
-                                                : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                            fontWeight: hasDateFilter
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => _pickDateRange(context),
+                                  borderRadius: BorderRadius.horizontal(
+                                    left: const Radius.circular(10),
+                                    right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            hasDateFilter
+                                                ? '${DateFormat('MM/dd').format(widget.startDate!)} - ${DateFormat('MM/dd').format(widget.endDate!)}'
+                                                : 'Select Date Range',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: hasDateFilter
+                                                  ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
+                                                  : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                              fontWeight: hasDateFilter
+                                                  ? FontWeight.bold
+                                                  : FontWeight.normal,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                      ),
-                                      if (!hasDateFilter)
-                                        Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
-                                    ],
+                                        if (!hasDateFilter)
+                                          Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                        if (hasDateFilter) ...[
-                          const SizedBox(width: 1),
-                          Container(
-                            height: 44,
-                            width: 36,
-                            decoration: BoxDecoration(
-                              color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
-                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: widget.onClearDateFilter,
+                          if (hasDateFilter) ...[
+                            const SizedBox(width: 1),
+                            Container(
+                              height: 44,
+                              width: 36,
+                              decoration: BoxDecoration(
+                                color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
                                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                                child: const Center(
-                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: widget.onClearDateFilter,
+                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                  child: const Center(
+                                    child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                  ),
                                 ),
                               ),
                             ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: _buildMetricBox(
+                        title: 'FUTURE FLOW',
+                        amount: currentFutureFlow,
+                        amountColor: currentFutureFlow >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                        width: boxWidth,
+                        infoExplanation: 'Future Flow calculates the net sum of all scheduled incoming and outgoing transactions (income minus expenses) dated after today.\n\nHow to use & relevance: Use this metric to immediately gauge whether your scheduled cash flow for upcoming days is net positive or negative, helping you anticipate shortfalls before they occur.',
+                      ),
+                    ),
+                    SizedBox(
+                      width: boxWidth,
+                      child: _buildMetricBox(
+                        title: 'PROGNOSIS',
+                        amount: currentPrognosis,
+                        amountColor: _isZaznamityMode ? Colors.white : const Color(0xFF000000),
+                        width: boxWidth,
+                        infoExplanation: 'Prognosis estimates your projected balance trajectory over time by combining current liquid funds with upcoming future cashflows.\n\nHow to use & relevance: Provides a comprehensive long-term view of your financial trajectory, combining current holdings with expected future earnings and bills.',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: _buildMetricBox(
+                        title: 'MONTHLY BURN RATE',
+                        amount: monthlyBurn,
+                        amountColor: const Color(0xFFF87171),
+                        width: boxWidth,
+                        infoExplanation: 'Monthly Burn Rate represents your average monthly baseline spending calculated over your configured timeframe setting.\n\nHow to use & relevance: Essential for understanding your baseline overhead and determining how quickly your cash reserves deplete each month.',
+                      ),
+                    ),
+                    SizedBox(
+                      width: boxWidth,
+                      child: _buildSavingsRateBox(
+                        title: 'SAVINGS RATE',
+                        savingsRate: savingsRate,
+                        width: boxWidth,
+                        infoExplanation: 'Savings Rate shows the exact percentage of your monthly income that you successfully retain rather than spend, based on your configured timeframe setting.\n\nHow to use & relevance: Helps track your wealth-building efficiency. A rate above 20% indicates healthy financial retention, while negative rates signal that spending exceeds earnings.',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: deficitDate != null 
+                        ? const Color(0xFF7F1D1D).withValues(alpha: 0.3) 
+                        : (_isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC)),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: deficitDate != null ? const Color(0xFFF87171) : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            deficitDate != null ? Icons.warning_rounded : Icons.shield_rounded,
+                            size: 16,
+                            color: deficitDate != null ? const Color(0xFFF87171) : const Color(0xFF34D399),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'RUNWAY DEPLETION DATE:',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          InkWell(
+                            onTap: () => _showMetricInfo(
+                              context,
+                              'RUNWAY DEPLETION DATE',
+                              'Scans your scheduled outflows against your liquid checking balance to project the exact calendar date you might hit a cash deficit if no income arrives.\n\nActs as an early-warning radar for liquidity crunches, allowing you to plan ahead and avoid surprises.',
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(2.0),
+                              child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                            ),
                           ),
                         ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: _buildMetricBox(
-                      title: 'FUTURE FLOW',
-                      amount: currentFutureFlow,
-                      amountColor: currentFutureFlow >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                      width: boxWidth,
-                      infoExplanation: 'Future Flow calculates the net sum of all scheduled incoming and outgoing transactions (income minus expenses) dated after today.\n\nGreen indicates a positive net future balance (more incoming than outgoing), while red indicates a negative balance (outflows exceed inflows).',
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: _buildMetricBox(
-                      title: 'PROGNOSIS',
-                      amount: currentPrognosis,
-                      amountColor: _isZaznamityMode ? Colors.white : const Color(0xFF000000),
-                      width: boxWidth,
-                      infoExplanation: 'Prognosis estimates your projected balance trajectory over time by combining current liquid funds with upcoming future cashflows.',
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: _buildMetricBox(
-                      title: 'MONTHLY BURN RATE',
-                      amount: monthlyBurn,
-                      amountColor: const Color(0xFFF87171),
-                      width: boxWidth,
-                      infoExplanation: 'Monthly Burn Rate represents your average monthly baseline spending calculated over your configured timeframe setting.\n\nFont always displayed in red because burn rate represents total money spent/leaving your accounts.',
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: _buildSavingsRateBox(
-                      title: 'SAVINGS RATE',
-                      savingsRate: savingsRate,
-                      width: boxWidth,
-                      infoExplanation: 'Savings Rate shows the exact percentage of your monthly income that you successfully retain rather than spend, based on your configured timeframe setting.\n\nGreen indicates a healthy savings rate (20% or higher), while red highlights low or negative savings.\nNegative Percentages: A minus sign (%) appears when your monthly expenses exceed your total income during the timeframe, meaning you are drawing down savings or incurring debt.',
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // CASH FLOW "DANGER ZONE" TIMELINE & RUNWAY DEPLETION TICKER[cite: 13]
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: deficitDate != null 
-                      ? const Color(0xFF7F1D1D).withValues(alpha: 0.3) 
-                      : (_isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC)),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: deficitDate != null ? const Color(0xFFF87171) : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          deficitDate != null ? Icons.warning_rounded : Icons.shield_rounded,
-                          size: 16,
+                      ),
+                      Text(
+                        deficitDate != null ? DateFormat('MMM dd, yyyy').format(deficitDate) : 'Stable (> 1 Year)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
                           color: deficitDate != null ? const Color(0xFFF87171) : const Color(0xFF34D399),
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'RUNWAY DEPLETION DATE:',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
-                            letterSpacing: 0.6,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        InkWell(
-                          onTap: () => _showMetricInfo(
-                            context,
-                            'RUNWAY DEPLETION DATE',
-                            'Scans your scheduled outflows against your liquid checking balance to project the exact calendar date you might hit a cash deficit if no income arrives.',
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(2.0),
-                            child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      deficitDate != null ? DateFormat('MMM dd, yyyy').format(deficitDate) : 'Stable (> 1 Year)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: deficitDate != null ? const Color(0xFFF87171) : const Color(0xFF34D399),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
+                const SizedBox(height: 8),
 
-              // 30-DAY NET LIQUIDITY SHIFT BAR WITH EXPLANATION INFO CIRCLE
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          net30Shift >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                          size: 16,
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            net30Shift >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                            size: 16,
+                            color: net30Shift >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'NEXT 30-DAY CASH SHIFT:',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          InkWell(
+                            onTap: () => _showMetricInfo(
+                              context,
+                              'NEXT 30-DAY CASH SHIFT',
+                              'Calculates the absolute net change in your liquid cash over the next 30 days by combining both incoming scheduled cashflows (income) and outgoing pending cashflows (expenses/bills).\n\nThis gives you a precise 30-day tactical window to see if your upcoming salary covers your near-term liabilities.',
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(2.0),
+                              child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        '${net30Shift >= 0 ? '+' : ''}${_formatCurrency(net30Shift)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
                           color: net30Shift >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'NEXT 30-DAY CASH SHIFT:',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
-                            letterSpacing: 0.6,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        InkWell(
-                          onTap: () => _showMetricInfo(
-                            context,
-                            'NEXT 30-DAY CASH SHIFT',
-                            'Calculates the absolute net change in your liquid cash over the next 30 days by combining both incoming scheduled cashflows (income) and outgoing scheduled cashflows (expenses/bills).\n\n• Positive (+): Incoming earnings exceed your bills.\n• Negative (-): Scheduled expenses/bills outweigh upcoming income.',
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(2.0),
-                            child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      '${net30Shift >= 0 ? '+' : ''}${_formatCurrency(net30Shift)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: net30Shift >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
+                const SizedBox(height: 8),
 
-              // SCHEDULED TRANSACTIONS REMINDER COUNTER
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.notification_important_rounded, size: 16, color: Color(0xFFF59E0B)),
-                        const SizedBox(width: 8),
-                        Text(
-                          'SCHEDULED DUE (NEXT 7 DAYS):',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
-                            letterSpacing: 0.6,
-                          ),
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: widget.onShowPendingZaznams,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.notification_important_rounded, size: 16, color: Color(0xFFF59E0B)),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'PENDING ZAZNAMS (NEXT 7 DAYS):',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
+                                    letterSpacing: 0.6,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                InkWell(
+                                  onTap: () => _showMetricInfo(
+                                    context,
+                                    'PENDING ZAZNAMS (NEXT 7 DAYS)',
+                                    'Shows the total number of unconfirmed scheduled zaznams or bills coming due within the next 7 days, helping you stay ahead of upcoming payments.\n\nClicking on this row takes you directly to the All Zaznams card and displays exactly those pending Zaznams within 7 days for quick confirmation.',
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(2.0),
+                                    child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              '$upcomingCount Pending',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: upcomingCount > 0 ? const Color(0xFFF59E0B) : const Color(0xFF34D399),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
-                        InkWell(
-                          onTap: () => _showMetricInfo(
-                            context,
-                            'SCHEDULED DUE (NEXT 7 DAYS)',
-                            'Shows the total number of unconfirmed scheduled transactions or bills coming due within the next 7 days, helping you stay ahead of upcoming payments.',
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(2.0),
-                            child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      '$upcomingCount Pending',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: upcomingCount > 0 ? const Color(0xFFF59E0B) : const Color(0xFF34D399),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         );

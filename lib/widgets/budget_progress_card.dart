@@ -16,9 +16,6 @@ class BudgetProgressCard extends StatefulWidget {
   final Function(int labelId, double limitAmount, String owner) onAddBudget;
   final Function(int budgetId, double newLimit) onUpdateBudgetLimit;
   final Function(int budgetId) onDeleteBudget;
-  final bool isWide;
-  final VoidCallback onToggleWidth;
-  final VoidCallback onHide;
 
   const BudgetProgressCard({
     super.key,
@@ -31,9 +28,6 @@ class BudgetProgressCard extends StatefulWidget {
     required this.onAddBudget,
     required this.onUpdateBudgetLimit,
     required this.onDeleteBudget,
-    required this.isWide,
-    required this.onToggleWidth,
-    required this.onHide,
   });
 
   @override
@@ -47,6 +41,7 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
   List<String> _availableCurrencies = ['USD'];
   String _budgetDefaultRange = 'Current Month';
   bool _isZaznamityMode = true;
+  bool _isCollapsed = false;
 
   final Map<String, String> _currencyFlags = {
     'EUR': '🇪🇺',
@@ -95,8 +90,17 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
         _selectedCurrency = primary;
         _enableRollover = prefs.getBool('set_budget_rollover') ?? false;
         _budgetDefaultRange = prefs.getString('set_budget_range') ?? 'Current Month';
+        _isCollapsed = prefs.getBool('set_budgetProgress_collapsed') ?? false;
       });
     }
+  }
+
+  Future<void> _toggleCollapse() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isCollapsed = !_isCollapsed;
+    });
+    await prefs.setBool('set_budgetProgress_collapsed', _isCollapsed);
   }
 
   String _getCurrencySymbol(String code) {
@@ -137,6 +141,57 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
         _selectedMonth = DateTime(picked.year, picked.month);
       });
     }
+  }
+
+  void _showBudgetInfoModal(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Budgets Guide',
+                  style: TextStyle(
+                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Text(
+              'Budgets help you track and cap spending categories:\n\n'
+              '• Set monthly limits per category and owner.\n'
+              '• Edit and delete budgets anytime in Settings.\n'
+              '• Monitor real-time spending progress against targets.',
+              style: TextStyle(
+                fontSize: 13,
+                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
+                height: 1.4,
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Got it'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showAddBudgetDialog(BuildContext context) {
@@ -390,141 +445,88 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'BUDGETS',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                          letterSpacing: 0.8,
+                    child: Row(
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'BUDGETS',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                          onPressed: () => _showBudgetInfoModal(context),
+                          tooltip: 'Budgets Guide',
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6.0),
-                        child: SizedBox(
-                          height: 32,
-                          width: 32,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      Container(
+                        height: 28,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 4),
+                            Text(
+                              widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty ? widget.selectedOwner! : 'All Owners',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                              ),
                             ),
-                            onPressed: widget.onToggleWidth,
-                            icon: Icon(
-                              widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                              size: 18,
-                            ),
-                            tooltip: widget.isWide ? 'Narrow' : 'Wide',
-                          ),
+                          ],
                         ),
                       ),
+                      const SizedBox(width: 6),
                       SizedBox(
-                        height: 32,
-                        width: 32,
+                        height: 28,
+                        width: 28,
                         child: IconButton(
                           style: IconButton.styleFrom(
                             backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
                             foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                             padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                           ),
-                          onPressed: widget.onHide,
-                          icon: const Icon(
-                            Icons.visibility_off_outlined,
+                          onPressed: _toggleCollapse,
+                          icon: Icon(
+                            _isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded,
                             size: 16,
                           ),
-                          tooltip: 'Hide',
+                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
                         ),
                       ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              if (!_isCollapsed) ...[
+                const SizedBox(height: 16),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: widget.selectedOwner ?? 'All Owners',
-                                isDense: true,
-                                isExpanded: true,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                items: [
-                                  DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
-                                ],
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    widget.onOwnerChanged?.call(val == 'All Owners' ? null : val);
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (_budgetDefaultRange == 'Current Month')
-                    SizedBox(
-                      width: boxWidth,
-                      child: InkWell(
-                        onTap: () => _selectMonth(context),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          height: 44,
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          decoration: BoxDecoration(
-                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.calendar_today_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  DateFormat('MMM yyyy').format(_selectedMonth),
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    )
-                  else
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
                     SizedBox(
                       width: boxWidth,
                       child: Container(
@@ -537,155 +539,225 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.update_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                             const SizedBox(width: 6),
                             Expanded(
-                              child: Text(
-                                '${DateFormat('MMM d').format(rollingStart)} - ${DateFormat('MMM d').format(now)}',
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                overflow: TextOverflow.ellipsis,
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: widget.selectedOwner ?? 'All Owners',
+                                  isDense: true,
+                                  isExpanded: true,
+                                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                  items: [
+                                    DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                    ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
+                                  ],
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      widget.onOwnerChanged?.call(val == 'All Owners' ? null : val);
+                                    }
+                                  },
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 40,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(_currencyFlags[_selectedCurrency] ?? '💵', style: const TextStyle(fontSize: 14)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedCurrency,
-                                isDense: true,
-                                isExpanded: true,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                items: _availableCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
-                                onChanged: (val) {
-                                  if (val != null) setState(() => _selectedCurrency = val);
-                                },
-                              ),
+                    if (_budgetDefaultRange == 'Current Month')
+                      SizedBox(
+                        width: boxWidth,
+                        child: InkWell(
+                          onTap: () => _selectMonth(context),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            height: 44,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.calendar_today_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    DateFormat('MMM yyyy').format(_selectedMonth),
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: SizedBox(
-                      height: 40,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
-                          foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
-                        onPressed: () => _showAddBudgetDialog(context),
-                        label: const Text('Add Budget', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      )
+                    else
+                      SizedBox(
+                        width: boxWidth,
+                        child: Container(
+                          height: 44,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.update_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  '${DateFormat('MMM d').format(rollingStart)} - ${DateFormat('MMM d').format(now)}',
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: Container(
+                        height: 40,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(_currencyFlags[_selectedCurrency] ?? '💵', style: const TextStyle(fontSize: 14)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedCurrency,
+                                  isDense: true,
+                                  isExpanded: true,
+                                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                  items: _availableCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
+                                  onChanged: (val) {
+                                    if (val != null) setState(() => _selectedCurrency = val);
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Divider(color: _isZaznamityMode ? Colors.white24 : const Color(0xFFE2E8F0)),
-              const SizedBox(height: 8),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Total: ${currencyFormat.format(totalSpentAll)} / ${currencyFormat.format(totalLimitAll)}',
-                    style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
-                  Text(
-                    overallRemaining >= 1 
-                        ? 'Left: ${currencyFormat.format(overallRemaining)}' 
-                        : 'Over: ${currencyFormat.format(overallRemaining.abs())}',
-                    style: TextStyle(
-                      color: overallRemaining < 0 ? Colors.red.shade400 : const Color(0xFF34D399),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                    SizedBox(
+                      width: boxWidth,
+                      child: SizedBox(
+                        height: 40,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          onPressed: () => _showAddBudgetDialog(context),
+                          label: const Text('Add Budget', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: overallProgress,
-                  minHeight: 8,
-                  backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    overallProgress > 0.9 ? Colors.red.shade400 : (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Divider(color: _isZaznamityMode ? Colors.white24 : const Color(0xFFE2E8F0)),
+                const SizedBox(height: 8),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Total: ${currencyFormat.format(totalSpentAll)} / ${currencyFormat.format(totalLimitAll)}',
+                      style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                    Text(
+                      overallRemaining >= 1 
+                          ? 'Left: ${currencyFormat.format(overallRemaining)}' 
+                          : 'Over: ${currencyFormat.format(overallRemaining.abs())}',
+                      style: TextStyle(
+                        color: overallRemaining < 0 ? Colors.red.shade400 : const Color(0xFF34D399),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: overallProgress,
+                    minHeight: 8,
+                    backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      overallProgress > 0.9 ? Colors.red.shade400 : (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              processedBudgets.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24.0),
-                      child: Center(
-                        child: Text(
-                          'No budget limits set for this selection.',
-                          style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 13),
+                processedBudgets.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24.0),
+                        child: Center(
+                          child: Text(
+                            'No budget limits set for this selection.',
+                            style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 13),
+                          ),
                         ),
-                      ),
-                    )
-                  : (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty)
-                      ? _buildBudgetList(processedBudgets, currencyFormat)
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: widget.owners.map((owner) {
-                            final ownerBudgets = processedBudgets
-                                .where((b) => (b['owner'] as String).toLowerCase() == owner.toLowerCase())
-                                .toList();
-                            if (ownerBudgets.isEmpty) return const SizedBox.shrink();
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    owner.toUpperCase(),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                                      letterSpacing: 0.5,
+                      )
+                    : (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty)
+                        ? _buildBudgetList(processedBudgets, currencyFormat)
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: widget.owners.map((owner) {
+                              final ownerBudgets = processedBudgets
+                                  .where((b) => (b['owner'] as String).toLowerCase() == owner.toLowerCase())
+                                  .toList();
+                              if (ownerBudgets.isEmpty) return const SizedBox.shrink();
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      owner.toUpperCase(),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                        letterSpacing: 0.5,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  _buildBudgetList(ownerBudgets, currencyFormat),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                        ),
+                                    const SizedBox(height: 8),
+                                    _buildBudgetList(ownerBudgets, currencyFormat),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+              ],
             ],
           ),
         );

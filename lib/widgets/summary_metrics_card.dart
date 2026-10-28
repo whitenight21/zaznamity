@@ -14,9 +14,6 @@ class SummaryMetricsCard extends StatefulWidget {
   final Map<String, Map<String, double>> totalLiquidNetByCurrency;
   final Map<String, Map<String, Map<String, double>>> ownerBreakdownByCurrency;
   final List<TransactionModel> transactions;
-  final bool isWide;
-  final VoidCallback? onToggleWidth;
-  final VoidCallback? onHide;
 
   const SummaryMetricsCard({
     super.key,
@@ -28,9 +25,6 @@ class SummaryMetricsCard extends StatefulWidget {
     required this.totalLiquidNetByCurrency,
     required this.ownerBreakdownByCurrency,
     required this.transactions,
-    this.isWide = false,
-    this.onToggleWidth,
-    this.onHide,
   });
 
   @override
@@ -44,6 +38,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   String? _secondaryCurrency3;
 
   bool _isZaznamityMode = true;
+  bool _isCollapsed = false;
   final Map<String, bool> _liquidNetPools = {};
   final Map<String, bool> _visiblePools = {};
   bool _includeLiabilitiesInNetWorth = false;
@@ -78,6 +73,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
+    final collapsed = prefs.getBool('set_summaryMetrics_collapsed') ?? false;
     
     Set<String> allPools = {};
     widget.totalPoolTotalsByCurrency.values.forEach((map) {
@@ -94,6 +90,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     if (mounted) {
       setState(() {
         _isZaznamityMode = (savedTheme == 'zaznamity');
+        _isCollapsed = collapsed;
         _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
         _secondaryCurrency1 = prefs.getString('secondaryCurrency1');
         _secondaryCurrency2 = prefs.getString('secondaryCurrency2');
@@ -103,6 +100,14 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         _visiblePools.addAll(loadedVisibility);
       });
     }
+  }
+
+  Future<void> _toggleCollapse() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isCollapsed = !_isCollapsed;
+    });
+    await prefs.setBool('set_summaryMetrics_collapsed', _isCollapsed);
   }
 
   Future<void> _savePoolPrefs() async {
@@ -122,14 +127,34 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     _loadPrefs();
   }
 
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': 
+      case 'CNY': return '¥';
+      case 'CAD': return 'C\$';
+      case 'AUD': return 'A\$';
+      case 'HKD': return 'HK\$';
+      case 'SGD': return 'S\$';
+      case 'CZK': return 'Kč';
+      case 'HUF': return 'Ft';
+      case 'PLN': return 'zł';
+      case 'CHF': return 'CHF';
+      case 'RUB': return '₽';
+      case 'BRL': return 'R\$';
+      case 'MXN': 
+      case 'CLP': 
+      case 'COP': return '\$';
+      default: return '\$';
+    }
+  }
+
   String _formatCurrency(double amount, String currencyCode) {
-    String symbol = '\$';
-    if (currencyCode == 'EUR') symbol = '€';
-    else if (currencyCode == 'GBP') symbol = '£';
-    else if (currencyCode == 'JPY') symbol = '¥';
-    
-    final format = NumberFormat.currency(symbol: symbol, decimalDigits: currencyCode == 'JPY' ? 0 : 2);
-    return format.format(amount);
+    final symbol = _getCurrencySymbol(currencyCode);
+    final decimalDigits = currencyCode.toUpperCase() == 'JPY' ? 0 : 2;
+    final formatter = NumberFormat('#,##0.${'0' * decimalDigits}', 'en_US');
+    return '${formatter.format(amount)} $symbol';
   }
 
   Color _getPoolColor(String poolName) {
@@ -327,13 +352,11 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     final flag = _currencyFlags[currencyCode] ?? '';
     final totalPoolsForCurr = widget.totalPoolTotalsByCurrency[currencyCode] ?? {};
 
-    // All available positive pools for permanent distribution rendering
     Map<String, double> allPositivePools = Map.fromEntries(
       totalPoolsForCurr.entries.where((e) => e.value > 0.0)
     );
     double totalAllPositiveFunds = allPositivePools.values.fold(0.0, (sum, val) => sum + val);
 
-    // Pools contributing strictly to Net Worth calculation
     Map<String, double> netWorthPools = Map.fromEntries(
       totalPoolsForCurr.entries.where((e) => e.value != 0.0 && (_liquidNetPools[e.key] ?? true))
     );
@@ -343,7 +366,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       currentLiquidNet += balance;
     });
 
-    // Pools displayed on the card (filtered by eye visibility preference)
     Map<String, double> displayedPools = Map.fromEntries(
       totalPoolsForCurr.entries.where((e) => e.value != 0.0 && (_visiblePools[e.key] ?? true))
     );
@@ -483,7 +505,6 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
 
         const SizedBox(height: 8),
 
-        // Permanent Wealth Distribution Percentage Pill (Always Visible across all positive funds)
         if (totalAllPositiveFunds > 0 && allPositivePools.isNotEmpty) ...[
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -584,73 +605,79 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'METRICS',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                      letterSpacing: 0.8,
+                  Expanded(
+                    child: Text(
+                      'METRICS',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                        letterSpacing: 0.8,
+                      ),
                     ),
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (widget.onToggleWidth != null)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4.0),
-                          child: SizedBox(
-                            height: 28,
-                            width: 28,
-                            child: IconButton(
-                              style: IconButton.styleFrom(
-                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                                padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                              ),
-                              onPressed: widget.onToggleWidth,
-                              icon: Icon(
-                                widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                                size: 16,
-                              ),
-                              tooltip: widget.isWide ? 'Narrow' : 'Wide',
-                            ),
-                          ),
+                      Container(
+                        height: 28,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                         ),
-                      if (widget.onHide != null)
-                        SizedBox(
-                          height: 28,
-                          width: 28,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 4),
+                            Text(
+                              widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty ? widget.selectedOwner! : 'All Owners',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                              ),
                             ),
-                            onPressed: widget.onHide,
-                            icon: const Icon(
-                              Icons.visibility_off_outlined,
-                              size: 14,
-                            ),
-                            tooltip: 'Hide',
-                          ),
+                          ],
                         ),
+                      ),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        height: 28,
+                        width: 28,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                          onPressed: _toggleCollapse,
+                          icon: Icon(
+                            _isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded,
+                            size: 16,
+                          ),
+                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
+                        ),
+                      ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              if (!_isCollapsed) ...[
+                const SizedBox(height: 12),
 
-              for (int i = 0; i < activeCurrencies.length; i++) ...[
-                if (i > 0) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16.0),
-                    child: Divider(color: _isZaznamityMode ? Colors.white24 : const Color(0xFF582F95), thickness: 1.5),
-                  ),
+                for (int i = 0; i < activeCurrencies.length; i++) ...[
+                  if (i > 0) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16.0),
+                      child: Divider(color: _isZaznamityMode ? Colors.white24 : const Color(0xFF582F95), thickness: 1.5),
+                    ),
+                  ],
+                  _buildCurrencySection(activeCurrencies[i], availableWidth, boxWidth, fullWidth),
                 ],
-                _buildCurrencySection(activeCurrencies[i], availableWidth, boxWidth, fullWidth),
               ],
             ],
           ),

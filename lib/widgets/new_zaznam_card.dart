@@ -292,19 +292,54 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'NEW ZAZNAM',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                          letterSpacing: 0.8,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'NEW ZAZNAM',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        height: 28,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 4),
+                            Text(
+                              _owner.isNotEmpty ? _owner : 'All Owners',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -431,46 +466,9 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: Label (text black on white theme), Pool, Type (purple switch toggle)
+              // Row 2: Pool, Label (text black on white theme), Type (purple switch toggle)
               Row(
                 children: [
-                  Expanded(
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.label_outline_rounded, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<int?>(
-                                value: _selectedLabelId,
-                                isDense: true,
-                                isExpanded: true,
-                                icon: const SizedBox.shrink(),
-                                iconSize: 0,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black),
-                                hint: Text('Label', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.black)),
-                                items: widget.labels.map((l) => DropdownMenuItem<int?>(
-                                  value: l.id, 
-                                  child: Text(l.name, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black))
-                                )).toList(),
-                                onChanged: (val) => setState(() => _selectedLabelId = val),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: Container(
                       height: 44,
@@ -503,6 +501,44 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                         ],
                       ),
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                                            height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.label_outline_rounded, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<int?>(
+                                value: _selectedLabelId,
+                                isDense: true,
+                                isExpanded: true,
+                                icon: const SizedBox.shrink(),
+                                iconSize: 0,
+                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black),
+                                hint: Text('Label', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.black)),
+                                items: widget.labels.map((l) => DropdownMenuItem<int?>(
+                                  value: l.id, 
+                                  child: Text(l.name, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black))
+                                )).toList(),
+                                onChanged: (val) => setState(() => _selectedLabelId = val),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                   ),
                   const SizedBox(width: 8),
                   Expanded(

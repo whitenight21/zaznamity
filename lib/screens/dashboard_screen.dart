@@ -1867,15 +1867,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           labels: _labels,
           futureFlowByOwner: _futureFlowByOwner,
           prognosisByOwner: _prognosisByOwner,
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
+          selectedOwner: _globalSelectedOwner,
         );
         case 'savings_goals':
           return SavingsGoalsCard(
@@ -1893,15 +1885,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             },
             onDeleteGoal: _deleteSavingsGoal,
             onCompleteGoal: _completeSavingsGoal,
-            isWide: card.isWide,
-            onToggleWidth: () {
-              setState(() => card.isWide = !card.isWide);
-              _saveCardLayoutPreferences();
-            },
-            onHide: () {
-              setState(() => card.isVisible = false);
-              _saveCardLayoutPreferences();
-            },
           );
       case 'settings':
         return AppSettingsCard(
@@ -2015,15 +1998,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           totalLiquidNetByCurrency: _totalLiquidNetByCurrency,
           ownerBreakdownByCurrency: _ownerBreakdownByCurrency,
           transactions: _transactions,
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
         );
       case 'label_focus':
         return SelectedLabelFocusCard(
@@ -2058,15 +2032,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             });
             _navigateToCard('history');
           },
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
         );
       case 'future_metrics':
         return FutureMetricsCard(
@@ -2093,15 +2058,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               calculateMetrics();
             });
           },
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
         );
       case 'budget':
         return BudgetProgressCard(
@@ -2117,15 +2073,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             await loadData();
           },
           onDeleteBudget: _deleteBudget,
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
         );
       case 'new_entry':
         return NewZaznamCard(
@@ -2170,15 +2117,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           transactions: _transactions,
           liabilities: _liabilities,
           basePrognosis: _totalPrognosis,
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
-          },
         );
       case 'transfer':
         return TransferFundsCard(
@@ -2365,15 +2303,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 tx.description.toLowerCase().contains(liabilityName.toLowerCase())
               );
             });
-          },
-          isWide: card.isWide,
-          onToggleWidth: () {
-            setState(() => card.isWide = !card.isWide);
-            _saveCardLayoutPreferences();
-          },
-          onHide: () {
-            setState(() => card.isVisible = false);
-            _saveCardLayoutPreferences();
           },
         );
       case 'sankey_flow':

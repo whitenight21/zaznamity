@@ -394,79 +394,61 @@ class _CalendarCardState extends State<CalendarCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'CALENDAR',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                            letterSpacing: 0.8,
+                  Expanded(
+                    child: Row(
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'CALENDAR',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                              letterSpacing: 0.8,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
-                        onPressed: () => _showCalendarInfoModal(context),
-                        tooltip: 'Calendar Guide',
-                        constraints: const BoxConstraints(),
-                        padding: EdgeInsets.zero,
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                          onPressed: () => _showCalendarInfoModal(context),
+                          tooltip: 'Calendar Guide',
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4.0),
-                        child: SizedBox(
-                          height: 28,
-                          width: 28,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(6),
+                      Container(
+                        height: 28,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 4),
+                            Text(
+                              widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty ? widget.selectedOwner! : 'All Owners',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
                               ),
                             ),
-                            onPressed: widget.onToggleWidth,
-                            icon: Icon(
-                              widget.isWide
-                                  ? Icons.fullscreen_exit
-                                  : Icons.fullscreen,
-                              size: 16,
-                            ),
-                            tooltip: widget.isWide ? 'Narrow' : 'Wide',
-                          ),
+                          ],
                         ),
                       ),
-                      SizedBox(
-                        height: 28,
-                        width: 28,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
-                          onPressed: widget.onHide,
-                          icon: const Icon(
-                            Icons.visibility_off_outlined,
-                            size: 14,
-                          ),
-                          tooltip: 'Hide',
-                        ),
-                      ),
+                      const SizedBox(width: 6),
                     ],
                   ),
                 ],

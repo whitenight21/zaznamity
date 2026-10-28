@@ -34,9 +34,6 @@ class LiabilitiesCard extends StatefulWidget {
   final Function(LiabilityItem) onSaveLiability;
   final VoidCallback? onAddLiability;
   final Function(String liabilityId, String liabilityName) onDeleteLiability;
-  final bool isWide;
-  final VoidCallback? onToggleWidth;
-  final VoidCallback? onHide;
 
   const LiabilitiesCard({
     super.key,
@@ -47,9 +44,6 @@ class LiabilitiesCard extends StatefulWidget {
     required this.onSaveLiability,
     this.onAddLiability,
     required this.onDeleteLiability,
-    required this.isWide,
-    this.onToggleWidth,
-    this.onHide,
   });
 
   @override
@@ -58,6 +52,7 @@ class LiabilitiesCard extends StatefulWidget {
 
 class _LiabilitiesCardState extends State<LiabilitiesCard> {
   bool _isZaznamityMode = true;
+  bool _isCollapsed = false;
   late String _selectedOwner;
 
   @override
@@ -70,11 +65,21 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
+    final collapsed = prefs.getBool('set_liabilities_collapsed') ?? false;
     if (mounted) {
       setState(() {
         _isZaznamityMode = (savedTheme == 'zaznamity');
+        _isCollapsed = collapsed;
       });
     }
+  }
+
+  Future<void> _toggleCollapse() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isCollapsed = !_isCollapsed;
+    });
+    await prefs.setBool('set_liabilities_collapsed', _isCollapsed);
   }
 
   @override
@@ -118,7 +123,8 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                   '• Enter your current actual remaining liability balance from your latest statement.\n'
                   '• Enter your current active monthly installment.\n'
                   '• Set your due day and current interest rate.\n'
-                  '• Choose the projection end date until which payment installments should be scheduled in ledger history.\n\n'
+                  '• Choose the projection end date until which payment installments should be scheduled in ledger history.\n'
+                  '• Edit and delete liabilities anytime directly in Settings.\n\n'
                   'When you create a liability, a corresponding [name (L)] label is automatically created, and upcoming amortization installments are scheduled into your calendar and All Zaznams ledger!',
                   style: TextStyle(
                     fontSize: 13,
@@ -407,227 +413,236 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'LIABILITIES',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                            letterSpacing: 0.8,
+                  Expanded(
+                    child: Row(
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'LIABILITIES',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                              letterSpacing: 0.8,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
-                        onPressed: () => _showLiabilityInfoModal(context),
-                        tooltip: 'Setup Guide',
-                        constraints: const BoxConstraints(),
-                        padding: EdgeInsets.zero,
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                          onPressed: () => _showLiabilityInfoModal(context),
+                          tooltip: 'Setup Guide',
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (widget.onToggleWidth != null)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4.0),
-                          child: SizedBox(
-                            height: 28,
-                            width: 28,
-                            child: IconButton(
-                              style: IconButton.styleFrom(
-                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                                padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      Container(
+                        height: 28,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 4),
+                            Text(
+                              _selectedOwner,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
                               ),
-                              onPressed: widget.onToggleWidth,
-                              icon: Icon(widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen, size: 16),
-                              tooltip: widget.isWide ? 'Narrow' : 'Wide',
                             ),
-                          ),
+                          ],
                         ),
-                      if (widget.onHide != null)
-                        SizedBox(
-                          height: 28,
-                          width: 28,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            ),
-                            onPressed: widget.onHide,
-                            icon: const Icon(Icons.visibility_off_outlined, size: 14),
-                            tooltip: 'Hide',
+                      ),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        height: 28,
+                        width: 28,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                           ),
+                          onPressed: _toggleCollapse,
+                          icon: Icon(_isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded, size: 16),
+                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
                         ),
+                      ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              if (!_isCollapsed) ...[
+                const SizedBox(height: 12),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedOwner,
-                                isDense: true,
-                                isExpanded: true,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                items: [
-                                  DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
-                                ],
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    setState(() => _selectedOwner = val);
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: SizedBox(
-                      height: 44,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
-                          foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                         ),
-                        onPressed: () => _showAddLiabilityDialog(context),
-                        label: const Text('Add Liability', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              filteredLiabilities.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Center(
-                        child: Text(
-                          'No active liabilities tracked for this selection.',
-                          style: TextStyle(
-                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8),
-                            fontSize: 12,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    )
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: filteredLiabilities.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final item = filteredLiabilities[index];
-                        
-                        double estimatedInitial = item.remainingBalance + (item.monthlyInstallment * 12); 
-                        if (estimatedInitial <= 0) estimatedInitial = item.remainingBalance > 0 ? item.remainingBalance * 1.5 : 1000.0;
-                        double progressRatio = (1.0 - (item.remainingBalance / estimatedInitial)).clamp(0.0, 1.0);
-
-                        return Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    item.name,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15,
-                                      color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                                    ),
-                                  ),
-                                  InkWell(
-                                    onTap: () => widget.onDeleteLiability(item.id, item.name),
-                                    child: Icon(Icons.close, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), size: 16),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: LinearProgressIndicator(
-                                  value: progressRatio,
-                                  minHeight: 10,
-                                  backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                                  ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedOwner,
+                                  isDense: true,
+                                  isExpanded: true,
+                                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                  items: [
+                                    DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                    ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
+                                  ],
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      setState(() => _selectedOwner = val);
+                                    }
+                                  },
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Balance: ${widget.currencySymbol}${item.remainingBalance.toStringAsFixed(2)}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
-                                    ),
-                                  ),
-                                  Text(
-                                    'Installment: ${widget.currencySymbol}${item.monthlyInstallment.toStringAsFixed(2)} (Due: ${item.dueDay})',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        );
-                      },
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
+                    SizedBox(
+                      width: boxWidth,
+                      child: SizedBox(
+                        height: 44,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () => _showAddLiabilityDialog(context),
+                          label: const Text('Add Liability', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                filteredLiabilities.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: Center(
+                          child: Text(
+                            'No active liabilities tracked for this selection.',
+                            style: TextStyle(
+                              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8),
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: filteredLiabilities.length,
+                        separatorBuilder: (context, index) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final item = filteredLiabilities[index];
+                          
+                          double estimatedInitial = item.remainingBalance + (item.monthlyInstallment * 12); 
+                          if (estimatedInitial <= 0) estimatedInitial = item.remainingBalance > 0 ? item.remainingBalance * 1.5 : 1000.0;
+                          double progressRatio = (1.0 - (item.remainingBalance / estimatedInitial)).clamp(0.0, 1.0);
+
+                          return Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      item.name,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                    InkWell(
+                                      onTap: () => widget.onDeleteLiability(item.id, item.name),
+                                      child: Icon(Icons.close, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), size: 16),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: LinearProgressIndicator(
+                                    value: progressRatio,
+                                    minHeight: 10,
+                                    backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Balance: ${widget.currencySymbol}${item.remainingBalance.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                                      ),
+                                    ),
+                                    Text(
+                                      'Installment: ${widget.currencySymbol}${item.monthlyInstallment.toStringAsFixed(2)} (Due: ${item.dueDay})',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ],
             ],
           ),
         );

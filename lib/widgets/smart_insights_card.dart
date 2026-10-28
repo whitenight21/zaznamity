@@ -11,10 +11,7 @@ class SmartInsightsCard extends StatefulWidget {
   final List<LabelModel> labels;
   final Map<String, double> futureFlowByOwner;
   final Map<String, double> prognosisByOwner;
-
-  final bool isWide;
-  final VoidCallback? onToggleWidth;
-  final VoidCallback? onHide;
+  final String? selectedOwner;
 
   const SmartInsightsCard({
     super.key,
@@ -22,9 +19,7 @@ class SmartInsightsCard extends StatefulWidget {
     required this.labels,
     required this.futureFlowByOwner,
     required this.prognosisByOwner,
-    this.isWide = false,
-    this.onToggleWidth,
-    this.onHide,
+    this.selectedOwner,
   });
 
   @override
@@ -34,8 +29,8 @@ class SmartInsightsCard extends StatefulWidget {
 class _SmartInsightsCardState extends State<SmartInsightsCard> {
   bool _isZaznamityMode = true;
   bool _excludeTransfers = true;
+  bool _isCollapsed = false;
   String _primaryCurrency = 'USD';
-  String? _selectedOwner;
   final Map<String, bool> _multiLabelFixedCategories = {};
 
   @override
@@ -47,13 +42,14 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
   @override
   void didUpdateWidget(covariant SmartInsightsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _loadPrefs(); // Refreshes theme and currency preferences immediately
+    _loadPrefs();
   }
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    final collapsed = prefs.getBool('set_smartInsights_collapsed') ?? false;
     
     final fixedMap = <String, bool>{};
     for (var label in widget.labels) {
@@ -65,24 +61,47 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
         _isZaznamityMode = (savedTheme == 'zaznamity');
         _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
         _primaryCurrency = primary;
+        _isCollapsed = collapsed;
         _multiLabelFixedCategories.addAll(fixedMap);
       });
     }
+  }
+
+  Future<void> _toggleCollapse() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isCollapsed = !_isCollapsed;
+    });
+    await prefs.setBool('set_smartInsights_collapsed', _isCollapsed);
   }
 
   String _getCurrencySymbol(String code) {
     switch (code.toUpperCase()) {
       case 'EUR': return '€';
       case 'GBP': return '£';
-      case 'JPY': return '¥';
+      case 'JPY': 
+      case 'CNY': return '¥';
+      case 'CAD': return 'C\$';
+      case 'AUD': return 'A\$';
+      case 'HKD': return 'HK\$';
+      case 'SGD': return 'S\$';
+      case 'CZK': return 'Kč';
+      case 'HUF': return 'Ft';
+      case 'PLN': return 'zł';
+      case 'CHF': return 'CHF';
+      case 'RUB': return '₽';
+      case 'BRL': return 'R\$';
+      case 'MXN': 
+      case 'CLP': 
+      case 'COP': return '\$';
       default: return '\$';
     }
   }
 
   String _formatCurrency(double amount) {
     final symbol = _getCurrencySymbol(_primaryCurrency);
-    final format = NumberFormat.currency(symbol: symbol, decimalDigits: 2);
-    return format.format(amount);
+    final format = NumberFormat('#,##0.00', 'en_US');
+    return '${format.format(amount)} $symbol';
   }
 
   bool _isFixedExpenseLabel(LabelModel label) {
@@ -100,15 +119,11 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
         lower.contains('bill');
   }
 
-  List<String> get _availableOwners {
-    final set = <String>{};
-    for (var tx in widget.transactions) {
-      if (tx.owner.isNotEmpty) set.add(tx.owner);
-    }
-    return set.toList();
-  }
+  void _showInfoDialog(BuildContext context, String title, String explanation, {bool includeDisclaimer = false}) {
+    final disclaimer = includeDisclaimer 
+        ? '\n\nDisclaimer: Insights are generated dynamically based purely on your logged Zaznams and inputted historical data. This tool is for personal organization and tracking only and does not constitute certified professional financial advice.' 
+        : '';
 
-  void _showInfoDialog(BuildContext context, String title, String explanation) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -130,12 +145,14 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
             ),
           ],
         ),
-        content: Text(
-          explanation,
-          style: TextStyle(
-            fontSize: 13,
-            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
-            height: 1.4,
+        content: SingleChildScrollView(
+          child: Text(
+            explanation + disclaimer,
+            style: TextStyle(
+              fontSize: 13,
+              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
+              height: 1.4,
+            ),
           ),
         ),
         actions: [
@@ -245,11 +262,10 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     double fixedOverhead = 0;
     double variableSpending = 0;
 
-    // Mapping to track recurring bills across months for Price Hike Tracker
     Map<String, Map<int, double>> recurringBillHistory = {};
 
     for (var tx in widget.transactions) {
-      if (_selectedOwner != null && _selectedOwner!.isNotEmpty && _selectedOwner != 'All Owners' && tx.owner != _selectedOwner) {
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) {
         continue;
       }
 
@@ -273,7 +289,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
 
       if (dt == null) continue;
 
-      // Track recurring expenses by label name across months for Price Hike detection
       if (tx.type == 'expense' && matchLbl != null && _isFixedExpenseLabel(matchLbl)) {
         int monthKey = dt.year * 12 + dt.month;
         recurringBillHistory.putIfAbsent(matchLbl.name, () => {});
@@ -336,10 +351,11 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     double projectedMonthEndExpense = dailySpendRate * daysInMonth;
 
     double availableChecking = totalLiquidChecking;
-    double remainingFixedObligations = (fixedOverhead * 0.5);
-    double baselineReserveBuffer = monthlyBurnBaseline * 0.20;
-    double safeSpendablePool = (availableChecking - remainingFixedObligations - baselineReserveBuffer).clamp(0.0, double.infinity);
+    double protectedSavingsBuffer = availableChecking * 0.20;
+    double safeSpendablePool = (availableChecking - protectedSavingsBuffer).clamp(0.0, double.infinity);
     double targetBufferAllowance = daysInMonth > 0 ? (safeSpendablePool / daysInMonth) : 0.0;
+
+    double moneyRunwayDays = dailySpendRate > 0 ? (availableChecking / dailySpendRate) : 999.0;
 
     double currentNetToDate = currentMonthIncome - currentMonthExpenseToDate;
     double prevNetToDate = prevMonthIncomeToDate - prevMonthExpenseToDate;
@@ -358,7 +374,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
 
     List<Map<String, dynamic>> insights = [];
 
-    // 1. Price Hike Tracker Insight
     int currentMonthKey = currentYear * 12 + currentMonth;
     int prevMonthKey = prevYear * 12 + prevMonth;
     recurringBillHistory.forEach((billName, history) {
@@ -378,7 +393,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       }
     });
 
-    // 2. Discretionary Budget Breaker Alert
     double flexibleBudgetCeiling = wantsExpense > 0 ? wantsExpense : (currentMonthExpense * 0.4);
     if (flexibleBudgetCeiling > 0 && monthProgressRatio > 0) {
       double flexibleSpendRatio = (wantsExpense / flexibleBudgetCeiling);
@@ -388,7 +402,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           'icon': Icons.warning_amber_rounded,
           'title': 'Discretionary Budget Breaker',
           'message': 'You have consumed over 80% of your flexible spending ceiling (${(flexibleSpendRatio * 100).toStringAsFixed(0)}%) with ${(1.0 - monthProgressRatio) * 100}% of the month still remaining.',
-            'action': 'Exercise strict discretionary caution for the rest of the month.'
+          'action': 'Exercise strict discretionary caution for the rest of the month.'
         });
       }
     }
@@ -416,7 +430,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
         'type': 'warning',
         'icon': Icons.security_rounded,
         'title': 'Low Emergency Runway',
-        'message': 'Your current liquid reserves cover only ${emergencyRunwayMonths.toStringAsFixed(1)} months of living expenses (Target: 3-6 mos).',
+        'message': 'Your current liquid checking/cash reserves cover only ${emergencyRunwayMonths.toStringAsFixed(1)} months of living expenses (Target: 3-6 mos).',
         'action': 'Prioritize building your safety net by trimming non-essential outflows.'
       });
     }
@@ -476,6 +490,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       'emergencyRunway': emergencyRunwayMonths,
       'projectedMonthEndExpense': projectedMonthEndExpense,
       'targetBufferAllowance': targetBufferAllowance,
+      'moneyRunwayDays': moneyRunwayDays,
       'netCashflowVelocityDelta': netCashflowVelocityDelta,
       'needsExpense': needsExpense,
       'wantsExpense': wantsExpense,
@@ -496,6 +511,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     final double runway = analysis['emergencyRunway'];
     final double projectedEnd = analysis['projectedMonthEndExpense'];
     final double targetBufferAllowance = analysis['targetBufferAllowance'];
+    final double moneyRunwayDays = analysis['moneyRunwayDays'];
     final double velocityDelta = analysis['netCashflowVelocityDelta'];
     
     final double needs = analysis['needsExpense'];
@@ -507,6 +523,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     final double variable = analysis['variableSpending'];
 
     final List<Map<String, dynamic>> insights = analysis['insights'];
+    final displayOwner = (widget.selectedOwner == null || widget.selectedOwner!.isEmpty) ? 'All Owners' : widget.selectedOwner!;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -558,9 +575,10 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                       icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
                       onPressed: () => _showInfoDialog(
                         context,
-                        'Metrics Calculation Frequency',
+                        'Metrics Calculation & Insights Overview',
                         '• Real-time Recalculation: Metrics refresh instantaneously whenever a transaction is added, edited, or confirmed.\n\n'
                         '• Monthly Baselines: Monthly comparisons and spend-rate velocity metrics are re-anchored on the 1st day of each calendar month.',
+                        includeDisclaimer: true,
                       ),
                       tooltip: 'Recalculation Guide',
                       constraints: const BoxConstraints(),
@@ -572,445 +590,176 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (widget.onToggleWidth != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 4.0),
-                      child: SizedBox(
-                        height: 28,
-                        width: 28,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                          ),
-                          onPressed: widget.onToggleWidth,
-                          icon: Icon(widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen, size: 16),
-                          tooltip: widget.isWide ? 'Narrow' : 'Wide',
-                        ),
-                      ),
-                    ),
-                  if (widget.onHide != null)
-                    SizedBox(
-                      height: 28,
-                      width: 28,
-                      child: IconButton(
-                        style: IconButton.styleFrom(
-                          backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                          foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                        ),
-                        onPressed: widget.onHide,
-                        icon: const Icon(Icons.visibility_off_outlined, size: 14),
-                        tooltip: 'Hide',
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          Container(
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String?>(
-                      value: _selectedOwner,
-                      dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                      isDense: true,
-                      isExpanded: true,
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                      hint: Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                      items: [
-                        DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                        ),
-                        ..._availableOwners.map((owner) => DropdownMenuItem<String?>(
-                              value: owner,
-                              child: Text(owner, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                            )),
-                      ],
-                      onChanged: (val) {
-                        setState(() => _selectedOwner = val);
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-            ),
-            child: InkWell(
-              onTap: () => _showHealthBreakdownModal(context, analysis),
-              child: Row(
-                children: [
                   Container(
-                    width: 56,
-                    height: 56,
+                    height: 28,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: scoreColor.withValues(alpha: 0.15),
-                      border: Border.all(color: scoreColor, width: 2.5),
+                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                     ),
-                    child: Center(
-                      child: Text(
-                        '$score',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: scoreColor),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  'HEALTH STATUS: ',
-                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                ),
-                                Text(
-                                  status.toUpperCase(),
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: scoreColor),
-                                ),
-                              ],
-                            ),
-                            InkWell(
-                              onTap: () => _showInfoDialog(
-                                context,
-                                'Financial Health Score',
-                                'Tap anywhere on this score badge to open the score breakdown modal and see exactly which metrics added or subtracted points from your total score.',
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(2.0),
-                                child: Icon(Icons.info_outline_rounded, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
+                        Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                        const SizedBox(width: 4),
                         Text(
-                          'Tap to view score breakdown details.',
-                          style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.3),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // TARGET-BUFFER ALLOWANCE TILE
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.savings_rounded, color: _isZaznamityMode ? const Color(0xFF34D399) : Colors.green, size: 20),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              'TARGET-BUFFER ALLOWANCE',
-                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), letterSpacing: 0.6),
-                            ),
-                            const SizedBox(width: 4),
-                            InkWell(
-                              onTap: () => _showInfoDialog(
-                                context,
-                                'Target-Buffer Allowance',
-                                'Calculates safe daily spending limits while automatically reserving a baseline safety buffer for next month\'s overhead from your checking and cash pools.',
-                              ),
-                              child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${_formatCurrency(targetBufferAllowance)} / day',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          Row(
-            children: [
-              Expanded(
-                child: _buildVitalTile(
-                  title: 'EMERGENCY RUNWAY',
-                  infoTitle: 'Emergency Fund Runway',
-                  infoExplanation: 'Calculates how many months of baseline living expenses your current liquid checking and cash reserves can cover.',
-                  value: '${runway.toStringAsFixed(1)} mos',
-                  subtitle: 'Survival buffer',
-                  icon: Icons.shield_outlined,
-                  color: runway >= 3 ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildVitalTile(
-                  title: 'PROJECTED END-MONTH',
-                  infoTitle: 'Month-End Run-Rate Projection',
-                  infoExplanation: 'Extrapolates month-end outflow based on daily burn velocity.',
-                  value: _formatCurrency(projectedEnd),
-                  subtitle: 'Run-rate forecast',
-                  icon: Icons.show_chart_rounded,
-                  color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              'NET SAVINGS TRAJECTORY (VS LAST MONTH)',
-                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), letterSpacing: 0.6),
-                            ),
-                            const SizedBox(width: 4),
-                            InkWell(
-                              onTap: () => _showInfoDialog(
-                                context,
-                                'Net Cashflow Velocity',
-                                'Compares net cashflow up to the exact same day in the previous month.',
-                              ),
-                              child: Icon(Icons.info_outline, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${velocityDelta >= 0 ? '+' : ''}${_formatCurrency(velocityDelta)} to-date',
+                          displayOwner,
                           style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            color: velocityDelta >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-                Icon(
-                  velocityDelta >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                  color: velocityDelta >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                  size: 24,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '50 / 30 / 20 BUDGET BREAKDOWN',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), letterSpacing: 0.8),
-              ),
-              InkWell(
-                onTap: () => _showInfoDialog(context, '50/30/20 Rule', 'Categorizes monthly outflows into Needs, Wants, and Savings.'),
-                child: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                  ),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    height: 28,
+                    width: 28,
+                    child: IconButton(
+                      style: IconButton.styleFrom(
+                        backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                        foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                        padding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      ),
+                      onPressed: _toggleCollapse,
+                      icon: Icon(_isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded, size: 16),
+                      tooltip: _isCollapsed ? 'Expand' : 'Collapse',
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-            ),
-            child: Column(
-              children: [
-                _buildBudgetBarRow('Needs (50%)', needs, totalExp, const Color(0xFF60A5FA)),
-                const SizedBox(height: 8),
-                _buildBudgetBarRow('Wants (30%)', wants, totalExp, const Color(0xFFFBBF24)),
-                const SizedBox(height: 8),
-                _buildBudgetBarRow('Savings (20%)', savings, totalExp + savings, const Color(0xFF34D399)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
+          if (!_isCollapsed) ...[
+            const SizedBox(height: 14),
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'FIXED VS. VARIABLE BURN RATE',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), letterSpacing: 0.8),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
               ),
-              InkWell(
-                onTap: () => _showInfoDialog(context, 'Fixed vs Variable', 'Separates mandatory overhead from discretionary spending.'),
-                child: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              child: InkWell(
+                onTap: () => _showHealthBreakdownModal(context, analysis),
+                child: Row(
                   children: [
-                    Text('Fixed Overhead', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                    const SizedBox(height: 2),
-                    Text(_formatCurrency(fixed), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: scoreColor.withValues(alpha: 0.15),
+                        border: Border.all(color: scoreColor, width: 2.5),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '$score',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: scoreColor),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'HEALTH STATUS: ',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                  ),
+                                  Text(
+                                    status.toUpperCase(),
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: scoreColor),
+                                  ),
+                                ],
+                              ),
+                              InkWell(
+                                onTap: () => _showInfoDialog(
+                                  context,
+                                  'Financial Health Score',
+                                  'Tap anywhere on this score badge to open the score breakdown modal and see exactly which metrics added or subtracted points from your total score.',
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(2.0),
+                                  child: Icon(Icons.info_outline_rounded, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Tap to view score breakdown details.',
+                            style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.3),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-                Container(height: 24, width: 1, color: _isZaznamityMode ? Colors.white24 : Colors.black26),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('Flexible Discretionary', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                    const SizedBox(height: 2),
-                    Text(_formatCurrency(variable), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
-                  ],
-                ),
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
-          Text(
-            'SUGGESTIONS & COURSES OF ACTION',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), letterSpacing: 0.8),
-          ),
-          const SizedBox(height: 8),
-
-          ...insights.map((insight) {
-            final IconData icon = insight['icon'];
-            final String title = insight['title'];
-            final String message = insight['message'];
-            final String action = insight['action'];
-            final String type = insight['type'];
-
-            Color badgeColor = const Color(0xFF38BDF8);
-            if (type == 'warning') badgeColor = const Color(0xFFFBBF24);
-            if (type == 'positive') badgeColor = const Color(0xFF34D399);
-
-            return Container(
-              margin: const EdgeInsets.only(bottom: 10),
+            // TARGET-BUFFER ALLOWANCE TILE
+            Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: _isZaznamityMode ? const Color(0xFF160D25) : Colors.white,
+                color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
+                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
               ),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: badgeColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(icon, size: 18, color: badgeColor),
-                  ),
-                  const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Text(
-                          title,
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          message,
-                          style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.3),
-                        ),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                        Icon(Icons.savings_rounded, color: _isZaznamityMode ? const Color(0xFF34D399) : Colors.green, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.bolt_rounded, size: 12, color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95)),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  'Action: $action',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                              Row(
+                                children: [
+                                  Text(
+                                    'TARGET-BUFFER ALLOWANCE',
+                                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), letterSpacing: 0.6),
                                   ),
-                                ),
+                                  const SizedBox(width: 4),
+                                  InkWell(
+                                    onTap: () => _showInfoDialog(
+                                      context,
+                                      'Target-Buffer Allowance',
+                                      'What this means: If you spend exactly this daily allowance every single day, your liquid checking balance would be fully depleted by income day.\n\n50/30/20 Rule Protection: To prevent your balance from hitting zero, this calculation reserves 20% as a safety/savings buffer. Only the remaining safe portion is divided across the month.\n\nMoney Runway: Your current balance will last approximately ${moneyRunwayDays.toStringAsFixed(0)} days at your current daily spend rate.',
+                                    ),
+                                    child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    '${_formatCurrency(targetBufferAllowance)} / day',
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                                  ),
+                                  Text(
+                                    'Runway: ${moneyRunwayDays.toStringAsFixed(0)} days left',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: moneyRunwayDays > 15 ? const Color(0xFF34D399) : Colors.orangeAccent),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -1020,8 +769,255 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                   ),
                 ],
               ),
-            );
-          }),
+            ),
+            const SizedBox(height: 14),
+
+            Row(
+              children: [
+                Expanded(
+                  child: _buildVitalTile(
+                    title: 'EMERGENCY RUNWAY',
+                    infoTitle: 'Emergency Fund Runway',
+                    infoExplanation: 'Calculates how many months of baseline living expenses your liquid checking and cash reserves can cover as an immediate survival buffer.',
+                    value: '${runway.toStringAsFixed(1)} mos',
+                    subtitle: 'Survival buffer',
+                    icon: Icons.shield_outlined,
+                    color: runway >= 3 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildVitalTile(
+                    title: 'PROJECTED END-MONTH',
+                    infoTitle: 'Month-End Run-Rate Projection',
+                    infoExplanation: 'Extrapolates month-end outflow based on daily burn velocity.',
+                    value: _formatCurrency(projectedEnd),
+                    subtitle: 'Run-rate forecast',
+                    icon: Icons.show_chart_rounded,
+                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'NET SAVINGS TRAJECTORY (VS LAST MONTH)',
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), letterSpacing: 0.6),
+                              ),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                onTap: () => _showInfoDialog(
+                                  context,
+                                  'Net Cashflow Velocity',
+                                  'Compares net cashflow up to the exact same day in the previous month.',
+                                ),
+                                child: Icon(Icons.info_outline, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${velocityDelta >= 0 ? '+' : ''}${_formatCurrency(velocityDelta)} to-date',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                              color: velocityDelta >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Icon(
+                    velocityDelta >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                    color: velocityDelta >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                    size: 24,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '50 / 30 / 20 BUDGET BREAKDOWN',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), letterSpacing: 0.8),
+                ),
+                InkWell(
+                  onTap: () => _showInfoDialog(context, '50/30/20 Rule', 'Categorizes monthly outflows into Needs, Wants, and Savings.'),
+                  child: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+              ),
+              child: Column(
+                children: [
+                  _buildBudgetBarRow('Needs (50%)', needs, totalExp, const Color(0xFF60A5FA)),
+                  const SizedBox(height: 8),
+                  _buildBudgetBarRow('Wants (30%)', wants, totalExp, const Color(0xFFFBBF24)),
+                  const SizedBox(height: 8),
+                  _buildBudgetBarRow('Savings (20%)', savings, totalExp + savings, const Color(0xFF34D399)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'FIXED VS. VARIABLE BURN RATE',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), letterSpacing: 0.8),
+                ),
+                InkWell(
+                  onTap: () => _showInfoDialog(context, 'Fixed vs Variable', 'Separates mandatory overhead from discretionary spending.'),
+                  child: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Fixed Overhead', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                      const SizedBox(height: 2),
+                      Text(_formatCurrency(fixed), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                    ],
+                  ),
+                  Container(height: 24, width: 1, color: _isZaznamityMode ? Colors.white24 : Colors.black26),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('Flexible Discretionary', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                      const SizedBox(height: 2),
+                      Text(_formatCurrency(variable), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            Text(
+              'SUGGESTIONS & COURSES OF ACTION',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), letterSpacing: 0.8),
+            ),
+            const SizedBox(height: 8),
+
+            ...insights.map((insight) {
+              final IconData icon = insight['icon'];
+              final String title = insight['title'];
+              final String message = insight['message'];
+              final String action = insight['action'];
+              final String type = insight['type'];
+
+              Color badgeColor = const Color(0xFF38BDF8);
+              if (type == 'warning') badgeColor = const Color(0xFFFBBF24);
+              if (type == 'positive') badgeColor = const Color(0xFF34D399);
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _isZaznamityMode ? const Color(0xFF160D25) : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: badgeColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(icon, size: 18, color: badgeColor),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            message,
+                            style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.3),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.bolt_rounded, size: 12, color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95)),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    'Action: $action',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
         ],
       ),
     );

@@ -20,9 +20,6 @@ class SelectedLabelFocusCard extends StatefulWidget {
   final VoidCallback onSelectEndDate;
   final VoidCallback onClearDateFilter;
   
-  final bool isWide;
-  final VoidCallback onToggleWidth;
-  final VoidCallback onHide;
   final Function(int? labelId, String? owner, DateTime? start, DateTime? end)? onJumpToHistory;
 
   const SelectedLabelFocusCard({
@@ -39,9 +36,6 @@ class SelectedLabelFocusCard extends StatefulWidget {
     required this.onSelectStartDate,
     required this.onSelectEndDate,
     required this.onClearDateFilter,
-    required this.isWide,
-    required this.onToggleWidth,
-    required this.onHide,
     this.onJumpToHistory,
   });
 
@@ -52,6 +46,7 @@ class SelectedLabelFocusCard extends StatefulWidget {
 class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
   String _singleLabelDefaultRange = '';
   bool _isZaznamityMode = true;
+  bool _isCollapsed = false;
   String _primaryCurrency = 'USD';
   final NumberFormat _currencyFormatter = NumberFormat('#,##0.00', 'en_US');
   final Map<String, bool> _multiLabelFixedCategories = {};
@@ -74,9 +69,18 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
       _singleLabelDefaultRange = prefs.getString('set_singleLabel_range') ?? '';
       final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
       _isZaznamityMode = (themeStr == 'zaznamity');
+      _isCollapsed = prefs.getBool('set_selectedLabelFocus_collapsed') ?? false;
       _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
       _multiLabelFixedCategories.addAll(fixedMap);
     });
+  }
+
+  Future<void> _toggleCollapse() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isCollapsed = !_isCollapsed;
+    });
+    await prefs.setBool('set_selectedLabelFocus_collapsed', _isCollapsed);
   }
 
   String _getCurrencySymbol(String code) {
@@ -91,7 +95,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
 
   String _formatAmount(double amount) {
     final symbol = _getCurrencySymbol(_primaryCurrency);
-    return '$symbol${_currencyFormatter.format(amount)}';
+    return '${_currencyFormatter.format(amount)} $symbol';
   }
 
   bool _isFixedExpenseLabelByName(String labelName) {
@@ -306,9 +310,11 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
 
     // Analytics: Period-over-Period (MoM) Trend Indicator
     double previousPeriodNet = 0.0;
+    DateTime? prevStart;
+    DateTime? prevEnd;
     if (effectiveStartDate != null && effectiveEndDate != null) {
-      final prevStart = effectiveStartDate.subtract(Duration(days: durationDays));
-      final prevEnd = effectiveStartDate.subtract(const Duration(days: 1));
+      prevStart = effectiveStartDate.subtract(Duration(days: durationDays));
+      prevEnd = effectiveStartDate.subtract(const Duration(days: 1));
       
       for (var tx in widget.transactions) {
         final txDate = DateTime.tryParse(tx.createdAt);
@@ -322,9 +328,10 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
         }
       }
     }
-    double momDifference = previousPeriodNet != 0 ? ((net - previousPeriodNet) / previousPeriodNet.abs()) * 100 : 0.0;
+    double momDifference = net != 0 ? ((previousPeriodNet - net) / net.abs()) * 100 : 0.0;
 
     final bool hasDateFilter = effectiveStartDate != null || effectiveEndDate != null;
+    final displayOwner = (widget.selectedOwner == null || widget.selectedOwner!.isEmpty) ? 'All Owners' : widget.selectedOwner!;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -386,563 +393,536 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6.0),
-                        child: SizedBox(
-                          height: 32,
-                          width: 32,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF1F5F9),
-                              foregroundColor: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      Container(
+                        height: 28,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 4),
+                            Text(
+                              displayOwner,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                              ),
                             ),
-                            onPressed: widget.onToggleWidth,
-                            icon: Icon(
-                              widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                              size: 18,
-                            ),
-                            tooltip: widget.isWide ? 'Narrow' : 'Wide',
-                          ),
+                          ],
                         ),
                       ),
+                      const SizedBox(width: 6),
                       SizedBox(
-                        height: 32,
-                        width: 32,
+                        height: 28,
+                        width: 28,
                         child: IconButton(
                           style: IconButton.styleFrom(
-                            backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF1F5F9),
-                            foregroundColor: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B),
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                             padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                           ),
-                          onPressed: widget.onHide,
-                          icon: const Icon(
-                            Icons.visibility_off_outlined,
-                            size: 16,
-                          ),
-                          tooltip: 'Hide',
+                          onPressed: _toggleCollapse,
+                          icon: Icon(_isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded, size: 16),
+                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
                         ),
                       ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
+              if (!_isCollapsed) ...[
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
                       child: Row(
                         children: [
-                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 6),
                           Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String?>(
-                                value: widget.selectedOwner,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                isDense: true,
-                                isExpanded: true,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                hint: Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8))),
-                                items: [
-                                  DropdownMenuItem<String?>(value: null, child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                  ...widget.owners.map((o) => DropdownMenuItem<String?>(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
-                                ],
-                                onChanged: widget.onOwnerChanged,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.horizontal(
-                                left: const Radius.circular(10),
-                                right: hasDateFilter ? Radius.zero : const Radius.circular(10),
-                              ),
-                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: widget.onSelectStartDate,
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
                                 borderRadius: BorderRadius.horizontal(
                                   left: const Radius.circular(10),
                                   right: hasDateFilter ? Radius.zero : const Radius.circular(10),
                                 ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          hasDateFilter
-                                              ? '${effectiveStartDate != null ? DateFormat('MM/dd').format(effectiveStartDate) : '...'} - ${effectiveEndDate != null ? DateFormat('MM/dd').format(effectiveEndDate) : '...'}'
-                                              : 'Select Date Range',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155)) : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)),
-                                            fontWeight: FontWeight.bold,
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: widget.onSelectStartDate,
+                                  borderRadius: BorderRadius.horizontal(
+                                    left: const Radius.circular(10),
+                                    right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            hasDateFilter
+                                                ? '${effectiveStartDate != null ? DateFormat('MM/dd').format(effectiveStartDate) : '...'} - ${effectiveEndDate != null ? DateFormat('MM/dd').format(effectiveEndDate) : '...'}'
+                                                : 'Select Date Range',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155)) : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)),
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                      ),
-                                      Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? Colors.white38 : const Color(0xFF94A3B8)),
-                                    ],
+                                        Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? Colors.white38 : const Color(0xFF94A3B8)),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                        if (hasDateFilter) ...[
-                          const SizedBox(width: 1),
-                          Container(
-                            height: 44,
-                            width: 36,
-                            decoration: BoxDecoration(
-                              color: _isZaznamityMode ? const Color(0xFF3D256B) : const Color(0xFFE2E8F0),
-                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: widget.onClearDateFilter,
+                          if (hasDateFilter) ...[
+                            const SizedBox(width: 1),
+                            Container(
+                              height: 44,
+                              width: 36,
+                              decoration: BoxDecoration(
+                                color: _isZaznamityMode ? const Color(0xFF3D256B) : const Color(0xFFE2E8F0),
                                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                                child: const Center(
-                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171)),
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: widget.onClearDateFilter,
+                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                  child: const Center(
+                                    child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171)),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.label_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<int?>(
-                                value: widget.selectedLabelId,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                isDense: true,
-                                isExpanded: true,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                hint: Text('All Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8))),
-                                items: [
-                                  DropdownMenuItem<int?>(value: null, child: Text('All Labels', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                  ...widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
-                                ],
-                                onChanged: widget.onLabelChanged,
-                              ),
-                            ),
-                          ),
+                          ],
                         ],
                       ),
                     ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: InkWell(
-                      onTap: () {
-                        if (widget.onJumpToHistory != null) {
-                          widget.onJumpToHistory!(
-                            widget.selectedLabelId, 
-                            (widget.selectedOwner == 'All Owners' ? null : widget.selectedOwner), 
-                            effectiveStartDate, 
-                            effectiveEndDate,
-                          );
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(10),
+                    SizedBox(
+                      width: boxWidth,
                       child: Container(
                         height: 44,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
                         decoration: BoxDecoration(
                           color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                         ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.center,
+                        child: Row(
                           children: [
-                            Text(
-                              'Display below all',
-                              style: TextStyle(
-                                color: _isZaznamityMode ? const Color(0xFFC084FC) : const Color(0xFF582F95),
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 1),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '${filteredTxs.length} Zaznams',
-                                  style: TextStyle(
-                                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                            Icon(Icons.label_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<int?>(
+                                  value: widget.selectedLabelId,
+                                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                  isDense: true,
+                                  isExpanded: true,
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                  hint: Text('All Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8))),
+                                  items: [
+                                    DropdownMenuItem<int?>(value: null, child: Text('All Labels', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                    ...widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
+                                  ],
+                                  onChanged: widget.onLabelChanged,
                                 ),
-                                const SizedBox(width: 3),
-                                Icon(Icons.arrow_forward_ios, size: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                              ],
+                              ),
                             ),
                           ],
                         ),
                       ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: InkWell(
+                        onTap: () {
+                          if (widget.onJumpToHistory != null) {
+                            widget.onJumpToHistory!(
+                              widget.selectedLabelId, 
+                              (widget.selectedOwner == 'All Owners' ? null : widget.selectedOwner), 
+                              effectiveStartDate, 
+                              effectiveEndDate,
+                            );
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          height: 44,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Display below all',
+                                style: TextStyle(
+                                  color: _isZaznamityMode ? const Color(0xFFC084FC) : const Color(0xFF582F95),
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 1),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '${filteredTxs.length} Zaznams',
+                                    style: TextStyle(
+                                      color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Icon(Icons.arrow_forward_ios, size: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Center(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'NET BALANCE',
+                            style: TextStyle(
+                              color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          InkWell(
+                            onTap: () => _showInfoModal(
+                              context,
+                              'Net Balance Mechanics',
+                              'The net cash flow resulting from total inflows minus total outflows filtered for the selected single label and date range.',
+                            ),
+                            child: Icon(Icons.info_outline, size: 13, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatAmount(net),
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Center(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    Column(
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('INFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
+                            const SizedBox(width: 3),
+                            InkWell(
+                              onTap: () => _showInfoModal(
+                                context,
+                                'Inflows & Share',
+                                'Total incoming transaction amounts associated with this label, accompanied by its percentage share of global inflows.',
+                              ),
+                              child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text('+${_formatAmount(inflow)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
+                        const SizedBox(height: 2),
+                        Text('${inflowPercentage.toStringAsFixed(1)}% of total', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B))),
+                      ],
+                    ),
+                    Container(height: 35, width: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                    Column(
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('OUTFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
+                            const SizedBox(width: 3),
+                            InkWell(
+                              onTap: () => _showInfoModal(
+                                context,
+                                'Outflows & Share',
+                                'Total outgoing spending associated with this label, alongside its percentage share of global portfolio outflows.',
+                              ),
+                              child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text('-${_formatAmount(outflow)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFFF87171))),
+                        const SizedBox(height: 2),
+                        Text('${outflowPercentage.toStringAsFixed(1)}% of total', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B))),
+                      ],
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 20),
+
+                // NEW SECTION: Forecasted Label Burn & Recurring Projection
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'NET BALANCE',
-                          style: TextStyle(
-                            color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
+                          'LABEL BURN & FORECAST',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
                         ),
                         const SizedBox(width: 4),
                         InkWell(
                           onTap: () => _showInfoModal(
                             context,
-                            'Net Balance Mechanics',
-                            'The net cash flow resulting from total inflows minus total outflows filtered for the selected single label and date range.',
+                            'Label Burn & Forecast',
+                            'Projects expected total spend for the remainder of the month based on current day-to-day run-rate velocity.\n\n'
+                            'Tag: Displays whether the label is classified as Fixed (mandatory overhead) or Discretionary (flexible spending).\n\n'
+                            'Contribution: Shows what percentage this label contributes to your overall monthly outflow.',
                           ),
-                          child: Icon(Icons.info_outline, size: 13, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
+                          child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _formatAmount(net),
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isFixedLabel 
+                            ? (_isZaznamityMode ? const Color(0xFF3B1E63) : const Color(0xFFE2E8F0))
+                            : (_isZaznamityMode ? const Color(0xFF1E3A8A).withValues(alpha: 0.4) : const Color(0xFFDBEAFE)),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        isFixedLabel ? 'FIXED' : 'DISCRETIONARY',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          color: isFixedLabel
+                              ? (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))
+                              : (_isZaznamityMode ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8)),
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  Column(
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
+                      Column(
                         children: [
-                          Text('INFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
-                          const SizedBox(width: 3),
-                          InkWell(
-                            onTap: () => _showInfoModal(
-                              context,
-                              'Inflows & Share',
-                              'Total incoming transaction amounts associated with this label, accompanied by its percentage share of global inflows.',
-                            ),
-                            child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                          ),
+                          Text('Projected Month-End', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
+                          const SizedBox(height: 2),
+                          Text(_formatAmount(projectedMonthEndSpend), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text('+${_formatAmount(inflow)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
-                      const SizedBox(height: 2),
-                      Text('${inflowPercentage.toStringAsFixed(1)}% of total', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B))),
-                    ],
-                  ),
-                  Container(height: 35, width: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                  Column(
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
+                      Container(height: 25, width: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                      Column(
                         children: [
-                          Text('OUTFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
-                          const SizedBox(width: 3),
-                          InkWell(
-                            onTap: () => _showInfoModal(
-                              context,
-                              'Outflows & Share',
-                              'Total outgoing spending associated with this label, alongside its percentage share of global portfolio outflows.',
-                            ),
-                            child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                          ),
+                          Text('Burn Contribution', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
+                          const SizedBox(height: 2),
+                          Text('${labelBurnContributionShare.toStringAsFixed(1)}% of burn', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text('-${_formatAmount(outflow)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFFF87171))),
-                      const SizedBox(height: 2),
-                      Text('${outflowPercentage.toStringAsFixed(1)}% of total', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B))),
                     ],
                   ),
-                ],
-              ),
-              
-              const SizedBox(height: 20),
-
-              // NEW SECTION: Forecasted Label Burn & Recurring Projection
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'LABEL BURN & FORECAST',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
-                      ),
-                      const SizedBox(width: 4),
-                      InkWell(
-                        onTap: () => _showInfoModal(
-                          context,
-                          'Label Burn & Forecast',
-                          'Projects expected total spend for the remainder of the month based on current day-to-day run-rate velocity.\n\n'
-                          'Tag: Displays whether the label is classified as Fixed (mandatory overhead) or Discretionary (flexible spending).\n\n'
-                          'Contribution: Shows what percentage this label contributes to your overall monthly outflow.',
-                        ),
-                        child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isFixedLabel 
-                          ? (_isZaznamityMode ? const Color(0xFF3B1E63) : const Color(0xFFE2E8F0))
-                          : (_isZaznamityMode ? const Color(0xFF1E3A8A).withValues(alpha: 0.4) : const Color(0xFFDBEAFE)),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      isFixedLabel ? 'FIXED' : 'DISCRETIONARY',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        color: isFixedLabel
-                            ? (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))
-                            : (_isZaznamityMode ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    Column(
-                      children: [
-                        Text('Projected Month-End', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
-                        const SizedBox(height: 2),
-                        Text(_formatAmount(projectedMonthEndSpend), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
-                      ],
-                    ),
-                    Container(height: 25, width: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                    Column(
-                      children: [
-                        Text('Burn Contribution', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
-                        const SizedBox(height: 2),
-                        Text('${labelBurnContributionShare.toStringAsFixed(1)}% of burn', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
 
-              const SizedBox(height: 14),
+                const SizedBox(height: 14),
 
-              // SECTION 2: Top Spending/Income Contributors Card
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'TOP CONTRIBUTORS',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
-                      ),
-                      const SizedBox(width: 4),
-                      InkWell(
-                        onTap: () => _showInfoModal(
-                          context,
-                          'Top Contributors',
-                          'Aggregates and highlights the top 3 description drivers ranked by total amount within this label.',
-                        ),
-                        child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                ),
-                child: top3Contributors.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Center(
-                          child: Text('No transactions recorded', style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: _isZaznamityMode ? Colors.white38 : const Color(0xFF94A3B8))),
-                        ),
-                      )
-                    : Column(
-                        children: top3Contributors.map((entry) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 6.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    entry.key,
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  _formatAmount(entry.value),
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-              ),
-
-              const SizedBox(height: 14),
-
-              // SECTION 3: Period-over-Period (MoM) Trend Indicator Card
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'PERIOD TREND (MoM)',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
-                      ),
-                      const SizedBox(width: 4),
-                      InkWell(
-                        onTap: () => _showInfoModal(
-                          context,
-                          'Period-over-Period Trend',
-                          'Compares net cash flow of the current selected date range against the exact preceding timeframe span.',
-                        ),
-                        child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                ),
-                child: Row(
+                // SECTION 2: Top Spending/Income Contributors Card
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Previous Period Net:', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
                     Row(
                       children: [
                         Text(
-                          _formatAmount(previousPeriodNet),
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                          'TOP CONTRIBUTORS',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
                         ),
-                        const SizedBox(width: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: momDifference >= 0 ? const Color(0xFF34D399).withValues(alpha: 0.2) : const Color(0xFFF87171).withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4),
+                        const SizedBox(width: 4),
+                        InkWell(
+                          onTap: () => _showInfoModal(
+                            context,
+                            'Top Contributors',
+                            'Aggregates and highlights the top 3 description drivers ranked by total amount within this label.',
                           ),
-                          child: Text(
-                            '${momDifference >= 0 ? '▲ +' : '▼ '}${momDifference.toStringAsFixed(1)}%',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: momDifference >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                            ),
-                          ),
+                          child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
                         ),
                       ],
                     ),
                   ],
                 ),
-              ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: top3Contributors.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Center(
+                            child: Text('No transactions recorded', style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: _isZaznamityMode ? Colors.white38 : const Color(0xFF94A3B8))),
+                          ),
+                        )
+                      : Column(
+                          children: top3Contributors.map((entry) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 6.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      entry.key,
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _formatAmount(entry.value),
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                ),
+
+                const SizedBox(height: 14),
+
+                // SECTION 3: Period-over-Period (MoM) Trend Indicator Card
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'PERIOD TREND (MoM)',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
+                        ),
+                        const SizedBox(width: 4),
+                        InkWell(
+                          onTap: () => _showInfoModal(
+                            context,
+                            'Period-over-Period Trend',
+                            'Compares net cash flow of the current selected date range against the exact preceding timeframe span.',
+                          ),
+                          child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        prevStart != null && prevEnd != null
+                            ? '${DateFormat('MM/dd').format(prevStart)} - ${DateFormat('MM/dd').format(prevEnd)} Net:'
+                            : 'Previous Period Net:',
+                        style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                      ),
+                      Row(
+                        children: [
+                          Text(
+                            _formatAmount(previousPeriodNet),
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: momDifference >= 0 ? const Color(0xFF34D399).withValues(alpha: 0.2) : const Color(0xFFF87171).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '${momDifference >= 0 ? '▲ +' : '▼ '}${momDifference.toStringAsFixed(1)}%',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: momDifference >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         );
