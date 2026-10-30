@@ -21,6 +21,7 @@ class IncomeExpensesByLabelsCard extends StatefulWidget {
   final VoidCallback? onHide;
   final bool isWide;
   final VoidCallback? onToggleWidth;
+  final Function(int? labelId, String? owner, DateTime? start, DateTime? end)? onJumpToHistory;
 
   const IncomeExpensesByLabelsCard({
     super.key,
@@ -37,6 +38,7 @@ class IncomeExpensesByLabelsCard extends StatefulWidget {
     this.onHide,
     this.isWide = false,
     this.onToggleWidth,
+    this.onJumpToHistory,
   });
 
   @override
@@ -56,6 +58,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   String _multiLabelDefaultRange = '';
   bool _isZaznamityMode = true;
   bool _excludeTransfers = true;
+  bool _isCollapsed = false;
 
   double _cachedTotalIncome = 0;
   double _cachedTotalExpenses = 0;
@@ -87,6 +90,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   Future<void> _loadMultiLabelSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
+    final collapsed = prefs.getBool('set_incomeExpensesByLabels_collapsed') ?? false;
     
     final savedIncomeStr = prefs.getString('selected_income_labels');
     if (savedIncomeStr != null && savedIncomeStr.isNotEmpty) {
@@ -110,10 +114,19 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       _multiLabelDefaultRange = prefs.getString('set_multiLabel_range') ?? 'Current Month';
       _isZaznamityMode = (savedTheme == 'zaznamity');
       _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
+      _isCollapsed = collapsed;
       for (var label in widget.labels) {
         _multiLabelFixedCategories[label.name] = prefs.getBool('set_multilabel_fixed_${label.name}') ?? false;
       }
     });
+  }
+
+  Future<void> _toggleCollapse() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isCollapsed = !_isCollapsed;
+    });
+    await prefs.setBool('set_incomeExpensesByLabels_collapsed', _isCollapsed);
   }
 
   Future<void> _saveSelectedLabels() async {
@@ -324,6 +337,21 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     );
   }
 
+  void _handleLabelDrillDown(String labelName) {
+    if (widget.onJumpToHistory == null) return;
+    
+    final matchedLabel = widget.labels.where((l) => l.name == labelName).firstOrNull;
+    final labelId = matchedLabel?.id;
+    final activeOwner = widget.selectedOwner ?? _localOwner;
+    
+    widget.onJumpToHistory!(
+      labelId,
+      activeOwner == 'All Owners' ? null : activeOwner,
+      _getEffectiveStartDate(),
+      _getEffectiveEndDate(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     Future.microtask(() async {
@@ -388,11 +416,11 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48;
+        final double fullWidth = availableWidth - 32;
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
                   color: Colors.black,
@@ -422,6 +450,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                 ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -470,868 +499,853 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                         ),
                       ),
                       const SizedBox(width: 6),
+                      SizedBox(
+                        height: 28,
+                        width: 28,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                          onPressed: _toggleCollapse,
+                          icon: Icon(
+                            _isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded,
+                            size: 16,
+                          ),
+                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
+                        ),
+                      ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              if (!_isCollapsed) ...[
+                const SizedBox(height: 16),
 
-              // Row 1: Owners & Date Range Picker (with Info Circle in top left)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
+                // Row 1: Date Range Picker (Owner dropdown removed from row 1)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Stack(
+                        clipBehavior: Clip.none,
                         children: [
-                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String?>(
-                                value: activeOwner,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                isDense: true,
-                                isExpanded: true,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                                hint: Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                items: [
-                                  DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.horizontal(
+                                      left: const Radius.circular(10),
+                                      right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                    ),
+                                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                                   ),
-                                  ...widget.owners.map((owner) => DropdownMenuItem<String?>(
-                                        value: owner,
-                                        child: Text(owner, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                                      )),
-                                ],
-                                onChanged: (val) {
-                                  setState(() => _localOwner = val);
-                                  widget.onOwnerChanged(val);
-                                },
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: widget.onSelectStartDate,
+                                      borderRadius: BorderRadius.horizontal(
+                                        left: const Radius.circular(10),
+                                        right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(left: 14, right: 8),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                effectiveStart != null && effectiveEnd != null
+                                                    ? '${DateFormat('MM/dd').format(effectiveStart)} - ${DateFormat('MM/dd').format(effectiveEnd)}'
+                                                    : 'Date Range',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: hasDateFilter
+                                                      ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
+                                                      : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                                  fontWeight: hasDateFilter
+                                                      ? FontWeight.bold
+                                                      : FontWeight.normal,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            if (!hasDateFilter)
+                                              Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              if (hasDateFilter) ...[
+                                const SizedBox(width: 1),
+                                Container(
+                                  height: 44,
+                                  width: 36,
+                                  decoration: BoxDecoration(
+                                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
+                                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: widget.onClearDateFilter,
+                                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                      child: const Center(
+                                        child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          Positioned(
+                            top: -6,
+                            left: -4,
+                            child: InkWell(
+                              onTap: () => _showInfoModal(
+                                context,
+                                'Date Filter Default',
+                                'The default date range of this card is set to the current month unless custom date bounds are explicitly picked.',
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Container(
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.horizontal(
-                                    left: const Radius.circular(10),
-                                    right: hasDateFilter ? Radius.zero : const Radius.circular(10),
-                                  ),
-                                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                                ),
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: widget.onSelectStartDate,
-                                    borderRadius: BorderRadius.horizontal(
-                                      left: const Radius.circular(10),
-                                      right: hasDateFilter ? Radius.zero : const Radius.circular(10),
-                                    ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(left: 14, right: 8),
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              effectiveStart != null && effectiveEnd != null
-                                                  ? '${DateFormat('MM/dd').format(effectiveStart)} - ${DateFormat('MM/dd').format(effectiveEnd)}'
-                                                  : 'Date Range',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: hasDateFilter
-                                                    ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
-                                                    : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                                fontWeight: hasDateFilter
-                                                    ? FontWeight.bold
-                                                    : FontWeight.normal,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          if (!hasDateFilter)
-                                            Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (hasDateFilter) ...[
-                              const SizedBox(width: 1),
-                              Container(
-                                height: 44,
-                                width: 36,
-                                decoration: BoxDecoration(
-                                  color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
-                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                                ),
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: widget.onClearDateFilter,
-                                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                                    child: const Center(
-                                      child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        Positioned(
-                          top: -6,
-                          left: -4,
-                          child: InkWell(
-                            onTap: () => _showInfoModal(
-                              context,
-                              'Date Filter Default',
-                              'The default date range of this card is set to the current month unless custom date bounds are explicitly picked.',
-                            ),
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: BoxDecoration(
-                                color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Row 2: "Income Labels" Dropdown and "Expense Labels" Dropdown
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: InkWell(
-                      onTap: () => _showMultiSelectDialog(
-                        context,
-                        'Select Income Labels',
-                        widget.labels,
-                        selectedIncomeLabels,
-                        (updatedIds) {
-                          setState(() {
-                            selectedIncomeLabels.clear();
-                            selectedIncomeLabels.addAll(updatedIds);
-                          });
-                          _saveSelectedLabels();
-                        },
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        height: 44,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  Icon(Icons.add_circle_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        selectedIncomeLabels.length == widget.labels.length
-                                            ? 'Income Labels (All)'
-                                            : 'Income (${selectedIncomeLabels.length}/${widget.labels.length})',
-                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(Icons.arrow_drop_down, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: InkWell(
-                      onTap: () => _showMultiSelectDialog(
-                        context,
-                        'Select Expense Labels',
-                        widget.labels,
-                        selectedExpenseLabels,
-                        (updatedIds) {
-                          setState(() {
-                            selectedExpenseLabels.clear();
-                            selectedExpenseLabels.addAll(updatedIds);
-                          });
-                          _saveSelectedLabels();
-                        },
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        height: 44,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  Icon(Icons.remove_circle_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        selectedExpenseLabels.length == widget.labels.length
-                                            ? 'Expense Labels (All)'
-                                            : 'Expense (${selectedExpenseLabels.length}/${widget.labels.length})',
-                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(Icons.arrow_drop_down, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Fixed vs Discretionary Card Box with 2 separate rows below the bar
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'FIXED VS DISCRETIONARY',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95), letterSpacing: 0.5),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: fixedRatio > 0 ? fixedRatio.round() : 1,
-                              child: Container(
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: _isZaznamityMode ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
-                                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(4)),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 2),
-                            Expanded(
-                              flex: discRatio > 0 ? discRatio.round() : 1,
-                              child: Container(
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFBBF24),
-                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        // 1st row below bar: fixed [amount] [%] left aligned
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Fixed: ${currencyFormat.format(_cachedFixedExpenses)} (${fixedRatio.toStringAsFixed(1)}%)',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF38BDF8) : const Color(0xFF0284C7)),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        // 2nd row below bar: discretionary [amount] [%] right aligned (yellow color)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            'Discretionary: ${currencyFormat.format(_cachedDiscretionaryExpenses)} (${discRatio.toStringAsFixed(1)}%)',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFFBBF24)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Positioned(
-                    top: -6,
-                    right: -4,
-                    child: InkWell(
-                      onTap: () => _showInfoModal(
-                        context,
-                        'Fixed vs. Discretionary Spending',
-                        'Separates essential recurring living costs from flexible lifestyle expenses. Configure labels in Zaznamity Settings -> Labels Management.',
-                      ),
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              Column(
-                children: [
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      InkWell(
-                        onTap: () => setState(() => chartDisplayMode = 'Show Income'),
-                        borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: _isZaznamityMode ? const Color.fromARGB(255, 17, 34, 28) : const Color(0xFFECFDF5),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)).withValues(alpha: 0.6), width: 1.2),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('TOTAL INCOME     (Tap to view charts)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669), letterSpacing: 0.5)),
-                              const SizedBox(height: 8),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: (_cachedTotalIncome / _cachedMaxTopAmount).clamp(0.0, 1.0),
-                                  backgroundColor: _isZaznamityMode ? const Color(0xFF064E3B) : const Color(0xFFA7F3D0),
-                                  color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669),
-                                  minHeight: 10,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    currencyFormat.format(_cachedTotalIncome),
-                                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: -6,
-                        right: -4,
-                        child: InkWell(
-                          onTap: () => _showInfoModal(
-                            context,
-                            'Total Income',
-                            'Sum of all incoming money transactions filtered by owner, date range, and selected income labels. Pressing anywhere on this box shows the charts below as income.',
-                          ),
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0), shape: BoxShape.circle),
-                            child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      InkWell(
-                        onTap: () => setState(() => chartDisplayMode = 'Show Expenses'),
-                        borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: _isZaznamityMode ? const Color.fromARGB(255, 40, 20, 23) : const Color(0xFFFEF2F2),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)).withValues(alpha: 0.6), width: 1.2),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('TOTAL EXPENSES     (Tap to view charts)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626), letterSpacing: 0.5)),
-                              const SizedBox(height: 8),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: (_cachedTotalExpenses / _cachedMaxTopAmount).clamp(0.0, 1.0),
-                                  backgroundColor: _isZaznamityMode ? const Color(0xFF7F1D1D) : const Color(0xFFFECACA),
-                                  color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626),
-                                  minHeight: 10,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    currencyFormat.format(_cachedTotalExpenses),
-                                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: -6,
-                        right: -4,
-                        child: InkWell(
-                          onTap: () => _showInfoModal(
-                            context,
-                            'Total Expenses',
-                            'Sum of all outgoing expense transactions filtered by owner, date range, and your chosen expense labels. Pressing anywhere on this box shows the charts below as expenses.',
-                          ),
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0), shape: BoxShape.circle),
-                            child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              Container(
-                height: 38,
-                decoration: BoxDecoration(
-                  color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                  border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                  borderRadius: BorderRadius.circular(8),
+                  ],
                 ),
-                child: Row(
+                const SizedBox(height: 12),
+
+                // Row 2: "Income Labels" Dropdown and "Expense Labels" Dropdown
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => chartType = 'Bar'),
+                    SizedBox(
+                      width: boxWidth,
+                      child: InkWell(
+                        onTap: () => _showMultiSelectDialog(
+                          context,
+                          'Select Income Labels',
+                          widget.labels,
+                          selectedIncomeLabels,
+                          (updatedIds) {
+                            setState(() {
+                              selectedIncomeLabels.clear();
+                              selectedIncomeLabels.addAll(updatedIds);
+                            });
+                            _saveSelectedLabels();
+                          },
+                        ),
+                        borderRadius: BorderRadius.circular(10),
                         child: Container(
-                          alignment: Alignment.center,
+                          height: 44,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
                           decoration: BoxDecoration(
-                            color: chartType == 'Bar' ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)) : Colors.transparent,
-                            borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                           ),
-                          child: Text(
-                            'Bar',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: chartType == 'Bar' ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
-                            ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.add_circle_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          selectedIncomeLabels.length == widget.labels.length
+                                              ? 'Income Labels (All)'
+                                              : 'Income (${selectedIncomeLabels.length}/${widget.labels.length})',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.arrow_drop_down, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
+                            ],
                           ),
                         ),
                       ),
                     ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => chartType = 'Donut'),
-                        child: Container(
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: chartType == 'Donut' ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)) : Colors.transparent,
-                          ),
-                          child: Text(
-                            'Donut',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: chartType == 'Donut' ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
-                            ),
-                          ),
+                    SizedBox(
+                      width: boxWidth,
+                      child: InkWell(
+                        onTap: () => _showMultiSelectDialog(
+                          context,
+                          'Select Expense Labels',
+                          widget.labels,
+                          selectedExpenseLabels,
+                          (updatedIds) {
+                            setState(() {
+                              selectedExpenseLabels.clear();
+                              selectedExpenseLabels.addAll(updatedIds);
+                            });
+                            _saveSelectedLabels();
+                          },
                         ),
-                      ),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => chartType = 'Treemap'),
+                        borderRadius: BorderRadius.circular(10),
                         child: Container(
-                          alignment: Alignment.center,
+                          height: 44,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
                           decoration: BoxDecoration(
-                            color: chartType == 'Treemap' ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)) : Colors.transparent,
-                            borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                           ),
-                          child: Text(
-                            'Treemap',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: chartType == 'Treemap' ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
-                            ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.remove_circle_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          selectedExpenseLabels.length == widget.labels.length
+                                              ? 'Expense Labels (All)'
+                                              : 'Expense (${selectedExpenseLabels.length}/${widget.labels.length})',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.arrow_drop_down, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
+                            ],
                           ),
                         ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
-              _cachedSortedEntries.isEmpty
-                  ? SizedBox(
-                      height: 150,
-                      child: Center(
-                        child: Text('No data available for selected filters.', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                // Fixed vs Discretionary Card Box with 2 separate rows below the bar
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                       ),
-                    )
-                  : chartType == 'Bar'
-                      ? Column(
-                          children: [
-                            ...List.generate(_cachedSortedEntries.length, (index) {
-                              final entry = _cachedSortedEntries[index];
-                              final barColor = paletteColors[index % paletteColors.length];
-                              final double widthFactor = _cachedMaxChartAmount > 0 ? (entry.value / _cachedMaxChartAmount).clamp(0.02, 1.0) : 0.02;
-                              final percentageShare = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
-                              final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'FIXED VS DISCRETIONARY',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95), letterSpacing: 0.5),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: fixedRatio > 0 ? fixedRatio.round() : 1,
+                                child: Container(
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: _isZaznamityMode ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+                                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(4)),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              Expanded(
+                                flex: discRatio > 0 ? discRatio.round() : 1,
+                                child: Container(
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFBBF24),
+                                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Fixed: ${currencyFormat.format(_cachedFixedExpenses)} (${fixedRatio.toStringAsFixed(1)}%)',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF38BDF8) : const Color(0xFF0284C7)),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              'Discretionary: ${currencyFormat.format(_cachedDiscretionaryExpenses)} (${discRatio.toStringAsFixed(1)}%)',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFFBBF24)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      top: -6,
+                      right: -4,
+                      child: InkWell(
+                        onTap: () => _showInfoModal(
+                          context,
+                          'Fixed vs. Discretionary Spending',
+                          'Separates essential recurring living costs from flexible lifestyle expenses. Configure labels in Zaznamity Settings -> Labels Management.',
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
 
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 12.0),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 95,
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.end,
-                                        children: [
-                                          Text(
-                                            entry.key,
-                                            textAlign: TextAlign.right,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                              color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.end,
+                Column(
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        InkWell(
+                          onTap: () => setState(() => chartDisplayMode = 'Show Income'),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: _isZaznamityMode ? const Color.fromARGB(255, 17, 34, 28) : const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)).withValues(alpha: 0.6), width: 1.2),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('TOTAL INCOME     (Tap to view charts)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669), letterSpacing: 0.5)),
+                                const SizedBox(height: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: (_cachedTotalIncome / _cachedMaxTopAmount).clamp(0.0, 1.0),
+                                    backgroundColor: _isZaznamityMode ? const Color(0xFF064E3B) : const Color(0xFFA7F3D0),
+                                    color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669),
+                                    minHeight: 10,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      currencyFormat.format(_cachedTotalIncome),
+                                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: -6,
+                          right: -4,
+                          child: InkWell(
+                            onTap: () => _showInfoModal(
+                              context,
+                              'Total Income',
+                              'Sum of all incoming money transactions filtered by owner, date range, and selected income labels. Pressing anywhere on this box shows the charts below as income.',
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0), shape: BoxShape.circle),
+                              child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        InkWell(
+                          onTap: () => setState(() => chartDisplayMode = 'Show Expenses'),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: _isZaznamityMode ? const Color.fromARGB(255, 40, 20, 23) : const Color(0xFFFEF2F2),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)).withValues(alpha: 0.6), width: 1.2),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('TOTAL EXPENSES     (Tap to view charts)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626), letterSpacing: 0.5)),
+                                const SizedBox(height: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: (_cachedTotalExpenses / _cachedMaxTopAmount).clamp(0.0, 1.0),
+                                    backgroundColor: _isZaznamityMode ? const Color(0xFF7F1D1D) : const Color(0xFFFECACA),
+                                    color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626),
+                                    minHeight: 10,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      currencyFormat.format(_cachedTotalExpenses),
+                                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: -6,
+                          right: -4,
+                          child: InkWell(
+                            onTap: () => _showInfoModal(
+                              context,
+                              'Total Expenses',
+                              'Sum of all outgoing expense transactions filtered by owner, date range, and your chosen expense labels. Pressing anywhere on this box shows the charts below as expenses.',
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0), shape: BoxShape.circle),
+                              child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                Container(
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => chartType = 'Bar'),
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: chartType == 'Bar' ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)) : Colors.transparent,
+                              borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
+                            ),
+                            child: Text(
+                              'Bar',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: chartType == 'Bar' ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => chartType = 'Donut'),
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: chartType == 'Donut' ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)) : Colors.transparent,
+                            ),
+                            child: Text(
+                              'Donut',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: chartType == 'Donut' ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => chartType = 'Treemap'),
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: chartType == 'Treemap' ? (_isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)) : Colors.transparent,
+                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
+                            ),
+                            child: Text(
+                              'Treemap',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: chartType == 'Treemap' ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                _cachedSortedEntries.isEmpty
+                    ? SizedBox(
+                        height: 150,
+                        child: Center(
+                          child: Text('No data available for selected filters.', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                        ),
+                      )
+                    : chartType == 'Bar'
+                        ? Column(
+                            children: [
+                              ...List.generate(_cachedSortedEntries.length, (index) {
+                                final entry = _cachedSortedEntries[index];
+                                final barColor = paletteColors[index % paletteColors.length];
+                                final double widthFactor = _cachedMaxChartAmount > 0 ? (entry.value / _cachedMaxChartAmount).clamp(0.02, 1.0) : 0.02;
+                                final percentageShare = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
+                                final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12.0),
+                                  child: InkWell(
+                                    onTap: () => _handleLabelDrillDown(entry.key),
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Row(
+                                      children: [
+                                        SizedBox(
+                                          width: 95,
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
                                             children: [
                                               Text(
-                                                '${percentageShare.toStringAsFixed(1)}%',
+                                                entry.key,
+                                                textAlign: TextAlign.right,
                                                 style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                                                  fontWeight: FontWeight.w500,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.end,
+                                                children: [
+                                                  Text(
+                                                    '${percentageShare.toStringAsFixed(1)}%',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                                                      fontWeight: FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    '(${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%)',
+                                                    style: TextStyle(
+                                                      fontSize: 9,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: delta <= 0 ? (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)) : (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: LayoutBuilder(
+                                            builder: (context, constraints) {
+                                              const priceTextWidth = 75.0;
+                                              final availableBarArea = constraints.maxWidth - priceTextWidth;
+                                              final computedBarWidth = (availableBarArea * widthFactor).clamp(4.0, availableBarArea);
+
+                                              return Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  SizedBox(
+                                                    width: computedBarWidth,
+                                                    child: Container(
+                                                      height: 18,
+                                                      decoration: BoxDecoration(
+                                                        color: barColor,
+                                                        borderRadius: const BorderRadius.only(
+                                                          topRight: Radius.circular(6),
+                                                          bottomRight: Radius.circular(6),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  SizedBox(
+                                                    width: priceTextWidth,
+                                                    child: FittedBox(
+                                                      fit: BoxFit.scaleDown,
+                                                      alignment: Alignment.centerRight,
+                                                      child: Text(
+                                                        '\$${entry.value.toStringAsFixed(2)}',
+                                                        textAlign: TextAlign.right,
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }),
+                              const SizedBox(height: 8),
+                              Container(
+                                margin: const EdgeInsets.only(left: 97),
+                                child: Column(
+                                  children: [
+                                    Container(height: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text('\$0', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                        Text('\$${(_cachedMaxChartAmount * 0.5).toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                        Text('\$${_cachedMaxChartAmount.toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          )
+                        : chartType == 'Treemap'
+                            ? Column(
+                                children: [
+                                  Container(
+                                    height: 240,
+                                    decoration: BoxDecoration(
+                                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: _buildProportionalTreemap(_cachedSortedEntries, paletteColors, currencyFormat),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 8,
+                                    alignment: WrapAlignment.center,
+                                    children: List.generate(_cachedSortedEntries.length, (index) {
+                                      final entry = _cachedSortedEntries[index];
+                                      final color = paletteColors[index % paletteColors.length];
+                                      final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
+                                      final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
+
+                                      return InkWell(
+                                        onTap: () => _handleLabelDrillDown(entry.key),
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Container(
+                                                width: 10,
+                                                height: 10,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: color,
                                                 ),
                                               ),
-                                              const SizedBox(width: 4),
+                                              const SizedBox(width: 6),
                                               Text(
-                                                '(${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%)',
+                                                '${entry.key}: ',
+                                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                                              ),
+                                              Text(
+                                                '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
+                                                style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                              ),
+                                              Text(
+                                                '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
                                                 style: TextStyle(
-                                                  fontSize: 9,
+                                                  fontSize: 10,
                                                   fontWeight: FontWeight.bold,
                                                   color: delta <= 0 ? (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)) : (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
                                                 ),
                                               ),
                                             ],
                                           ),
-                                        ],
+                                        ),
+                                      );
+                                    }),
+                                  ),
+                                ],
+                              )
+                            : Column(
+                                children: [
+                                  SizedBox(
+                                    height: 240,
+                                    child: PieChart(
+                                      PieChartData(
+                                        pieTouchData: PieTouchData(
+                                          touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                                            setState(() {
+                                              if (!event.isInterestedForInteractions ||
+                                                  pieTouchResponse == null ||
+                                                  pieTouchResponse.touchedSection == null) {
+                                                touchedPieIndex = null;
+                                                return;
+                                              }
+                                              touchedPieIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                                            });
+                                          },
+                                        ),
+                                        borderData: FlBorderData(show: false),
+                                        sectionsSpace: 2,
+                                        centerSpaceRadius: 45,
+                                        sections: List.generate(_cachedSortedEntries.length, (index) {
+                                          final entry = _cachedSortedEntries[index];
+                                          final isTouched = index == touchedPieIndex;
+                                          final radius = isTouched ? 60.0 : 50.0;
+                                          final color = paletteColors[index % paletteColors.length];
+                                          final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
+
+                                          return PieChartSectionData(
+                                            color: color,
+                                            value: entry.value,
+                                            title: '${percentage.toStringAsFixed(1)}%',
+                                            radius: radius,
+                                            titlePositionPercentageOffset: 1.3,
+                                            titleStyle: TextStyle(
+                                              fontSize: isTouched ? 12 : 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                            ),
+                                          );
+                                        }),
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: LayoutBuilder(
-                                        builder: (context, constraints) {
-                                          const priceTextWidth = 75.0;
-                                          final availableBarArea = constraints.maxWidth - priceTextWidth;
-                                          final computedBarWidth = (availableBarArea * widthFactor).clamp(4.0, availableBarArea);
+                                  ),
+                                  const SizedBox(height: 20),
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 8,
+                                    alignment: WrapAlignment.center,
+                                    children: List.generate(_cachedSortedEntries.length, (index) {
+                                      final entry = _cachedSortedEntries[index];
+                                      final color = paletteColors[index % paletteColors.length];
+                                      final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
+                                      final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
 
-                                          return Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      return InkWell(
+                                        onTap: () => _handleLabelDrillDown(entry.key),
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
                                             children: [
-                                              SizedBox(
-                                                width: computedBarWidth,
-                                                child: Container(
-                                                  height: 18,
-                                                  decoration: BoxDecoration(
-                                                    color: barColor,
-                                                    borderRadius: const BorderRadius.only(
-                                                      topRight: Radius.circular(6),
-                                                      bottomRight: Radius.circular(6),
-                                                    ),
-                                                  ),
+                                              Container(
+                                                width: 10,
+                                                height: 10,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: color,
                                                 ),
                                               ),
-                                              SizedBox(
-                                                width: priceTextWidth,
-                                                child: FittedBox(
-                                                  fit: BoxFit.scaleDown,
-                                                  alignment: Alignment.centerRight,
-                                                  child: Text(
-                                                    '\$${entry.value.toStringAsFixed(2)}',
-                                                    textAlign: TextAlign.right,
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                                                    ),
-                                                  ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                '${entry.key}: ',
+                                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                                              ),
+                                              Text(
+                                                '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
+                                                style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                              ),
+                                              Text(
+                                                '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: delta <= 0 ? (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)) : (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
                                                 ),
                                               ),
                                             ],
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                            const SizedBox(height: 8),
-                            Container(
-                              margin: const EdgeInsets.only(left: 97),
-                              child: Column(
-                                children: [
-                                  Container(height: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text('\$0', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                      Text('\$${(_cachedMaxChartAmount * 0.5).toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                      Text('\$${_cachedMaxChartAmount.toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                    ],
+                                          ),
+                                        ),
+                                      );
+                                    }),
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
-                        )
-                      : chartType == 'Treemap'
-                          ? Column(
-                              children: [
-                                Container(
-                                  height: 240,
-                                  decoration: BoxDecoration(
-                                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: _buildProportionalTreemap(_cachedSortedEntries, paletteColors, currencyFormat),
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                                Wrap(
-                                  spacing: 12,
-                                  runSpacing: 8,
-                                  alignment: WrapAlignment.center,
-                                  children: List.generate(_cachedSortedEntries.length, (index) {
-                                    final entry = _cachedSortedEntries[index];
-                                    final color = paletteColors[index % paletteColors.length];
-                                    final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
-                                    final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
-
-                                    return Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            width: 10,
-                                            height: 10,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: color,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            '${entry.key}: ',
-                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                                          ),
-                                          Text(
-                                            '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
-                                            style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                          ),
-                                          Text(
-                                            '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              color: delta <= 0 ? (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)) : (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  }),
-                                ),
-                              ],
-                            )
-                          : Column(
-                              children: [
-                                SizedBox(
-                                  height: 240,
-                                  child: PieChart(
-                                    PieChartData(
-                                      pieTouchData: PieTouchData(
-                                        touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                                          setState(() {
-                                            if (!event.isInterestedForInteractions ||
-                                                pieTouchResponse == null ||
-                                                pieTouchResponse.touchedSection == null) {
-                                              touchedPieIndex = null;
-                                              return;
-                                            }
-                                            touchedPieIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
-                                          });
-                                        },
-                                      ),
-                                      borderData: FlBorderData(show: false),
-                                      sectionsSpace: 2,
-                                      centerSpaceRadius: 45,
-                                      sections: List.generate(_cachedSortedEntries.length, (index) {
-                                        final entry = _cachedSortedEntries[index];
-                                        final isTouched = index == touchedPieIndex;
-                                        final radius = isTouched ? 60.0 : 50.0;
-                                        final color = paletteColors[index % paletteColors.length];
-                                        final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
-
-                                        return PieChartSectionData(
-                                          color: color,
-                                          value: entry.value,
-                                          title: '${percentage.toStringAsFixed(1)}%',
-                                          radius: radius,
-                                          titlePositionPercentageOffset: 1.3,
-                                          titleStyle: TextStyle(
-                                            fontSize: isTouched ? 12 : 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                                          ),
-                                        );
-                                      }),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                                Wrap(
-                                  spacing: 12,
-                                  runSpacing: 8,
-                                  alignment: WrapAlignment.center,
-                                  children: List.generate(_cachedSortedEntries.length, (index) {
-                                    final entry = _cachedSortedEntries[index];
-                                    final color = paletteColors[index % paletteColors.length];
-                                    final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
-                                    final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
-
-                                    return Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            width: 10,
-                                            height: 10,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: color,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            '${entry.key}: ',
-                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                                          ),
-                                          Text(
-                                            '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
-                                            style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                          ),
-                                          Text(
-                                            '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              color: delta <= 0 ? (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)) : (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  }),
-                                ),
-                              ],
-                            ),
+              ],
             ],
           ),
         );
@@ -1358,41 +1372,44 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
 
             return Positioned.fromRect(
               rect: node.rect,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: node.color.withValues(alpha: 0.35),
-                  border: Border.all(color: _isZaznamityMode ? Colors.white24 : const Color(0xFFCBD5E1), width: 1.5),
+              child: InkWell(
+                onTap: () => _handleLabelDrillDown(node.label),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: node.color.withValues(alpha: 0.35),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white24 : const Color(0xFFCBD5E1), width: 1.5),
+                  ),
+                  child: fits
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              node.label,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${node.percentage.toStringAsFixed(1)}%',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        )
+                      : const SizedBox.shrink(),
                 ),
-                child: fits
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            node.label,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${node.percentage.toStringAsFixed(1)}%',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      )
-                    : const SizedBox.shrink(),
               ),
             );
           }).toList(),

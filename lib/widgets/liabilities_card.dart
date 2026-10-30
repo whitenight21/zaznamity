@@ -378,7 +378,7 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
                   color: Colors.black,

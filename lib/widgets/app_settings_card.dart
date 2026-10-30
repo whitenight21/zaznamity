@@ -241,6 +241,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       _biometricType = prefs.getString('biometricType') ?? 'PIN';
       _savedPin = prefs.getString('savedPin') ?? "1234";
       _pinController.text = _savedPin;
+      _isCollapsed = prefs.getBool('set_appsettings_collapsed') ?? false; // Fixed persistence
 
       _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
       _secondaryCurrency1 = prefs.getString('secondaryCurrency1');
@@ -274,6 +275,14 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
         _rightNavItems = [rightSaved[0], rightSaved[1], 'snapshot'];
       }
     });
+  }
+
+  Future<void> _toggleCollapse() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isCollapsed = !_isCollapsed;
+    });
+    await prefs.setBool('set_appsettings_collapsed', _isCollapsed);
   }
 
   Future<void> _loadLiabilities() async {
@@ -350,6 +359,50 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     }
   }
 
+  void _showInfoModal(String title, String description) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded, color: Color(0xFFA855F7)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          description,
+          style: TextStyle(
+            fontSize: 13,
+            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openReportFile(File file) async {
     try {
       final path = file.path.toLowerCase();
@@ -402,8 +455,15 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     bool deleteLabels = false;
     bool deleteOwners = false;
     bool deletePools = false;
-    bool deleteZaznams = false;
+    bool deleteZaznamsAll = false;
+    bool deleteZaznamsMonth = false;
+    bool deleteZaznamsCustom = false;
     bool wipeAll = false;
+
+    int selectedYear = DateTime.now().year;
+    int selectedMonth = DateTime.now().month;
+    DateTime customStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
+    DateTime customEnd = DateTime.now();
 
     showDialog(
       context: context,
@@ -423,10 +483,19 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                 ),
               ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.info_outline, size: 20, color: Color(0xFFA855F7)),
+                onPressed: () => _showInfoModal(
+                  'Delete Manager Info',
+                  'Allows safe cleanup of specific stored data categories, selective bulk deletion of transactions by month or custom date range, or a full factory reset of local phone storage.',
+                ),
+                tooltip: 'Info',
+              ),
             ],
           ),
           content: SizedBox(
-            width: 380,
+            width: 400,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -460,11 +529,94 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text('Delete All Zaznams', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                    value: wipeAll || deleteZaznams,
+                    title: Text('Delete All Zaznams (Entire History)', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                    value: wipeAll || deleteZaznamsAll,
                     activeColor: const Color(0xFFDC2626),
-                    onChanged: wipeAll ? null : (val) => setModalState(() => deleteZaznams = val ?? false),
+                    onChanged: wipeAll ? null : (val) => setModalState(() => deleteZaznamsAll = val ?? false),
                   ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Delete Zaznams by Month', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                    value: wipeAll || deleteZaznamsMonth,
+                    activeColor: const Color(0xFFDC2626),
+                    onChanged: wipeAll ? null : (val) => setModalState(() => deleteZaznamsMonth = val ?? false),
+                  ),
+                  if (deleteZaznamsMonth && !wipeAll) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<int>(
+                              initialValue: selectedYear,
+                              dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                              style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 12),
+                              decoration: const InputDecoration(labelText: 'Year', isDense: true, border: OutlineInputBorder()),
+                              items: List.generate(11, (i) => 2020 + i).map((y) => DropdownMenuItem(value: y, child: Text('$y'))).toList(),
+                              onChanged: (val) => setModalState(() => selectedYear = val ?? selectedYear),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<int>(
+                              initialValue: selectedMonth,
+                              dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                              style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 12),
+                              decoration: const InputDecoration(labelText: 'Month', isDense: true, border: OutlineInputBorder()),
+                              items: List.generate(12, (i) => i + 1).map((m) => DropdownMenuItem(value: m, child: Text('$m'))).toList(),
+                              onChanged: (val) => setModalState(() => selectedMonth = val ?? selectedMonth),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Delete Zaznams by Custom Date Range', style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                    value: wipeAll || deleteZaznamsCustom,
+                    activeColor: const Color(0xFFDC2626),
+                    onChanged: wipeAll ? null : (val) => setModalState(() => deleteZaznamsCustom = val ?? false),
+                  ),
+                  if (deleteZaznamsCustom && !wipeAll) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextButton.icon(
+                              onPressed: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: customStart,
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                );
+                                if (picked != null) setModalState(() => customStart = picked);
+                              },
+                              icon: const Icon(Icons.calendar_today, size: 14),
+                              label: Text('Start: ${DateFormat('yyyy-MM-dd').format(customStart)}', style: const TextStyle(fontSize: 11)),
+                            ),
+                          ),
+                          Expanded(
+                            child: TextButton.icon(
+                              onPressed: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: customEnd,
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                );
+                                if (picked != null) setModalState(() => customEnd = picked);
+                              },
+                              icon: const Icon(Icons.calendar_today, size: 14),
+                              label: Text('End: ${DateFormat('yyyy-MM-dd').format(customEnd)}', style: const TextStyle(fontSize: 11)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const Divider(),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
@@ -479,7 +631,9 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           deleteLabels = true;
                           deleteOwners = true;
                           deletePools = true;
-                          deleteZaznams = true;
+                          deleteZaznamsAll = true;
+                          deleteZaznamsMonth = false;
+                          deleteZaznamsCustom = false;
                         }
                       });
                     },
@@ -497,8 +651,25 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
               onPressed: () async {
                 Navigator.pop(ctx);
-                if (wipeAll || deleteZaznams) {
+                if (wipeAll || deleteZaznamsAll) {
                   widget.onDeleteBulkTransactions('all');
+                } else {
+                  if (deleteZaznamsMonth) {
+                    widget.onDeleteBulkTransactions('month', year: selectedYear, month: selectedMonth);
+                  }
+                  if (deleteZaznamsCustom) {
+                    final allTxs = await DatabaseHelper.instance.getTransactions();
+                    final startOfDay = DateTime(customStart.year, customStart.month, customStart.day);
+                    final endOfDay = DateTime(customEnd.year, customEnd.month, customEnd.day, 23, 59, 59);
+                    for (var tx in allTxs) {
+                      final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+                      if (!txDate.isBefore(startOfDay) && !txDate.isAfter(endOfDay)) {
+                        if (tx.id != null) {
+                          await DatabaseHelper.instance.deleteTransaction(tx.id!);
+                        }
+                      }
+                    }
+                  }
                 }
                 if (wipeAll || deleteLabels) {
                   for (var l in List.from(widget.labels)) {
@@ -2168,72 +2339,22 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4.0),
-                        child: SizedBox(
-                          height: 28,
-                          width: 28,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _isCollapsed = !_isCollapsed;
-                              });
-                            },
-                            icon: Icon(
-                              _isCollapsed ? Icons.unfold_more_rounded : Icons.unfold_less_rounded,
-                              size: 16,
-                            ),
-                            tooltip: _isCollapsed ? 'Uncollapse' : 'Collapse',
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        height: 28,
+                        width: 28,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                           ),
+                          onPressed: _toggleCollapse,
+                          icon: Icon(_isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded, size: 16),
+                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
                         ),
                       ),
-                      if (widget.onToggleWidth != null)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4.0),
-                          child: SizedBox(
-                            height: 28,
-                            width: 28,
-                            child: IconButton(
-                              style: IconButton.styleFrom(
-                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                                padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                              ),
-                              onPressed: widget.onToggleWidth,
-                              icon: Icon(
-                                widget.isWide ? Icons.fullscreen_exit : Icons.fullscreen,
-                                size: 16,
-                              ),
-                              tooltip: widget.isWide ? 'Narrow' : 'Wide',
-                            ),
-                          ),
-                        ),
-                      if (widget.onHide != null)
-                        SizedBox(
-                          height: 28,
-                          width: 28,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            ),
-                            onPressed: widget.onHide,
-                            icon: const Icon(
-                              Icons.visibility_off_outlined,
-                              size: 14,
-                            ),
-                            tooltip: 'Hide',
-                          ),
-                        ),
                     ],
                   ),
                 ],
@@ -2272,7 +2393,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     ),
                     _buildSubSectionCard(
                       title: 'Navigation Bar Show/Hide and Customization',
-                      subtitle: 'Swipe down anywhere on the Navigation Bar to hide it - click on purple tab to bring it back into view. Configure shortcuts on the Navigation Bar: 2 left and 2 right',
+                      subtitle: 'Swipe down on the Navigation Bar to hide it - click on purple tab to display it. Configure 4 shortcuts on the Navigation Bar: 2 left and 2 right',
                       children: [
                         Text('Left Slot 1 (Fixed)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                         const SizedBox(height: 4),

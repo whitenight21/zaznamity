@@ -297,6 +297,25 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
         : 30;
     if (durationDays < 1) durationDays = 1;
 
+    // Seasonality Heatmap Data Calculation (Last 12 Months)
+    Map<int, double> monthlySpend12M = {};
+    for (int i = 1; i <= 12; i++) {
+      monthlySpend12M[i] = 0.0;
+    }
+    for (var tx in widget.transactions) {
+      final txDate = DateTime.tryParse(tx.createdAt);
+      if (txDate == null || tx.isConfirmed != 1 || tx.type != 'expense') continue;
+      if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) continue;
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) continue;
+      
+      // Check if within the last 12 months from now
+      final differenceInMonths = (now.year - txDate.year) * 12 + (now.month - txDate.month);
+      if (differenceInMonths >= 0 && differenceInMonths < 12) {
+        monthlySpend12M[txDate.month] = (monthlySpend12M[txDate.month] ?? 0.0) + tx.amount;
+      }
+    }
+    double maxMonthlySpend = monthlySpend12M.values.fold(1.0, (prev, val) => val > prev ? val : prev);
+
     // Analytics: Top Spending/Income Contributors (Breakdown by Description)
     Map<String, double> descriptionTotals = {};
     for (var tx in filteredTxs) {
@@ -336,11 +355,11 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48;
+        final double fullWidth = availableWidth - 32;
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
-          padding: const EdgeInsets.all(24.0),
+          padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
                   color: Colors.black,
@@ -370,6 +389,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -438,7 +458,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 ],
               ),
               if (!_isCollapsed) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -554,7 +574,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -616,7 +636,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 Center(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -657,7 +677,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
@@ -711,7 +731,76 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                   ],
                 ),
                 
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
+
+                // NEW SECTION: Seasonality Heatmap (12-Month Grid)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'SEASONALITY HEATMAP (12M)',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
+                        ),
+                        const SizedBox(width: 4),
+                        InkWell(
+                          onTap: () => _showInfoModal(
+                            context,
+                            'Seasonality Heatmap',
+                            'A mini 12-month historical spending grid for this specific label to pinpoint annual spending spikes (e.g., insurance renewals or holiday shopping).',
+                          ),
+                          child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: List.generate(12, (index) {
+                      final monthNum = index + 1;
+                      final monthSpend = monthlySpend12M[monthNum] ?? 0.0;
+                      final intensity = (monthSpend / maxMonthlySpend).clamp(0.1, 1.0);
+                      final monthAbbr = DateFormat('MMM').format(DateTime(2026, monthNum, 1))[0]; // first letter of month
+
+                      return Tooltip(
+                        message: '${DateFormat('MMM').format(DateTime(2026, monthNum, 1))}: ${_formatAmount(monthSpend)}',
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 22,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: monthSpend > 0
+                                    ? (_isZaznamityMode 
+                                        ? const Color(0xFFA855F7).withValues(alpha: intensity)
+                                        : const Color(0xFF582F95).withValues(alpha: intensity))
+                                    : (_isZaznamityMode ? Colors.white10 : Colors.grey.shade200),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              monthAbbr,
+                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
 
                 // NEW SECTION: Forecasted Label Burn & Recurring Projection
                 Row(
@@ -787,7 +876,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                   ),
                 ),
 
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
 
                 // SECTION 2: Top Spending/Income Contributors Card
                 Row(
@@ -853,7 +942,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         ),
                 ),
 
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
 
                 // SECTION 3: Period-over-Period (MoM) Trend Indicator Card
                 Row(

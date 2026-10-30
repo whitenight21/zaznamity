@@ -173,7 +173,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
     }
   }
 
-  double _calculateMonthlyTrend(String currencyCode) {
+  Map<String, double> _calculateMonthlyTrendDetails(String currencyCode) {
     final now = DateTime.now();
     final startOfMonth = DateTime(now.year, now.month, 1);
     
@@ -196,8 +196,13 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       }
     }
 
-    if (startOfMonthBalance == 0) return 0.0;
-    return ((currentBalance - startOfMonthBalance) / startOfMonthBalance.abs()) * 100;
+    double absoluteDiff = currentBalance - startOfMonthBalance;
+    double percentageDiff = startOfMonthBalance == 0 ? 0.0 : (absoluteDiff / startOfMonthBalance.abs()) * 100;
+
+    return {
+      'absoluteDiff': absoluteDiff,
+      'percentageDiff': percentageDiff,
+    };
   }
 
   void _showConfigDialog(BuildContext context, Set<String> availablePools) {
@@ -370,7 +375,9 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       totalPoolsForCurr.entries.where((e) => e.value != 0.0 && (_visiblePools[e.key] ?? true))
     );
 
-    final monthlyTrend = _calculateMonthlyTrend(currencyCode);
+    final trendDetails = _calculateMonthlyTrendDetails(currencyCode);
+    final double absoluteDiff = trendDetails['absoluteDiff'] ?? 0.0;
+    final double percentageDiff = trendDetails['percentageDiff'] ?? 0.0;
 
     final poolEntries = displayedPools.entries.toList();
     List<List<MapEntry<String, double>>> poolRows = [];
@@ -455,11 +462,11 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Trend: ${monthlyTrend >= 0 ? '+' : ''}${monthlyTrend.toStringAsFixed(1)}% vs. start of month',
+                    'Trend: ${absoluteDiff >= 0 ? '+' : ''}${_formatCurrency(absoluteDiff, currencyCode)} (${percentageDiff >= 0 ? '+' : ''}${percentageDiff.toStringAsFixed(1)}%) vs. start of month',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
-                      color: monthlyTrend >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                      color: absoluteDiff >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -570,7 +577,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         if (_secondaryCurrency3 != null) activeCurrencies.add(_secondaryCurrency3!);
 
         return Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
                   color: Colors.black,
@@ -602,69 +609,72 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      'METRICS',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                        letterSpacing: 0.8,
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 28),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'METRICS',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                          letterSpacing: 0.8,
+                        ),
                       ),
                     ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        height: 28,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                            const SizedBox(width: 4),
-                            Text(
-                              widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty ? widget.selectedOwner! : 'All Owners',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          height: 28,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                              const SizedBox(width: 4),
+                              Text(
+                                widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty ? widget.selectedOwner! : 'All Owners',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                                ),
                               ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          height: 28,
+                          width: 28,
+                          child: IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                             ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      SizedBox(
-                        height: 28,
-                        width: 28,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            onPressed: _toggleCollapse,
+                            icon: Icon(
+                              _isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded,
+                              size: 16,
+                            ),
+                            tooltip: _isCollapsed ? 'Expand' : 'Collapse',
                           ),
-                          onPressed: _toggleCollapse,
-                          icon: Icon(
-                            _isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded,
-                            size: 16,
-                          ),
-                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
               if (!_isCollapsed) ...[
                 const SizedBox(height: 12),

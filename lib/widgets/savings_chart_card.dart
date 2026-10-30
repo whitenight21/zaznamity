@@ -39,7 +39,7 @@ class SavingsChartCard extends StatefulWidget {
   State<SavingsChartCard> createState() => _SavingsChartCardState();
 }
 
-class _SavingsChartCardState extends State<SavingsChartCard> {
+class _SavingsChartCardState extends State<SavingsChartCard> with WidgetsBindingObserver {
   SavingsMovingAverageFilter? _maFilter;
 
   List<TransactionModel> _cachedSortedTx = [];
@@ -58,10 +58,31 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
   String _currencySymbol = '\$';
   String _dateRangeSetting = '6 Months';
   bool _isZaznamityMode = true;
+  bool _isCollapsed = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadCurrencyPrefs();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadCurrencyPrefs();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     _loadCurrencyPrefs();
   }
 
@@ -69,13 +90,32 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
     final prefs = await SharedPreferences.getInstance();
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
+    final rangeSetting = prefs.getString('set_savingsTrend_range') ?? '6 Months';
+    final collapsed = prefs.getBool('set_savingsTrend_collapsed') ?? false;
+    final newZaznamityMode = (savedTheme == 'zaznamity');
+    final newSymbol = _getCurrencySymbol(primary);
+
     if (mounted) {
-      setState(() {
-        _currencySymbol = _getCurrencySymbol(primary);
-        _dateRangeSetting = prefs.getString('set_savingsTrend_range') ?? '6 Months';
-        _isZaznamityMode = (savedTheme == 'zaznamity');
-      });
+      if (_isZaznamityMode != newZaznamityMode ||
+          _currencySymbol != newSymbol ||
+          _dateRangeSetting != rangeSetting ||
+          _isCollapsed != collapsed) {
+        setState(() {
+          _currencySymbol = newSymbol;
+          _dateRangeSetting = rangeSetting;
+          _isZaznamityMode = newZaznamityMode;
+          _isCollapsed = collapsed;
+        });
+      }
     }
+  }
+
+  Future<void> _toggleCollapse() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isCollapsed = !_isCollapsed;
+    });
+    await prefs.setBool('set_savingsTrend_collapsed', _isCollapsed);
   }
 
   String _getCurrencySymbol(String code) {
@@ -117,6 +157,8 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
   }
 
   void _computeChartDataIfNeeded() {
+    _loadCurrencyPrefs(); // Poll SharedPreferences on rebuild to immediately react to global theme switches
+
     if (_lastTxLength == widget.transactions.length &&
         _lastLabelsLength == widget.labels.length &&
         _lastOwner == widget.selectedOwner &&
@@ -402,11 +444,11 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 48;
+        final double fullWidth = availableWidth - 32;
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
                   color: Colors.black,
@@ -436,6 +478,7 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                 ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -449,406 +492,432 @@ class _SavingsChartCardState extends State<SavingsChartCard> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color.fromARGB(255, 88, 47, 149),
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                           letterSpacing: 0.8,
                         ),
                       ),
                     ),
                   ),
-                  Container(
-                    height: 28,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                        const SizedBox(width: 4),
-                        Text(
-                          widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty ? widget.selectedOwner! : 'All Owners',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: widget.selectedOwner ?? 'All Owners',
-                                isDense: true,
-                                isExpanded: true,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                items: [
-                                  DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                  ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
-                                ],
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    widget.onOwnerChanged?.call(val == 'All Owners' ? null : val);
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.horizontal(
-                                left: const Radius.circular(10),
-                                right: hasDateFilter ? Radius.zero : const Radius.circular(10),
-                              ),
-                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: widget.onSelectStartDate,
-                                borderRadius: BorderRadius.horizontal(
-                                  left: const Radius.circular(10),
-                                  right: hasDateFilter ? Radius.zero : const Radius.circular(10),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          widget.startDate != null && widget.endDate != null
-                                              ? '${DateFormat('MM/dd').format(widget.startDate!)} - ${DateFormat('MM/dd').format(widget.endDate!)}'
-                                              : widget.startDate != null
-                                                  ? DateFormat('MM/dd').format(widget.startDate!)
-                                                  : 'Select Date Range',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: hasDateFilter
-                                                ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
-                                                : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                            fontWeight: hasDateFilter
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      if (!hasDateFilter)
-                                        Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (hasDateFilter) ...[
-                          const SizedBox(width: 1),
-                          Container(
-                            height: 44,
-                            width: 36,
-                            decoration: BoxDecoration(
-                              color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
-                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: widget.onClearDateFilter,
-                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                                child: const Center(
-                                  child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              LayoutBuilder(
-                builder: (context, rowConstraints) {
-                  final double rowWidth = rowConstraints.maxWidth;
-                  final double w50 = (rowWidth - 12) * 0.50;
-
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(
-                        width: w50,
-                        child: Stack(
-                          clipBehavior: Clip.none,
+                      Container(
+                        height: 28,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Container(
-                              height: 48,
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _isZaznamityMode
-                                    ? const Color(0xFF1E1333)
-                                    : (_cachedMonthlyVelocity >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2)),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: _isZaznamityMode
-                                      ? Colors.white12
-                                      : (_cachedMonthlyVelocity >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
-                                ),
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        _cachedMonthlyVelocity >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                                        size: 11,
-                                        color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                                      ),
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        'Savings Velocity',
-                                        style: TextStyle(
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 1),
-                                  Text(
-                                    '${_cachedMonthlyVelocity >= 0 ? '+' : ''}$_currencySymbol${_cachedMonthlyVelocity.toStringAsFixed(2)}/mo',
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                                    ),
-                                  ),
-                                ],
+                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 4),
+                            Text(
+                              widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty ? widget.selectedOwner! : 'All Owners',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
                               ),
                             ),
-                            Positioned(
-                              top: -6,
-                              right: -4,
-                              child: InkWell(
-                                onTap: () => _showInfoDialog(
-                                  context,
-                                  'Savings Velocity',
-                                  'Savings velocity estimates your average monthly accumulation or withdrawal rate specifically across your savings pool and accounts.',
-                                ),
-                                child: Container(
-                                  padding: const EdgeInsets.all(2),
-                                  decoration: BoxDecoration(
-                                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color.fromARGB(255, 158, 158, 158)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        height: 28,
+                        width: 28,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                          onPressed: _toggleCollapse,
+                          icon: Icon(
+                            _isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded,
+                            size: 16,
+                          ),
+                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              if (!_isCollapsed) ...[
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: widget.selectedOwner ?? 'All Owners',
+                                  isDense: true,
+                                  isExpanded: true,
+                                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                  items: [
+                                    DropdownMenuItem(value: 'All Owners', child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                    ...widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
+                                  ],
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      widget.onOwnerChanged?.call(val == 'All Owners' ? null : val);
+                                    }
+                                  },
                                 ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      SizedBox(
-                        width: w50,
-                        child: Container(
-                          height: 48,
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'Moving average (days):',
-                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                    ),
+                    SizedBox(
+                      width: boxWidth,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.horizontal(
+                                  left: const Radius.circular(10),
+                                  right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                ),
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                               ),
-                              const SizedBox(height: 2),
-                              SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: widget.onSelectStartDate,
+                                  borderRadius: BorderRadius.horizontal(
+                                    left: const Radius.circular(10),
+                                    right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            widget.startDate != null && widget.endDate != null
+                                                ? '${DateFormat('MM/dd').format(widget.startDate!)} - ${DateFormat('MM/dd').format(widget.endDate!)}'
+                                                : widget.startDate != null
+                                                    ? DateFormat('MM/dd').format(widget.startDate!)
+                                                    : 'Select Date Range',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: hasDateFilter
+                                                  ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
+                                                  : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                              fontWeight: hasDateFilter
+                                                  ? FontWeight.bold
+                                                  : FontWeight.normal,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (!hasDateFilter)
+                                          Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (hasDateFilter) ...[
+                            const SizedBox(width: 1),
+                            Container(
+                              height: 44,
+                              width: 36,
+                              decoration: BoxDecoration(
+                                color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
+                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: widget.onClearDateFilter,
+                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                  child: const Center(
+                                    child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                LayoutBuilder(
+                  builder: (context, rowConstraints) {
+                    final double rowWidth = rowConstraints.maxWidth;
+                    final double w50 = (rowWidth - 12) * 0.50;
+
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        SizedBox(
+                          width: w50,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                height: 48,
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _isZaznamityMode
+                                      ? const Color(0xFF1E1333)
+                                      : (_cachedMonthlyVelocity >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2)),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: _isZaznamityMode
+                                        ? Colors.white12
+                                        : (_cachedMonthlyVelocity >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    ChoiceChip(
-                                      label: Text('30', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                                      selected: _maFilter == SavingsMovingAverageFilter.days30,
-                                      showCheckmark: false,
-                                      onSelected: (selected) {
-                                        setState(() {
-                                          _maFilter = selected ? SavingsMovingAverageFilter.days30 : null;
-                                        });
-                                      },
-                                      selectedColor: _isZaznamityMode ? const Color(0xFFA855F7) : Colors.amber.shade200,
-                                      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : null,
-                                      visualDensity: VisualDensity.compact,
-                                      padding: EdgeInsets.zero,
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          _cachedMonthlyVelocity >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                                          size: 11,
+                                          color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                        ),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          'Savings Velocity',
+                                          style: TextStyle(
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.bold,
+                                            color: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(width: 4),
-                                    ChoiceChip(
-                                      label: Text('90', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                                      selected: _maFilter == SavingsMovingAverageFilter.days90,
-                                      showCheckmark: false,
-                                      onSelected: (selected) {
-                                        setState(() {
-                                          _maFilter = selected ? SavingsMovingAverageFilter.days90 : null;
-                                        });
-                                      },
-                                      selectedColor: _isZaznamityMode ? const Color(0xFFA855F7) : Colors.amber.shade200,
-                                      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : null,
-                                      visualDensity: VisualDensity.compact,
-                                      padding: EdgeInsets.zero,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    ChoiceChip(
-                                      label: Text('All', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                                      selected: _maFilter == SavingsMovingAverageFilter.all,
-                                      showCheckmark: false,
-                                      onSelected: (selected) {
-                                        setState(() {
-                                          _maFilter = selected ? SavingsMovingAverageFilter.all : null;
-                                        });
-                                      },
-                                      selectedColor: _isZaznamityMode ? const Color(0xFFA855F7) : Colors.amber.shade200,
-                                      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : null,
-                                      visualDensity: VisualDensity.compact,
-                                      padding: EdgeInsets.zero,
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      '${_cachedMonthlyVelocity >= 0 ? '+' : ''}$_currencySymbol${_cachedMonthlyVelocity.toStringAsFixed(2)}/mo',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: _cachedMonthlyVelocity >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                                      ),
                                     ),
                                   ],
+                                ),
+                              ),
+                              Positioned(
+                                top: -6,
+                                right: -4,
+                                child: InkWell(
+                                  onTap: () => _showInfoDialog(
+                                    context,
+                                    'Savings Velocity',
+                                    'Savings velocity estimates your average monthly accumulation or withdrawal rate specifically across your savings pool and accounts.',
+                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: BoxDecoration(
+                                      color: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color.fromARGB(255, 158, 158, 158)),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 220,
-                child: LineChart(
-                  LineChartData(
-                    minY: _cachedMinY,
-                    maxY: _cachedMaxY,
-                    gridData: FlGridData(
-                      show: true,
-                      drawVerticalLine: false,
-                      getDrawingHorizontalLine: (value) => FlLine(
-                        color: _isZaznamityMode ? Colors.white10 : const Color(0xFFF1F5F9),
-                        strokeWidth: 1,
-                      ),
-                    ),
-                    titlesData: FlTitlesData(
-                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 28,
-                          getTitlesWidget: (value, meta) {
-                            int index = value.toInt();
-                            if (index >= 0 && index < _cachedSortedTx.length) {
-                              final date = DateTime.tryParse(_cachedSortedTx[index].createdAt);
-                              if (date != null) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: 8.0),
-                                  child: Text(
-                                    DateFormat('MMM d').format(date),
-                                    style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                        SizedBox(
+                          width: w50,
+                          child: Container(
+                            height: 48,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Moving average (days):',
+                                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                ),
+                                const SizedBox(height: 2),
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      ChoiceChip(
+                                        label: Text('30', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                        selected: _maFilter == SavingsMovingAverageFilter.days30,
+                                        showCheckmark: false,
+                                        onSelected: (selected) {
+                                          setState(() {
+                                            _maFilter = selected ? SavingsMovingAverageFilter.days30 : null;
+                                          });
+                                        },
+                                        selectedColor: _isZaznamityMode ? const Color(0xFFA855F7) : Colors.amber.shade200,
+                                        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : null,
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      ChoiceChip(
+                                        label: Text('90', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                        selected: _maFilter == SavingsMovingAverageFilter.days90,
+                                        showCheckmark: false,
+                                        onSelected: (selected) {
+                                          setState(() {
+                                            _maFilter = selected ? SavingsMovingAverageFilter.days90 : null;
+                                          });
+                                        },
+                                        selectedColor: _isZaznamityMode ? const Color(0xFFA855F7) : Colors.amber.shade200,
+                                        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : null,
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      ChoiceChip(
+                                        label: Text('All', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                        selected: _maFilter == SavingsMovingAverageFilter.all,
+                                        showCheckmark: false,
+                                        onSelected: (selected) {
+                                          setState(() {
+                                            _maFilter = selected ? SavingsMovingAverageFilter.all : null;
+                                          });
+                                        },
+                                        selectedColor: _isZaznamityMode ? const Color(0xFFA855F7) : Colors.amber.shade200,
+                                        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : null,
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                    ],
                                   ),
-                                );
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 220,
+                  child: LineChart(
+                    LineChartData(
+                      minY: _cachedMinY,
+                      maxY: _cachedMaxY,
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        getDrawingHorizontalLine: (value) => FlLine(
+                          color: _isZaznamityMode ? Colors.white10 : const Color(0xFFF1F5F9),
+                          strokeWidth: 1,
+                        ),
+                      ),
+                      titlesData: FlTitlesData(
+                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 28,
+                            getTitlesWidget: (value, meta) {
+                              int index = value.toInt();
+                              if (index >= 0 && index < _cachedSortedTx.length) {
+                                final date = DateTime.tryParse(_cachedSortedTx[index].createdAt);
+                                if (date != null) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(top: 8.0),
+                                    child: Text(
+                                      DateFormat('MMM d').format(date),
+                                      style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                    ),
+                                  );
+                                }
                               }
-                            }
-                            return const SizedBox.shrink();
+                              return const SizedBox.shrink();
+                            },
+                          ),
+                        ),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 48,
+                            getTitlesWidget: (value, meta) {
+                              return Text(
+                                '$_currencySymbol${value.toInt()}',
+                                style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      lineTouchData: LineTouchData(
+                        enabled: true,
+                        handleBuiltInTouches: true,
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipItems: (touchedSpots) {
+                            return touchedSpots.map((spot) {
+                              final spotIndex = spot.x.toInt();
+                              String dateStr = '';
+                              if (spotIndex >= 0 && spotIndex < _cachedSpotDates.length) {
+                                dateStr = '${DateFormat('MMM d, yyyy').format(_cachedSpotDates[spotIndex])}\n';
+                              }
+                              return LineTooltipItem(
+                                '${dateStr}$_currencySymbol${spot.y.toStringAsFixed(2)}',
+                                const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                              );
+                            }).toList();
                           },
                         ),
                       ),
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 48,
-                          getTitlesWidget: (value, meta) {
-                            return Text(
-                              '$_currencySymbol${value.toInt()}',
-                              style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                            );
-                          },
-                        ),
-                      ),
+                      lineBarsData: _cachedLineBars,
                     ),
-                    borderData: FlBorderData(show: false),
-                    lineTouchData: LineTouchData(
-                      enabled: true,
-                      handleBuiltInTouches: true,
-                      touchTooltipData: LineTouchTooltipData(
-                        getTooltipItems: (touchedSpots) {
-                          return touchedSpots.map((spot) {
-                            final spotIndex = spot.x.toInt();
-                            String dateStr = '';
-                            if (spotIndex >= 0 && spotIndex < _cachedSpotDates.length) {
-                              dateStr = '${DateFormat('MMM d, yyyy').format(_cachedSpotDates[spotIndex])}\n';
-                            }
-                            return LineTooltipItem(
-                              '${dateStr}$_currencySymbol${spot.y.toStringAsFixed(2)}',
-                              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
-                            );
-                          }).toList();
-                        },
-                      ),
-                    ),
-                    lineBarsData: _cachedLineBars,
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         );

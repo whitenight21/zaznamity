@@ -113,12 +113,13 @@ class _TitleCardState extends State<TitleCard> {
       return const SizedBox.shrink();
     }
 
-    final currentDayOfWeek = DateFormat('EEEE,').format(DateTime.now());
-    final currentDateFormatted = DateFormat('MMM d, yyyy').format(DateTime.now());
+    // CHANGED: Combined day of week and month/day on the top row, year on the bottom row
+    final dayText = DateFormat('EEEE').format(DateTime.now());
+    final monthAndYearText = DateFormat('MMM d, yyyy').format(DateTime.now());
 
     return Container(
-      // Reduced card height padding by 10% (from 22 to ~20)
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
+      // Minimal top padding to place the date level with the profile picture top edge
+      padding: const EdgeInsets.fromLTRB(22, 30, 22, 10),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
@@ -146,43 +147,9 @@ class _TitleCardState extends State<TitleCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Top Row: Day of week and Date (Moved down further)
-          Padding(
-            padding: const EdgeInsets.only(top: 15.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      currentDayOfWeek,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      currentDateFormatted,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white60,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12), // Reduced gap for 10% height reduction[cite: 13]
-          // Main Row: Avatar with Zaznamity Logo & Welcome / Name aligned with the logo
+          // Main Row: Avatar with Profile Top Edge aligned with Date on the right
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Column(
                 mainAxisSize: MainAxisSize.min,
@@ -197,13 +164,13 @@ class _TitleCardState extends State<TitleCard> {
                           child: _avatarPath != null && File(_avatarPath!).existsSync()
                               ? Image.file(
                                   File(_avatarPath!),
-                                  width: 92.4, // Enlarged by 5% (88 * 1.05)
+                                  width: 92.4,
                                   height: 92.4,
                                   fit: BoxFit.cover,
                                 )
                               : Image.asset(
                                   'assets/ZaznamityLogoFULL.jpg',
-                                  width: 92.4, // Enlarged by 5% (88 * 1.05)
+                                  width: 92.4,
                                   height: 92.4,
                                   fit: BoxFit.cover,
                                 ),
@@ -232,7 +199,7 @@ class _TitleCardState extends State<TitleCard> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   const Text(
                     'ZAZNAMITY',
                     style: TextStyle(
@@ -246,46 +213,83 @@ class _TitleCardState extends State<TitleCard> {
               ),
               const SizedBox(width: 20),
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 9.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Welcome moved higher by 5% (using negative vertical offset)
-                      Transform.translate(
-                        offset: const Offset(-7.0, -3.0),
-                        child: const Text(
-                          'Welcome,',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white70,
-                            letterSpacing: 0.3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Date aligned precisely with the top edge of the avatar row
+                    Padding( 
+                      padding: const EdgeInsets.only(top: -25.0), // Adjust this value to move date up or down
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                dayText,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                monthAndYearText,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white60,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      // Name moved right by approximately one letter "a" (~16 pixels left padding)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 16.0),
-                        child: Text(
-                          _displayName,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            letterSpacing: 0.8,
-                            height: 1.1,
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Transform.translate(
+                            offset: const Offset(-7.0, -3.0),
+                            child: const Text(
+                              'Welcome,',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white70,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 2),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 16.0),
+                            child: Text(
+                              _displayName,
+                              style: const TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                                letterSpacing: 0.8,
+                                height: 1.1,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 18), // Reduced gap for 10% height reduction
+          const SizedBox(height: 10), 
           const Center(
             child: Text(
               'RECORD • TRACK • FOCUS',

@@ -42,6 +42,7 @@ class _CalendarCardState extends State<CalendarCard> {
   String _calendarStartDay = 'Monday';
   bool _isZaznamityMode = true;
   String _selectedPool = 'All Pools';
+  bool _isCollapsed = false;
 
   @override
   void initState() {
@@ -52,11 +53,25 @@ class _CalendarCardState extends State<CalendarCard> {
 
   Future<void> _loadCalendarPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    final startDay = prefs.getString('calendarStartDay') ?? 'Monday';
+    final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
+    final collapsed = prefs.getBool('set_calendar_collapsed') ?? false;
+
+    if (mounted) {
+      setState(() {
+        _calendarStartDay = startDay;
+        _isZaznamityMode = (themeStr == 'zaznamity');
+        _isCollapsed = collapsed;
+      });
+    }
+  }
+  
+  Future<void> _toggleCollapse() async {
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _calendarStartDay = prefs.getString('calendarStartDay') ?? 'Monday';
-      final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
-      _isZaznamityMode = (themeStr == 'zaznamity');
+      _isCollapsed = !_isCollapsed;
     });
+    await prefs.setBool('set_calendar_collapsed', _isCollapsed);
   }
 
   void _previousMonth() {
@@ -109,7 +124,7 @@ class _CalendarCardState extends State<CalendarCard> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Calendar Guide',
+                  'Calendar',
                   style: TextStyle(
                     color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                     fontWeight: FontWeight.bold,
@@ -121,9 +136,9 @@ class _CalendarCardState extends State<CalendarCard> {
           content: SingleChildScrollView(
             child: Text(
               'The calendar is fully interactive:\n\n'
-              '• Press any day containing transaction data to jump directly to "All Zaznams".\n'
-              '• Selecting a day will automatically filter the transaction ledger to show all entries recorded for that specific date with all pools visible by default.\n'
-              '• Use the pool dropdown to filter income and expense summaries by a specific financial pool.',
+              '• Press any day containing a Zaznam to jump directly to that day in "All Zaznams".\n'
+              '• That day in "All Zaznams" will automatically filter the ledger to show all entries recorded for that specific date with all pools visible by default.\n'
+              '• Use the pool dropdown to filter Zaznams by a specific financial pool.',
               style: TextStyle(
                 fontSize: 13,
                 color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
@@ -359,7 +374,7 @@ class _CalendarCardState extends State<CalendarCard> {
         final double boxWidth = (fullWidth - 12) / 2;
 
         return Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
                   color: Colors.black,
@@ -449,124 +464,141 @@ class _CalendarCardState extends State<CalendarCard> {
                         ),
                       ),
                       const SizedBox(width: 6),
+                      SizedBox(
+                        height: 28,
+                        width: 28,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                          onPressed: _toggleCollapse,
+                          icon: Icon(_isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded, size: 16),
+                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
+                        ),
+                      ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 48,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.account_balance_wallet_outlined, size: 20, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedPool,
-                                isDense: true,
-                                isExpanded: true,
-                                dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                items: [
-                                  const DropdownMenuItem(value: 'All Pools', child: Text('All Pools')),
-                                  ...availablePools.map((pool) => DropdownMenuItem(
-                                        value: pool,
-                                        child: Text(pool.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                                      )),
-                                ],
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    setState(() {
-                                      _selectedPool = val;
-                                    });
-                                  }
-                                },
+              if (!_isCollapsed) ...[
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: Container(
+                        height: 48,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.account_balance_wallet_outlined, size: 20, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedPool,
+                                  isDense: true,
+                                  isExpanded: true,
+                                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                  items: [
+                                    const DropdownMenuItem(value: 'All Pools', child: Text('All Pools')),
+                                    ...availablePools.map((pool) => DropdownMenuItem(
+                                          value: pool,
+                                          child: Text(pool.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                        )),
+                                  ],
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      setState(() {
+                                        _selectedPool = val;
+                                      });
+                                    }
+                                  },
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  SizedBox(
-                    width: boxWidth,
-                    child: Container(
-                      height: 48,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.calendar_today_rounded, size: 18, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                              const SizedBox(width: 6),
-                              Text(
-                                DateFormat('MMM yyyy').format(_displayedMonth),
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                              ),
-                            ],
-                          ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              InkWell(
-                                onTap: _previousMonth,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(4.0),
-                                  child: Icon(Icons.chevron_left, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                    SizedBox(
+                      width: boxWidth,
+                      child: Container(
+                        height: 48,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.calendar_today_rounded, size: 18, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  DateFormat('MMM yyyy').format(_displayedMonth),
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                 ),
-                              ),
-                              InkWell(
-                                onTap: _nextMonth,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(4.0),
-                                  child: Icon(Icons.chevron_right, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                              ],
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                InkWell(
+                                  onTap: _previousMonth,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(4.0),
+                                    child: Icon(Icons.chevron_left, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
+                                InkWell(
+                                  onTap: _nextMonth,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(4.0),
+                                    child: Icon(Icons.chevron_right, size: 18, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Table(
-                children: [
-                  TableRow(children: weekdayWidgets),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Table(
-                columnWidths: const {
-                  0: FlexColumnWidth(1),
-                  1: FlexColumnWidth(1),
-                  2: FlexColumnWidth(1),
-                  3: FlexColumnWidth(1),
-                  4: FlexColumnWidth(1),
-                  5: FlexColumnWidth(1),
-                  6: FlexColumnWidth(1),
-                },
-                children: tableRows,
-              ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Table(
+                  children: [
+                    TableRow(children: weekdayWidgets),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Table(
+                  columnWidths: const {
+                    0: FlexColumnWidth(1),
+                    1: FlexColumnWidth(1),
+                    2: FlexColumnWidth(1),
+                    3: FlexColumnWidth(1),
+                    4: FlexColumnWidth(1),
+                    5: FlexColumnWidth(1),
+                    6: FlexColumnWidth(1),
+                  },
+                  children: tableRows,
+                ),
+              ],
             ],
           ),
         );

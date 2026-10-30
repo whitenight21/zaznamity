@@ -61,6 +61,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   late String _owner;
   String? _selectedPool;
   bool _isRecurring = false;
+  bool _isCollapsed = false;
   
   String _frequency = 'Monthly';
   int _dayOfMonth = 1;
@@ -121,6 +122,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
   Future<void> _loadCurrencyPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
+    final collapsed = prefs.getBool('set_newZaznam_collapsed') ?? false;
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     final sec1 = prefs.getString('secondaryCurrency1');
     final sec2 = prefs.getString('secondaryCurrency2');
@@ -134,10 +136,19 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
     if (mounted) {
       setState(() {
         _isZaznamityMode = (savedTheme == 'zaznamity');
+        _isCollapsed = collapsed;
         _availableCurrencies = currencies;
         _selectedCurrency = primary;
       });
     }
+  }
+
+  Future<void> _toggleCollapse() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isCollapsed = !_isCollapsed;
+    });
+    await prefs.setBool('set_newZaznam_collapsed', _isCollapsed);
   }
 
   Future<void> _pickReceipt(ImageSource source) async {
@@ -256,8 +267,11 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final double fullWidth = availableWidth - 32;
+
         return Container(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
                   color: Colors.black,
@@ -287,6 +301,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                 ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -294,18 +309,16 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                   Expanded(
                     child: Row(
                       children: [
-                        Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'NEW ZAZNAM',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                                letterSpacing: 0.8,
-                              ),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'NEW ZAZNAM',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                              letterSpacing: 0.8,
                             ),
                           ),
                         ),
@@ -339,11 +352,28 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                           ],
                         ),
                       ),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        height: 28,
+                        width: 28,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                          onPressed: _toggleCollapse,
+                          icon: Icon(_isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded, size: 16),
+                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
+                        ),
+                      ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              if (!_isCollapsed) ...[
+                const SizedBox(height: 12),
 
               // Row 1: Owner, Date, Time
               Row(
@@ -466,7 +496,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 2: Pool, Label (text black on white theme), Type (purple switch toggle)
+              // Row 2: Pool, Label, Type
               Row(
                 children: [
                   Expanded(
@@ -505,7 +535,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Container(
-                                            height: 44,
+                      height: 44,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
                         color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
@@ -538,7 +568,6 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                         ],
                       ),
                     ),
-
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -600,7 +629,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ),
               const SizedBox(height: 12),
 
-              // Row 3: Currency, Recurring (Dismisses keyboard), Attach Receipt
+              // Row 3: Currency, Recurring, Attach Receipt
               Row(
                 children: [
                   Expanded(
@@ -945,20 +974,33 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                               ].map((dayMap) {
                                 final val = dayMap['val'] as int;
                                 final isSelected = _excludedWeekdays.contains(val);
-                                return FilterChip(
-                                  label: Text(dayMap['label'] as String, style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                                  selected: isSelected,
-                                  selectedColor: const Color(0xFF582F95),
-                                  backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
-                                  onSelected: (selected) {
+                                return GestureDetector(
+                                  onTap: () {
                                     setState(() {
-                                      if (selected) {
-                                        _excludedWeekdays.add(val);
-                                      } else {
+                                      if (isSelected) {
                                         _excludedWeekdays.remove(val);
+                                      } else {
+                                        _excludedWeekdays.add(val);
                                       }
                                     });
                                   },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: isSelected 
+                                          ? const Color(0xFF582F95) 
+                                          : (_isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0)),
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Text(
+                                      dayMap['label'] as String,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected ? Colors.white : (_isZaznamityMode ? Colors.white : Colors.black87),
+                                      ),
+                                    ),
+                                  ),
                                 );
                               }).toList(),
                             ),
@@ -975,7 +1017,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                             const SizedBox(height: 4),
                             Wrap(
                               spacing: 6,
-                              runSpacing: 2,
+                              runSpacing: 4,
                               children: [
                                 {'label': 'Jan', 'val': 1},
                                 {'label': 'Feb', 'val': 2},
@@ -992,20 +1034,33 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                               ].map((monthMap) {
                                 final val = monthMap['val'] as int;
                                 final isSelected = _excludedMonths.contains(val);
-                                return FilterChip(
-                                  label: Text(monthMap['label'] as String, style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                                  selected: isSelected,
-                                  selectedColor: const Color(0xFF582F95),
-                                  backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
-                                  onSelected: (selected) {
+                                return GestureDetector(
+                                  onTap: () {
                                     setState(() {
-                                      if (selected) {
-                                        _excludedMonths.add(val);
-                                      } else {
+                                      if (isSelected) {
                                         _excludedMonths.remove(val);
+                                      } else {
+                                        _excludedMonths.add(val);
                                       }
                                     });
                                   },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: isSelected 
+                                          ? const Color(0xFF582F95) 
+                                          : (_isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0)),
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Text(
+                                      monthMap['label'] as String,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected ? Colors.white : (_isZaznamityMode ? Colors.white : Colors.black87),
+                                      ),
+                                    ),
+                                  ),
                                 );
                               }).toList(),
                             ),
@@ -1018,7 +1073,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
               ],
               const SizedBox(height: 16),
 
-              // Save Zaznam Action Button (Dismisses keyboard immediately)
+              // Save Zaznam Action Button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -1085,6 +1140,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                   ),
                 ),
               ),
+              ],
             ],
           ),
         );

@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,8 +40,15 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
   double _extraDebtPayment = 0.0; // 0 to 1500 (Liability Impact)
   int _horizonDays = 30; // 30, 90, 180, 365
 
+  // Default Preset Deletion Toggles/Tracking
+  final Set<String> _hiddenDefaultPresets = {};
+
   // Custom Saved Presets
   List<Map<String, dynamic>> _customPresets = [];
+
+  // Head-to-Head Comparison Slots
+  Map<String, dynamic>? _scenarioSlotA;
+  Map<String, dynamic>? _scenarioSlotB;
 
   @override
   void initState() {
@@ -52,6 +60,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     final savedPresetsStr = prefs.getString('set_whatIf_custom_presets');
+    final hiddenDefaultsStr = prefs.getString('set_whatIf_hidden_defaults');
     
     List<Map<String, dynamic>> loadedPresets = [];
     if (savedPresetsStr != null) {
@@ -61,12 +70,21 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
       } catch (_) {}
     }
 
+    Set<String> hiddenDefaults = {};
+    if (hiddenDefaultsStr != null) {
+      try {
+        final decoded = jsonDecode(hiddenDefaultsStr) as List;
+        hiddenDefaults = decoded.map((e) => e.toString()).toSet();
+      } catch (_) {}
+    }
+
     if (mounted) {
       setState(() {
         _isZaznamityMode = (savedTheme == 'zaznamity');
         _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
         _isCollapsed = prefs.getBool('set_whatIf_collapsed') ?? false;
         _customPresets = loadedPresets;
+        _hiddenDefaultPresets.addAll(hiddenDefaults);
       });
     }
   }
@@ -106,6 +124,14 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     await prefs.setString('set_whatIf_custom_presets', jsonEncode(_customPresets));
   }
 
+  Future<void> _hideDefaultPreset(String label) async {
+    setState(() {
+      _hiddenDefaultPresets.add(label);
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('set_whatIf_hidden_defaults', jsonEncode(_hiddenDefaultPresets.toList()));
+  }
+
   @override
   void didUpdateWidget(covariant WhatIfScenarioCard oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -143,9 +169,21 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     });
   }
 
-  Map<String, dynamic> _calculateSimulationResults() {
+  Map<String, dynamic> _calculateSimulationResults({
+    double? incMul,
+    double? expSqz,
+    double? lump,
+    double? extraDebt,
+    int? horizon,
+  }) {
+    final double incomeMultiplierVal = incMul ?? _incomeMultiplier;
+    final double expenseSqueezeVal = expSqz ?? _expenseSqueezePercent;
+    final double lumpSumVal = lump ?? _lumpSumExpense;
+    final double extraDebtVal = extraDebt ?? _extraDebtPayment;
+    final int horizonVal = horizon ?? _horizonDays;
+
     final now = DateTime.now();
-    final horizonEnd = now.add(Duration(days: _horizonDays));
+    final horizonEnd = now.add(Duration(days: horizonVal));
 
     double baselineIncome = 0;
     double baselineExpense = 0;
@@ -162,13 +200,13 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     }
 
     double totalLiabilityOutlays = 0;
-    double monthsCount = _horizonDays / 30.0;
+    double monthsCount = horizonVal / 30.0;
     for (var lib in widget.liabilities) {
       totalLiabilityOutlays += (lib.monthlyInstallment * monthsCount);
     }
 
-    double simulatedIncome = baselineIncome * _incomeMultiplier;
-    double simulatedExpense = (baselineExpense * (1.0 - (_expenseSqueezePercent / 100.0))) + _lumpSumExpense + totalLiabilityOutlays + (_extraDebtPayment * monthsCount);
+    double simulatedIncome = baselineIncome * incomeMultiplierVal;
+    double simulatedExpense = (baselineExpense * (1.0 - (expenseSqueezeVal / 100.0))) + lumpSumVal + totalLiabilityOutlays + (extraDebtVal * monthsCount);
     double simulatedNetShift = simulatedIncome - simulatedExpense;
 
     double startingBalance = widget.basePrognosis;
@@ -176,7 +214,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
 
     int estimatedRunwayDays = 999;
     if (simulatedNetShift < 0) {
-      double dailyBurn = (-simulatedNetShift) / _horizonDays.toDouble();
+      double dailyBurn = (-simulatedNetShift) / horizonVal.toDouble();
       if (dailyBurn > 0 && startingBalance > 0) {
         estimatedRunwayDays = (startingBalance / dailyBurn).floor();
       } else {
@@ -191,6 +229,31 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
       'simulatedEndingBalance': simulatedEndingBalance,
       'estimatedRunwayDays': estimatedRunwayDays,
     };
+  }
+
+  double _calculateMonteCarloProbability() {
+    final rand = Random(42);
+    int successCount = 0;
+    const int totalRuns = 100;
+
+    for (int i = 0; i < totalRuns; i++) {
+      double randomizedIncMul = _incomeMultiplier * (0.85 + (rand.nextDouble() * 0.3));
+      double randomizedSqueeze = (_expenseSqueezePercent + ((rand.nextDouble() * 10.0) - 5.0)).clamp(0.0, 50.0);
+      double randomizedLump = _lumpSumExpense * (0.8 + (rand.nextDouble() * 0.4));
+      
+      final res = _calculateSimulationResults(
+        incMul: randomizedIncMul,
+        expSqz: randomizedSqueeze,
+        lump: randomizedLump,
+      );
+
+      double endingBal = res['simulatedEndingBalance'];
+      if (endingBal >= 0) {
+        successCount++;
+      }
+    }
+
+    return (successCount / totalRuns) * 100.0;
   }
 
   void _showInfoDialog(BuildContext context, String title, String content) {
@@ -226,32 +289,267 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
   }
 
   void _promptSavePreset(BuildContext context) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
+
     final controller = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-        title: Text('Save Custom Scenario', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 16)),
-        content: TextField(
-          controller: controller,
-          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
-          decoration: InputDecoration(
-            hintText: 'Preset Name (e.g. Sabbatical Plan)',
-            hintStyle: TextStyle(color: _isZaznamityMode ? Colors.white54 : Colors.grey),
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          title: Text('Save Custom Scenario', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 16)),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+            decoration: InputDecoration(
+              hintText: 'Preset Name (e.g. Sabbatical Plan)',
+              hintStyle: TextStyle(color: _isZaznamityMode ? Colors.white54 : Colors.grey),
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),
+              onPressed: () {
+                _saveCustomPreset(controller.text);
+                Navigator.pop(context);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showHeadToHeadModal(BuildContext context) {
+    final currentSnapshot = {
+      'name': 'Current State',
+      'incomeMultiplier': _incomeMultiplier,
+      'expenseSqueeze': _expenseSqueezePercent,
+      'lumpSum': _lumpSumExpense,
+      'extraDebt': _extraDebtPayment,
+      'horizonDays': _horizonDays,
+    };
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final slotA = _scenarioSlotA ?? currentSnapshot;
+            final slotB = _scenarioSlotB ?? currentSnapshot;
+
+            final resA = _calculateSimulationResults(
+              incMul: slotA['incomeMultiplier'],
+              expSqz: slotA['expenseSqueeze'],
+              lump: slotA['lumpSum'],
+              extraDebt: slotA['extraDebt'],
+              horizon: slotA['horizonDays'],
+            );
+
+            final resB = _calculateSimulationResults(
+              incMul: slotB['incomeMultiplier'],
+              expSqz: slotB['expenseSqueeze'],
+              lump: slotB['lumpSum'],
+              extraDebt: slotB['extraDebt'],
+              horizon: slotB['horizonDays'],
+            );
+
+            List<Map<String, dynamic>> allAvailablePresets = [
+              {'name': 'Current Active Levers', ...currentSnapshot},
+              {'name': 'Late Paycheck (-50% Inc.)', 'incomeMultiplier': 0.5, 'expenseSqueeze': 0.0, 'lumpSum': 0.0, 'extraDebt': 0.0, 'horizonDays': 30},
+              {'name': 'Zero Income Break', 'incomeMultiplier': 0.0, 'expenseSqueeze': 0.0, 'lumpSum': 0.0, 'extraDebt': 0.0, 'horizonDays': 30},
+              {'name': 'Emergency Bill (+500)', 'incomeMultiplier': 1.0, 'expenseSqueeze': 0.0, 'lumpSum': 500.0, 'extraDebt': 0.0, 'horizonDays': 30},
+              {'name': 'Debt Acceleration (+300/mo)', 'incomeMultiplier': 1.0, 'expenseSqueeze': 0.0, 'lumpSum': 0.0, 'extraDebt': 300.0, 'horizonDays': 90},
+              ..._customPresets,
+            ];
+
+            return AlertDialog(
+              backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(Icons.compare_arrows_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Head-to-Head Scenario Comparison',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Scenario A', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 4),
+                                DropdownButtonHideUnderline(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    decoration: BoxDecoration(
+                                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                                    ),
+                                    child: DropdownButton<Map<String, dynamic>>(
+                                      value: slotA,
+                                      isDense: true,
+                                      isExpanded: true,
+                                      dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                      style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                                      items: allAvailablePresets.map((p) {
+                                        return DropdownMenuItem<Map<String, dynamic>>(
+                                          value: p,
+                                          child: Text(p['name'] ?? 'Preset', overflow: TextOverflow.ellipsis),
+                                        );
+                                      }).toList(),
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          setModalState(() {
+                                            _scenarioSlotA = val;
+                                          });
+                                          setState(() {});
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Scenario B', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 4),
+                                DropdownButtonHideUnderline(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    decoration: BoxDecoration(
+                                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                                    ),
+                                    child: DropdownButton<Map<String, dynamic>>(
+                                      value: slotB,
+                                      isDense: true,
+                                      isExpanded: true,
+                                      dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                      style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                                      items: allAvailablePresets.map((p) {
+                                        return DropdownMenuItem<Map<String, dynamic>>(
+                                          value: p,
+                                          child: Text(p['name'] ?? 'Preset', overflow: TextOverflow.ellipsis),
+                                        );
+                                      }).toList(),
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          setModalState(() {
+                                            _scenarioSlotB = val;
+                                          });
+                                          setState(() {});
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Column(
+                          children: [
+                            _buildComparisonRow('Horizon', '${slotA['horizonDays']} Days', '${slotB['horizonDays']} Days'),
+                            const Divider(height: 16),
+                            _buildComparisonRow(
+                              'Simulated Net',
+                              '${resA['simulatedNetShift'] >= 0 ? '+' : ''}${_formatCurrency(resA['simulatedNetShift'])}',
+                              '${resB['simulatedNetShift'] >= 0 ? '+' : ''}${_formatCurrency(resB['simulatedNetShift'])}',
+                            ),
+                            const Divider(height: 16),
+                            _buildComparisonRow(
+                              'Ending Balance',
+                              _formatCurrency(resA['simulatedEndingBalance']),
+                              _formatCurrency(resB['simulatedEndingBalance']),
+                            ),
+                            const Divider(height: 16),
+                            _buildComparisonRow(
+                              'Runway / Health',
+                              '${resA['estimatedRunwayDays']} Days',
+                              '${resB['estimatedRunwayDays']} Days',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildComparisonRow(String label, String valA, String valB) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          flex: 2,
+          child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),
-            onPressed: () {
-              _saveCustomPreset(controller.text);
-              Navigator.pop(context);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+        Expanded(
+          flex: 3,
+          child: Text(valA, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87), textAlign: TextAlign.center),
+        ),
+        Expanded(
+          flex: 3,
+          child: Text(valB, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: const Color(0xFFA855F7)), textAlign: TextAlign.right),
+        ),
+      ],
     );
   }
 
@@ -261,6 +559,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     final double simulatedNetShift = results['simulatedNetShift'];
     final double endingBalance = results['simulatedEndingBalance'];
     final int runwayDays = results['estimatedRunwayDays'];
+    final double monteCarloScore = _calculateMonteCarloProbability();
 
     double healthRatio = 1.0;
     if (runwayDays < 30) healthRatio = 0.15;
@@ -283,13 +582,13 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         return Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
                   color: Colors.black,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: const Color(0xFFA855F7).withValues(alpha: 0.5),
+                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
                     width: 1.2,
                   ),
                   boxShadow: [
@@ -328,7 +627,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                           child: Text(
                             'WHAT-IF LAB',
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                               color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
                               letterSpacing: 0.8,
@@ -339,8 +638,8 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                         InkWell(
                           onTap: () => _showInfoDialog(
                             context,
-                            'WHAT-IF LAB PREDICTIONS',
-                            'The What-If Lab simulates how financial shocks, income adjustments, or debt accelerations might impact your future cash trajectory.\n\n• Basis: Projections are computed by extrapolating future scheduled Zaznams (transactions) and existing liabilities stored in your offline database.\n• Predictions vs. Certainty: These calculations represent simulated estimations and trend extrapolations, NOT guaranteed certainties. Real-world outcomes may differ due to unexpected expenses or variable earnings.\n• Disclaimer: This tool is for personal organizational tracking and self-analysis only. It does not constitute professional or expert financial advice.',
+                            'What-If Lab Simulations',
+                            'The What-If Lab simulates how financial shocks, income adjustments, or debt accelerations might impact your future cash trajectory.\n\n• Basis: Projections are computed by extrapolating future scheduled Zaznams (transactions) and existing liabilities stored in your offline database.\n• Predictions vs. Certainty: These calculations represent simulated estimations and trend extrapolations, NOT guaranteed certainties. Real-world outcomes may differ due to unexpected expenses or variable earnings.\n\n• Disclaimer: This tool is for personal organizational tracking and self-analysis only. It does not constitute professional or expert financial advice.',
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(2.0),
@@ -377,7 +676,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 6),
                       SizedBox(
                         height: 28,
                         width: 28,
@@ -404,26 +703,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
               if (!_isCollapsed) ...[
                 const SizedBox(height: 12),
 
-                // NEXT ROW UNDER BADGE: Reset Button
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    TextButton.icon(
-                      style: TextButton.styleFrom(
-                        foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      onPressed: _resetScenario,
-                      icon: const Icon(Icons.restart_alt_rounded, size: 14),
-                      label: const Text('Reset', style: TextStyle(fontSize: 11)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-
-                // NEXT ROW: Horizon
+                // NEXT ROW: Horizon & Reset All & Head-to-Head Comparison Button
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -442,29 +722,48 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                             child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        ToggleButtons(
+                          isSelected: [_horizonDays == 30, _horizonDays == 90, _horizonDays == 180, _horizonDays == 365],
+                          onPressed: (index) {
+                            setState(() {
+                              if (index == 0) _horizonDays = 30;
+                              else if (index == 1) _horizonDays = 90;
+                              else if (index == 2) _horizonDays = 180;
+                              else if (index == 3) _horizonDays = 365;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          selectedColor: Colors.white,
+                          fillColor: const Color(0xFFA855F7),
+                          color: _isZaznamityMode ? Colors.white70 : Colors.black87,
+                          constraints: const BoxConstraints(minHeight: 26, minWidth: 40),
+                          children: const [
+                            Text('30D', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold)),
+                            Text('90D', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold)),
+                            Text('6M', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold)),
+                            Text('1Y', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
                       ],
                     ),
-                    ToggleButtons(
-                      isSelected: [_horizonDays == 30, _horizonDays == 90, _horizonDays == 180, _horizonDays == 365],
-                      onPressed: (index) {
-                        setState(() {
-                          if (index == 0) _horizonDays = 30;
-                          else if (index == 1) _horizonDays = 90;
-                          else if (index == 2) _horizonDays = 180;
-                          else if (index == 3) _horizonDays = 365;
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(8),
-                      selectedColor: Colors.white,
-                      fillColor: const Color(0xFFA855F7),
-                      color: _isZaznamityMode ? Colors.white70 : Colors.black87,
-                      constraints: const BoxConstraints(minHeight: 28, minWidth: 50),
-                      children: const [
-                        Text('30D', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                        Text('90D', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                        Text('6M', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                        Text('1Y', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                      ],
+                    Container(
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFF87171), width: 1.0),
+                      ),
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFFF87171),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: _resetScenario,
+                        child: const Text('Reset All', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
                     ),
                   ],
                 ),
@@ -532,18 +831,71 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                           ),
                         ],
                       ),
+                      const Divider(height: 16),
+                      // Monte Carlo Risk Indicator Row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Monte Carlo Success Probability:',
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
+                              ),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                onTap: () => _showInfoDialog(
+                                  context,
+                                  'Monte Carlo Risk Indicator',
+                                  'What is this?\nA statistical risk simulation that runs 100 randomized variations of your income and expense sliders over your selected horizon.\n\nRelevance & Usefulness:\nReal life is unpredictable—paychecks can arrive late and bills can fluctuate. This score gives you a realistic probability percentage (e.g., 85%) of staying in the green rather than relying solely on a single static estimate.',
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(2.0),
+                                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            '${monteCarloScore.toStringAsFixed(0)}% Probability',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: monteCarloScore >= 75 ? const Color(0xFF34D399) : (monteCarloScore >= 40 ? Colors.orangeAccent : const Color(0xFFF87171)),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 14),
 
+                // Presets Header & Head-to-Head Comparison Button Row
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Presets & Saved:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                    InkWell(
-                      onTap: () => _promptSavePreset(context),
-                      child: const Text('+ Save Current', style: TextStyle(fontSize: 11, color: Color(0xFFA855F7), fontWeight: FontWeight.bold)),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        InkWell(
+                          onTap: () => _showHeadToHeadModal(context),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.compare_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                              const SizedBox(width: 3),
+                              Text('Compare', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        InkWell(
+                          onTap: () => _promptSavePreset(context),
+                          child: const Text('+ Save Current', style: TextStyle(fontSize: 11, color: Color(0xFFA855F7), fontWeight: FontWeight.bold)),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -552,10 +904,14 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    _buildPresetChip('Late Paycheck (-50% Inc.)', 0.5, 0.0, 0.0, 0.0, 30),
-                    _buildPresetChip('Zero Income Break', 0.0, 0.0, 0.0, 0.0, 30),
-                    _buildPresetChip('Emergency Bill (+500)', 1.0, 0.0, 500.0, 0.0, 30),
-                    _buildPresetChip('Debt Acceleration (+300/mo)', 1.0, 0.0, 0.0, 300.0, 90),
+                    if (!_hiddenDefaultPresets.contains('Late Paycheck (-50% Inc.)'))
+                      _buildDeletablePresetChip('Late Paycheck (-50% Inc.)', 0.5, 0.0, 0.0, 0.0, 30),
+                    if (!_hiddenDefaultPresets.contains('Zero Income Break'))
+                      _buildDeletablePresetChip('Zero Income Break', 0.0, 0.0, 0.0, 0.0, 30),
+                    if (!_hiddenDefaultPresets.contains('Emergency Bill (+500)'))
+                      _buildDeletablePresetChip('Emergency Bill (+500)', 1.0, 0.0, 500.0, 0.0, 30),
+                    if (!_hiddenDefaultPresets.contains('Debt Acceleration (+300/mo)'))
+                      _buildDeletablePresetChip('Debt Acceleration (+300/mo)', 1.0, 0.0, 0.0, 300.0, 90),
                     for (int i = 0; i < _customPresets.length; i++)
                       _buildCustomPresetChip(_customPresets[i], i),
                   ],
@@ -721,37 +1077,55 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     );
   }
 
-  Widget _buildPresetChip(String label, double incMul, double expSqz, double lump, double extraDebt, int horizon) {
+  Widget _buildDeletablePresetChip(String label, double incMul, double expSqz, double lump, double extraDebt, int horizon) {
     bool isSelected = _incomeMultiplier == incMul && _expenseSqueezePercent == expSqz && _lumpSumExpense == lump && _extraDebtPayment == extraDebt && _horizonDays == horizon;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _incomeMultiplier = incMul;
-          _expenseSqueezePercent = expSqz;
-          _lumpSumExpense = lump;
-          _extraDebtPayment = extraDebt;
-          _horizonDays = horizon;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected 
-              ? const Color(0xFFA855F7) 
-              : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9)),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? const Color(0xFFA855F7) : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-          ),
+    return Container(
+      padding: const EdgeInsets.only(left: 8, right: 4, top: 4, bottom: 4),
+      decoration: BoxDecoration(
+        color: isSelected 
+            ? const Color(0xFFA855F7) 
+            : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9)),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isSelected ? const Color(0xFFA855F7) : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            color: isSelected ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() {
+                _incomeMultiplier = incMul;
+                _expenseSqueezePercent = expSqz;
+                _lumpSumExpense = lump;
+                _extraDebtPayment = extraDebt;
+                _horizonDays = horizon;
+              });
+            },
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
+              ),
+            ),
           ),
-        ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () => _hideDefaultPreset(label),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.all(2.0),
+              child: Icon(
+                Icons.close,
+                size: 11,
+                color: isSelected ? Colors.white70 : Colors.redAccent,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -765,48 +1139,53 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
 
     bool isSelected = _incomeMultiplier == inc && _expenseSqueezePercent == sqz && _lumpSumExpense == lump && _extraDebtPayment == debt && _horizonDays == horiz;
 
-    return GestureDetector(
-      onLongPress: () => _deleteCustomPreset(index),
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            _incomeMultiplier = inc;
-            _expenseSqueezePercent = sqz;
-            _lumpSumExpense = lump;
-            _extraDebtPayment = debt;
-            _horizonDays = horiz;
-          });
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: isSelected 
-                ? const Color(0xFFA855F7) 
-                : (_isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0)),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected ? const Color(0xFFA855F7) : (_isZaznamityMode ? Colors.white24 : const Color(0xFFCBD5E1)),
+    return Container(
+      padding: const EdgeInsets.only(left: 8, right: 4, top: 4, bottom: 4),
+      decoration: BoxDecoration(
+        color: isSelected 
+            ? const Color(0xFFA855F7) 
+            : (_isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isSelected ? const Color(0xFFA855F7) : (_isZaznamityMode ? Colors.white24 : const Color(0xFFCBD5E1)),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() {
+                _incomeMultiplier = inc;
+                _expenseSqueezePercent = sqz;
+                _lumpSumExpense = lump;
+                _extraDebtPayment = debt;
+                _horizonDays = horiz;
+              });
+            },
+            child: Text(
+              preset['name'] ?? 'Custom',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)),
+              ),
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                preset['name'] ?? 'Custom',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.white : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)),
-                ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () => _deleteCustomPreset(index),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.all(2.0),
+              child: Icon(
+                Icons.close,
+                size: 11,
+                color: isSelected ? Colors.white70 : Colors.redAccent,
               ),
-              const SizedBox(width: 4),
-              InkWell(
-                onTap: () => _deleteCustomPreset(index),
-                child: Icon(Icons.close, size: 10, color: isSelected ? Colors.white70 : Colors.redAccent),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

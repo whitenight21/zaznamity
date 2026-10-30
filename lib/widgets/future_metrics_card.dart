@@ -215,7 +215,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         ? widget.totalPrognosis
         : (widget.prognosisByOwner[_selectedOwner] ?? 0.0);
 
-    List<Map<String, dynamic>> scheduledTxs = [];
+    List scheduledTxs = [];
     for (var tx in widget.transactions) {
       if (_selectedOwner != 'All Owners' && tx.owner != _selectedOwner) continue;
       final dt = DateTime.tryParse(tx.createdAt);
@@ -358,7 +358,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
 
         return Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
                   color: Colors.black,
@@ -390,92 +390,95 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'FUTURE METRICS',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                                letterSpacing: 0.8,
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 28),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'FUTURE METRICS',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                                  letterSpacing: 0.8,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        InkWell(
-                          onTap: () => _showMetricInfo(
-                            context,
-                            'ABOUT FUTURE METRICS & PREDICTIONS',
-                            'This card aggregates forward-looking financial forecasting and risk indicators.\n\n• Nature of Data: These figures represent predictive modeling and trend extrapolations rather than absolute certainties.\n• Basis of Calculation: Projections are computed using a combination of past historical Zaznams, future scheduled recurring/recorded entries, and average burn-rate modeling.\n• Disclaimer: Actual financial outcomes may differ due to unexpected expenses or variable income shifts. This tool provides analytical insight and does not constitute certified professional financial advice.',
+                          const SizedBox(width: 4),
+                          InkWell(
+                            onTap: () => _showMetricInfo(
+                              context,
+                              'ABOUT FUTURE METRICS & PREDICTIONS',
+                              'This card aggregates forward-looking financial forecasting and risk indicators.\n\n• Nature of Data: These figures represent predictive modeling and trend extrapolations rather than absolute certainties.\n• Basis of Calculation: Projections are computed using a combination of past historical Zaznams, future scheduled recurring/recorded entries, and average burn-rate modeling.\n• Disclaimer: Actual financial outcomes may differ due to unexpected expenses or variable income shifts. This tool provides analytical insight and does not constitute certified professional financial advice.',
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(2.0),
+                              child: Icon(Icons.info_outline_rounded, size: 15, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                            ),
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(2.0),
-                            child: Icon(Icons.info_outline_rounded, size: 15, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
+                        ],
+                      ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          height: 28,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                              const SizedBox(width: 4),
+                              Text(
+                                _selectedOwner,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          height: 28,
+                          width: 28,
+                          child: IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            ),
+                            onPressed: _toggleCollapse,
+                            icon: Icon(
+                              _isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded,
+                              size: 16,
+                            ),
+                            tooltip: _isCollapsed ? 'Expand' : 'Collapse',
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        height: 28,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                            const SizedBox(width: 4),
-                            Text(
-                              _selectedOwner,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      SizedBox(
-                        height: 28,
-                        width: 28,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                          ),
-                          onPressed: _toggleCollapse,
-                          icon: Icon(
-                            _isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded,
-                            size: 16,
-                          ),
-                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
               if (!_isCollapsed) ...[
                 const SizedBox(height: 12),

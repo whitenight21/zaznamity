@@ -54,7 +54,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
 
   @override
   Widget build(BuildContext context) {
-    // If hidden in portrait mode, show only the long purple tab at the bottom
+    // If hidden in portrait mode, show only the small tab handle at the bottom
     if (_isHidden && !widget.isLandscape) {
       return Align(
         alignment: Alignment.bottomCenter,
@@ -65,11 +65,11 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
             });
           },
           child: Container(
-            width: 120,
-            height: 24,
+            width: 400,
+            height: 20,
             margin: const EdgeInsets.only(bottom: 0),
             decoration: const BoxDecoration(
-              color: Color(0xFFA855F7),
+              color: Color.fromARGB(255, 82, 35, 126),
               borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
               boxShadow: [
                 BoxShadow(
@@ -82,6 +82,42 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
             child: const Center(
               child: Icon(
                 Icons.keyboard_arrow_up_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // If hidden in landscape mode, show only the small side tab on the left edge
+    if (_isHidden && widget.isLandscape) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: GestureDetector(
+          onTap: () {
+            setState(() {
+              _isHidden = false;
+            });
+          },
+          child: Container(
+            width: 20,
+            height: 400,
+            decoration: const BoxDecoration(
+              color: Color.fromARGB(255, 82, 35, 126),
+              borderRadius: BorderRadius.horizontal(right: Radius.circular(12)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black45,
+                  blurRadius: 4,
+                  offset: Offset(2, 0),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.keyboard_arrow_right_rounded,
                 color: Colors.white,
                 size: 18,
               ),
@@ -113,92 +149,111 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
       effectiveRight[2],
     ];
 
+    // Horizontal / Landscape View: Rotated 90 degrees and placed on the left edge of the screen
     if (widget.isLandscape) {
-      return Container(
-        margin: const EdgeInsets.only(right: 0, top: 4, bottom: 4),
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1333).withValues(alpha: 0.95),
-          borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.4),
-              blurRadius: 16,
-              offset: const Offset(4, 0),
-            ),
-          ],
-          border: Border.all(color: Colors.white10),
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ...allNavItems.map((itemKey) {
-                if (itemKey == 'logo') {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: GestureDetector(
-                      onTap: () {
-                        _triggerPressEffect('logo');
-                        widget.onQuickAdd();
-                      },
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          if (_pressedItemKey == 'logo')
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFA855F7),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.4),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: ClipOval(
-                              child: Image.asset(
-                                'assets/ZaznamityLogoFULL.jpg',
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: _buildNavItem(context, itemKey),
-                );
-              }),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 4),
-                child: Divider(color: Colors.white12, height: 1, indent: 4, endIndent: 4),
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: GestureDetector(
+          onHorizontalDragUpdate: (details) {
+            if (details.delta.dx < -6) {
+              setState(() {
+                _isHidden = true;
+              });
+            }
+          },
+          child: RotatedBox(
+            quarterTurns: 1,
+            child: Container(
+              margin: EdgeInsets.zero,
+              padding: const EdgeInsets.fromLTRB(16, 1, 16, 1),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1333).withValues(alpha: 0.95),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
+                border: Border.all(color: Colors.white10),
               ),
-              _buildHorizontalTabItem(0, 'Metrics'),
-              _buildHorizontalTabItem(1, 'Trends'),
-              _buildHorizontalTabItem(2, 'Analytics'),
-              _buildTabWithManagerAction(3, 'Actions'),
-            ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildRotatedNavItem(context, effectiveLeft[0]),
+                      _buildRotatedNavItem(context, effectiveLeft[1]),
+                      _buildRotatedNavItem(context, effectiveLeft[2]),
+
+                      // Center Logo Quick-Add Button with 0.5s Purple Circle Press Effect
+                      GestureDetector(
+                        onTap: () {
+                          _triggerPressEffect('logo');
+                          widget.onQuickAdd();
+                        },
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            if (_pressedItemKey == 'logo')
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFA855F7),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: ClipOval(
+                                child: Image.asset(
+                                  'assets/ZaznamityLogoFULL.jpg',
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      _buildRotatedNavItem(context, effectiveRight[0]),
+                      _buildRotatedNavItem(context, effectiveRight[1]),
+                      _buildRotatedNavItem(context, effectiveRight[2]),
+                    ],
+                  ),
+                  const SizedBox(height: 0),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildRotatedPortraitTabItem(0, 'Metrics'),
+                      _buildRotatedPortraitTabItem(1, 'Trends'),
+                      _buildRotatedPortraitTabItem(2, 'Analytics'),
+                      _buildRotatedTabWithManagerAction(3, 'Actions'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       );
     }
 
-    // Portrait / Docked Bottom Standard View with instant swipe-down-to-hide support
+    // Standard Bottom Docked View (Portrait Mode)
     return GestureDetector(
       onVerticalDragUpdate: (details) {
         if (details.delta.dy > 6) {
@@ -317,6 +372,13 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
     );
   }
 
+  Widget _buildRotatedPortraitTabItem(int index, String label) {
+    return RotatedBox(
+      quarterTurns: 3,
+      child: _buildPortraitTabItem(index, label),
+    );
+  }
+
   Widget _buildTabWithManagerAction(int index, String label) {
     final isSelected = widget.currentTabIndex == index;
     return Row(
@@ -352,26 +414,10 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
     );
   }
 
-  Widget _buildHorizontalTabItem(int index, String label) {
-    final isSelected = widget.currentTabIndex == index;
-    return InkWell(
-      onTap: () => widget.onTabSelected(index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        margin: const EdgeInsets.symmetric(vertical: 1),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFA855F7).withValues(alpha: 0.3) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            color: isSelected ? Colors.white : Colors.white70,
-          ),
-        ),
-      ),
+  Widget _buildRotatedTabWithManagerAction(int index, String label) {
+    return RotatedBox(
+      quarterTurns: 3,
+      child: _buildTabWithManagerAction(index, label),
     );
   }
 
@@ -506,6 +552,13 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
           tooltip: tooltip,
         ),
       ],
+    );
+  }
+
+  Widget _buildRotatedNavItem(BuildContext context, String itemKey) {
+    return RotatedBox(
+      quarterTurns: 3,
+      child: _buildNavItem(context, itemKey),
     );
   }
 }
