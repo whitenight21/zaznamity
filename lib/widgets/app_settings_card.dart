@@ -21,6 +21,7 @@ import 'package:zaznamity/widgets/settings/owner_management_modal.dart';
 import 'package:zaznamity/widgets/settings/pool_management_modal.dart';
 import 'package:zaznamity/widgets/csv_import_mapper_dialog.dart';
 import 'package:zaznamity/widgets/settings/history_display_settings_widget.dart';
+import 'package:zaznamity/models/transaction_model.dart';
 
 class AppSettingsCard extends StatefulWidget {
   final Map<String, bool> initialPools;
@@ -88,6 +89,58 @@ class AppSettingsCard extends StatefulWidget {
   State<AppSettingsCard> createState() => _AppSettingsCardState();
 }
 
+class SpeechPreset {
+  String name;
+  String description;
+  String dateStr;
+  String timeStr;
+  String pool;
+  String label;
+  String type;
+  String currency;
+  bool isRecurring;
+  bool hasReceipt;
+
+  SpeechPreset({
+    required this.name,
+    required this.description,
+    required this.dateStr,
+    required this.timeStr,
+    required this.pool,
+    required this.label,
+    required this.type,
+    required this.currency,
+    this.isRecurring = false,
+    this.hasReceipt = false,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'description': description,
+        'dateStr': dateStr,
+        'timeStr': timeStr,
+        'pool': pool,
+        'label': label,
+        'type': type,
+        'currency': currency,
+        'isRecurring': isRecurring,
+        'hasReceipt': hasReceipt,
+      };
+
+  factory SpeechPreset.fromJson(Map<String, dynamic> json) => SpeechPreset(
+        name: json['name'] ?? '',
+        description: json['description'] ?? '',
+        dateStr: json['dateStr'] ?? 'now',
+        timeStr: json['timeStr'] ?? 'now',
+        pool: json['pool'] ?? 'checking',
+        label: json['label'] ?? 'Food',
+        type: json['type'] ?? 'expense',
+        currency: json['currency'] ?? 'EUR',
+        isRecurring: json['isRecurring'] ?? false,
+        hasReceipt: json['hasReceipt'] ?? false,
+      );
+}
+
 class _AppSettingsCardState extends State<AppSettingsCard> {
   late Map<String, bool> _pools;
   late Map<String, bool> _liquidNetPools;
@@ -115,6 +168,87 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   String _calendarStartDay = 'Monday';
 
   bool _titleCardVisible = true;
+
+  bool _speechToTextEnabled = false;
+  List<SpeechPreset> _structuredSpeechPresets = [
+    SpeechPreset(
+      name: 'Fresh',
+      description: 'Fresh',
+      dateStr: 'now',
+      timeStr: 'now',
+      pool: 'checking',
+      label: 'Food',
+      type: 'expense',
+      currency: 'EUR',
+      isRecurring: false,
+      hasReceipt: false,
+    ),
+  ];
+
+  Future<void> _loadSpeechPresets() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonListStr = prefs.getString('speech_presets_json_list');
+    if (jsonListStr != null) {
+      try {
+        final List<dynamic> decoded = jsonDecode(jsonListStr);
+        _structuredSpeechPresets = decoded.map((item) => SpeechPreset.fromJson(item)).toList();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _saveSpeechPresets() async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = jsonEncode(_structuredSpeechPresets.map((p) => p.toJson()).toList());
+    await prefs.setString('speech_presets_json_list', encoded);
+  }
+
+  void _parseAndAutoSaveZaznamFromPreset(SpeechPreset preset, double amount) {
+    DateTime finalDate = DateTime.now();
+    if (preset.dateStr != 'now') {
+      final parsedDate = DateTime.tryParse(preset.dateStr);
+      if (parsedDate != null) finalDate = parsedDate;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Voice Parsed: ${preset.name} (${preset.currency} $amount) -> Saving Zaznam in 2 sec...'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: const Color(0xFF582F95),
+      ),
+    );
+
+    // Auto-Save after 2 seconds delay
+    Future.delayed(const Duration(seconds: 2), () async {
+      try {
+        final labelObj = widget.labels.firstWhere(
+          (l) => l.name.toLowerCase() == preset.label.toLowerCase(),
+          orElse: () => widget.labels.first,
+        );
+
+        final newTx = TransactionModel(
+          createdAt: finalDate.toIso8601String(),
+          type: preset.type,
+          amount: amount,
+          description: preset.description,
+          owner: _owners.isNotEmpty ? _owners.first : 'Shared',
+          pool: preset.pool,
+          currencyCode: preset.currency,
+          labelId: labelObj.id,
+          isConfirmed: 1,
+          isSavings: 0,
+        );
+
+        await DatabaseHelper.instance.insertTransaction(newTx);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Zaznam auto-saved successfully!')),
+          );
+        }
+      } catch (e) {
+        debugPrint('Error auto-saving Zaznam from preset: $e');
+      }
+    });
+  }
 
   final Map<String, bool> _multiLabelFixedCategories = {};
 
@@ -253,6 +387,15 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       _titleCardVisible = prefs.getBool('titleCardVisible') ?? true;
       _excludeTransfersFromInsights = prefs.getBool('exclude_transfers_insights') ?? true;
 
+      _speechToTextEnabled = prefs.getBool('speech_to_text_enabled') ?? false;
+      final jsonListStr = prefs.getString('speech_presets_json_list');
+      if (jsonListStr != null) {
+        try {
+          final List<dynamic> decoded = jsonDecode(jsonListStr);
+          _structuredSpeechPresets = decoded.map((item) => SpeechPreset.fromJson(item)).toList();
+        } catch (_) {}
+      }
+
       for (var label in widget.labels) {
         _multiLabelFixedCategories[label.name] = prefs.getBool('set_multilabel_fixed_${label.name}') ?? false;
       }
@@ -357,6 +500,286 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     } catch (e) {
       debugPrint('Error loading saved reports/exports: $e');
     }
+  }
+
+void _showSpeechPresetsManagerDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Manage Speech Presets',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_circle, color: Color(0xFFA855F7)),
+                onPressed: () {
+                  _showEditSinglePresetModal(null, () {
+                    setModalState(() {});
+                    setState(() {});
+                  });
+                },
+                tooltip: 'Add Preset',
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 460,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Active Presets (${_structuredSpeechPresets.length})',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _structuredSpeechPresets.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: Text(
+                            'No voice presets added yet.',
+                            style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white60 : Colors.grey),
+                          ),
+                        )
+                      : ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 280),
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: _structuredSpeechPresets.length,
+                            itemBuilder: (context, index) {
+                              final preset = _structuredSpeechPresets[index];
+                              return Card(
+                                color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF1F5F9),
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: ListTile(
+                                  dense: true,
+                                  title: Text(
+                                    preset.name,
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                                  ),
+                                  subtitle: Text(
+                                    'Desc: ${preset.description} | Pool: ${preset.pool} | Label: ${preset.label} | ${preset.currency}',
+                                    style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: Icon(Icons.edit, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : Colors.grey),
+                                        onPressed: () {
+                                          _showEditSinglePresetModal(preset, () {
+                                            setModalState(() {});
+                                            setState(() {});
+                                          });
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete, size: 16, color: Color(0xFFDC2626)),
+                                        onPressed: () {
+                                          setModalState(() {
+                                            _structuredSpeechPresets.removeAt(index);
+                                          });
+                                          _saveSpeechPresets();
+                                          setState(() {});
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSave) {
+    final isEditing = existingPreset != null;
+    final nameCtrl = TextEditingController(text: existingPreset?.name ?? '');
+    final descCtrl = TextEditingController(text: existingPreset?.description ?? '');
+    String dateVal = existingPreset?.dateStr ?? 'now';
+    String timeVal = existingPreset?.timeStr ?? 'now';
+    String selectedPool = existingPreset?.pool ?? (_pools.keys.isNotEmpty ? _pools.keys.first : 'checking');
+    String selectedLabel = existingPreset?.label ?? (widget.labels.isNotEmpty ? widget.labels.first.name : 'Food');
+    String selectedType = existingPreset?.type ?? 'expense';
+    String selectedCurrency = existingPreset?.currency ?? _primaryCurrency;
+    bool isRecurring = existingPreset?.isRecurring ?? false;
+    bool hasReceipt = existingPreset?.hasReceipt ?? false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          title: Text(
+            isEditing ? 'Edit Speech Preset' : 'New Speech Preset',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95)),
+          ),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 13),
+                    decoration: const InputDecoration(labelText: 'Preset Keyword Name (e.g. "Fresh")', isDense: true, border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: descCtrl,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 13),
+                    decoration: const InputDecoration(labelText: 'Description', isDense: true, border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedPool,
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12),
+                          decoration: const InputDecoration(labelText: 'Pool', isDense: true, border: OutlineInputBorder()),
+                          items: _pools.keys.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))).toList(),
+                          onChanged: (val) => setDialogState(() => selectedPool = val ?? selectedPool),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedLabel,
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12),
+                          decoration: const InputDecoration(labelText: 'Label', isDense: true, border: OutlineInputBorder()),
+                          items: widget.labels.map((l) => DropdownMenuItem(value: l.name, child: Text(l.name))).toList(),
+                          onChanged: (val) => setDialogState(() => selectedLabel = val ?? selectedLabel),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedType,
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12),
+                          decoration: const InputDecoration(labelText: 'Type', isDense: true, border: OutlineInputBorder()),
+                          items: const [
+                            DropdownMenuItem(value: 'expense', child: Text('Expense')),
+                            DropdownMenuItem(value: 'income', child: Text('Income')),
+                          ],
+                          onChanged: (val) => setDialogState(() => selectedType = val ?? selectedType),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedCurrency,
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12),
+                          decoration: const InputDecoration(labelText: 'Currency', isDense: true, border: OutlineInputBorder()),
+                          items: [_primaryCurrency, if (_secondaryCurrency1 != null) _secondaryCurrency1!, if (_secondaryCurrency2 != null) _secondaryCurrency2!, if (_secondaryCurrency3 != null) _secondaryCurrency3!]
+                              .map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                          onChanged: (val) => setDialogState(() => selectedCurrency = val ?? selectedCurrency),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Recurring Zaznam', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                    value: isRecurring,
+                    onChanged: (val) => setDialogState(() => isRecurring = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Attach Receipt', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                    value: hasReceipt,
+                    onChanged: (val) => setDialogState(() => hasReceipt = val ?? false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                if (nameCtrl.text.trim().isNotEmpty) {
+                  final newPreset = SpeechPreset(
+                    name: nameCtrl.text.trim(),
+                    description: descCtrl.text.trim().isEmpty ? nameCtrl.text.trim() : descCtrl.text.trim(),
+                    dateStr: dateVal,
+                    timeStr: timeVal,
+                    pool: selectedPool,
+                    label: selectedLabel,
+                    type: selectedType,
+                    currency: selectedCurrency,
+                    isRecurring: isRecurring,
+                    hasReceipt: hasReceipt,
+                  );
+
+                  if (isEditing) {
+                    final index = _structuredSpeechPresets.indexOf(existingPreset);
+                    if (index != -1) _structuredSpeechPresets[index] = newPreset;
+                  } else {
+                    _structuredSpeechPresets.add(newPreset);
+                  }
+
+                  _saveSpeechPresets();
+                  onSave();
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text('Save Preset'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showInfoModal(String title, String description) {
@@ -1565,6 +1988,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                 onPressed: () => _showEditSingleBudgetDialog(b, () async {
                                   final updated = await DatabaseHelper.instance.getBudgets();
                                   setDialogState(() => budgets = updated);
+                                  
+                                  // Re-fetch state and refresh parent widget tree
+                                  if (widget.onLiabilityUpdated != null) {
+                                    widget.onLiabilityUpdated!();
+                                  }
                                 }),
                                 tooltip: 'Edit Budget Parameters',
                               ),
@@ -1674,11 +2102,23 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
               ),
               onPressed: () async {
                 final finalLimit = double.tryParse(limitController.text) ?? limitAmount;
+                
+                // 1. Update in local SQLite database
                 await DatabaseHelper.instance.updateBudget(budgetId, finalLimit);
-                Navigator.pop(ctx);
+                
+                // 2. Notify internal modal/dialog list
                 onUpdated();
+
+                // 3. Trigger top-level parent widget state refresh (so Budgets Card re-renders instantly)
+                if (widget.onLiabilityUpdated != null) {
+                  widget.onLiabilityUpdated!();
+                }
+
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Budget updated successfully')));
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Budget updated successfully')),
+                  );
                 }
               },
               child: const Text('Save Changes'),
@@ -2826,9 +3266,9 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                                         ),
                                         onPressed: () async {
                                           await DatabaseHelper.instance.deleteBudget(budgetId);
-                                          setState(() {});
+                                          setState(() {}); // Local refresh
                                           if (widget.onLiabilityUpdated != null) {
-                                            widget.onLiabilityUpdated!();
+                                            widget.onLiabilityUpdated!(); // Global/Parent dashboard refresh
                                           }
                                         },
                                         tooltip: 'Delete Budget',
@@ -2944,6 +3384,52 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                               await prefs.setString('calendarStartDay', val);
                             }
                           },
+                        ),
+                      ],
+                    ),
+                    _buildSubSectionCard(
+                      title: 'Voice Input New Zaznam',
+                      subtitle: 'Configure Voice Input (speech-to-text) shortcuts and custom presets for quick inputing New Zaznams',
+                      children: [
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('Turn on Voice Input', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                          subtitle: Text('Enable Voice Input for rapid entry via double-pressing the Zaznamity logo in the Navigation bar. The red border around the Zaznamity logo indicates Voice Input is listening. Double-press Zaznamity logo again to turn Voice Input off. After the successful parsing of fields, a 2 second timer will begin and allow for manual changes - if no changes are needed, the New Zaznam will be automatically saved after the 2 seconds.', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                          value: _speechToTextEnabled,
+                          onChanged: (val) async {
+                            setState(() => _speechToTextEnabled = val);
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setBool('speech_to_text_enabled', val);
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Speech-to-Text Presets',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Add, edit, or remove custom Voice Input presets.',
+                          style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed: _showSpeechPresetsManagerDialog,
+                            icon: const Icon(Icons.mic_none_rounded, size: 16),
+                            label: const Text('Manage Speech Presets', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          ),
                         ),
                       ],
                     ),

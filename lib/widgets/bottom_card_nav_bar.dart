@@ -38,6 +38,9 @@ class BottomCardNavBar extends StatefulWidget {
 class _BottomCardNavBarState extends State<BottomCardNavBar> {
   String? _pressedItemKey;
   bool _isHidden = false;
+  
+  // Speech-to-text recording state variables
+  bool _isRecordingActive = false;
 
   void _triggerPressEffect(String key) {
     setState(() {
@@ -52,9 +55,32 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
     });
   }
 
+  void _toggleSpeechToTextMode() {
+    setState(() {
+      _isRecordingActive = !_isRecordingActive;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Center(
+          child: Text(
+            _isRecordingActive
+                ? 'Voice Input Activated (Listening...)'
+                : 'Voice Input Deactivated',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        duration: const Duration(seconds: 1),
+        backgroundColor: _isRecordingActive ? Colors.red.shade700 : const Color(0xFF582F95),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // If hidden in portrait mode, show only the small tab handle at the bottom
     if (_isHidden && !widget.isLandscape) {
       return Align(
         alignment: Alignment.bottomCenter,
@@ -91,7 +117,6 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
       );
     }
 
-    // If hidden in landscape mode, show only the small side tab on the left edge
     if (_isHidden && widget.isLandscape) {
       return Align(
         alignment: Alignment.centerLeft,
@@ -139,17 +164,6 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
       'snapshot',
     ];
 
-    final allNavItems = [
-      effectiveLeft[0],
-      effectiveLeft[1],
-      effectiveLeft[2],
-      'logo',
-      effectiveRight[0],
-      effectiveRight[1],
-      effectiveRight[2],
-    ];
-
-    // Horizontal / Landscape View: Rotated 90 degrees and placed on the left edge of the screen
     if (widget.isLandscape) {
       return Align(
         alignment: Alignment.centerLeft,
@@ -188,11 +202,15 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
                       _buildRotatedNavItem(context, effectiveLeft[1]),
                       _buildRotatedNavItem(context, effectiveLeft[2]),
 
-                      // Center Logo Quick-Add Button with 0.5s Purple Circle Press Effect
+                      // Center Logo: Single tap opens New Zaznam; Double tap toggles Speech to Text with Red Border indicator
                       GestureDetector(
                         onTap: () {
                           _triggerPressEffect('logo');
-                          widget.onQuickAdd();
+                          widget.onNavigateToCard('new_entry');
+                        },
+                        onDoubleTap: () {
+                          _triggerPressEffect('logo');
+                          _toggleSpeechToTextMode();
                         },
                         child: Stack(
                           alignment: Alignment.center,
@@ -211,6 +229,10 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
                               height: 36,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: _isRecordingActive ? Colors.red : Colors.transparent,
+                                  width: 3.5,
+                                ),
                                 boxShadow: [
                                   BoxShadow(
                                     color: Colors.black.withValues(alpha: 0.4),
@@ -253,7 +275,6 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
       );
     }
 
-    // Standard Bottom Docked View (Portrait Mode)
     return GestureDetector(
       onVerticalDragUpdate: (details) {
         if (details.delta.dy > 6) {
@@ -287,11 +308,15 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
                 _buildNavItem(context, effectiveLeft[1]),
                 _buildNavItem(context, effectiveLeft[2]),
 
-                // Center Logo Quick-Add Button with 0.5s Purple Circle Press Effect
+                // Center Logo: Single tap opens New Zaznam; Double tap toggles Speech to Text with Red Border indicator
                 GestureDetector(
                   onTap: () {
                     _triggerPressEffect('logo');
-                    widget.onQuickAdd();
+                    widget.onNavigateToCard('new_entry');
+                  },
+                  onDoubleTap: () {
+                    _triggerPressEffect('logo');
+                    _toggleSpeechToTextMode();
                   },
                   child: Stack(
                     alignment: Alignment.center,
@@ -310,6 +335,10 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
                         height: 36,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
+                          border: Border.all(
+                            color: _isRecordingActive ? Colors.red : Colors.transparent,
+                            width: 3.5,
+                          ),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.4),

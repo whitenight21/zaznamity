@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
+import '../models/liability_model.dart';
+import '../services/database_helper.dart';
 
 class SummaryMetricsCard extends StatefulWidget {
   final List<String> owners;
@@ -42,6 +44,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
   final Map<String, bool> _liquidNetPools = {};
   final Map<String, bool> _visiblePools = {};
   bool _includeLiabilitiesInNetWorth = false;
+  List<LiabilityModel> _liabilities = [];
 
   final Map<String, String> _currencyFlags = {
     'EUR': '🇪🇺',
@@ -87,6 +90,11 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       loadedVisibility[pool] = prefs.getBool('set_visible_pool_$pool') ?? true;
     }
 
+    List<LiabilityModel> loadedLiabilities = [];
+    try {
+      loadedLiabilities = await DatabaseHelper.instance.getLiabilities();
+    } catch (_) {}
+
     if (mounted) {
       setState(() {
         _isZaznamityMode = (savedTheme == 'zaznamity');
@@ -98,6 +106,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
         _includeLiabilitiesInNetWorth = prefs.getBool('include_liabilities_net_worth') ?? false;
         _liquidNetPools.addAll(loadedPools);
         _visiblePools.addAll(loadedVisibility);
+        _liabilities = loadedLiabilities;
       });
     }
   }
@@ -366,10 +375,19 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       totalPoolsForCurr.entries.where((e) => e.value != 0.0 && (_liquidNetPools[e.key] ?? true))
     );
 
-    double currentLiquidNet = 0;
+    double totalLiquidNet = 0;
     netWorthPools.forEach((poolName, balance) {
-      currentLiquidNet += balance;
+      totalLiquidNet += balance;
     });
+
+    double totalLiabilities = 0;
+    for (var l in _liabilities) {
+      if (widget.selectedOwner == null || widget.selectedOwner!.isEmpty || l.owner == widget.selectedOwner || l.owner == 'Shared') {
+        totalLiabilities += l.remainingBalance;
+      }
+    }
+
+    double finalNetWorth = totalLiquidNet - (_includeLiabilitiesInNetWorth ? totalLiabilities : 0.0);
 
     Map<String, double> displayedPools = Map.fromEntries(
       totalPoolsForCurr.entries.where((e) => e.value != 0.0 && (_visiblePools[e.key] ?? true))
@@ -440,7 +458,26 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'LIQUID NET WORTH',
+                'TOTAL LIQUID NET WORTH',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _formatCurrency(totalLiquidNet, currencyCode),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: _isZaznamityMode ? Colors.white70 : Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                _includeLiabilitiesInNetWorth ? 'NET WORTH (INCL. LIABILITIES)' : 'LIQUID NET WORTH',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
@@ -450,7 +487,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
               ),
               const SizedBox(height: 3),
               Text(
-                _formatCurrency(currentLiquidNet, currencyCode),
+                _formatCurrency(finalNetWorth, currencyCode),
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
@@ -466,7 +503,9 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
-                      color: absoluteDiff >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                      color: absoluteDiff >= 0
+                          ? (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669))
+                          : const Color(0xFFF87171),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -474,7 +513,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                     onTap: () => _showMetricInfo(
                       context,
                       'Net Worth Trend',
-                      'Compares your current total liquid net balance against your baseline net balance recorded on the 1st day of the current month.',
+                      'Compares your current total net balance against your baseline net balance recorded on the 1st day of the current month.',
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(2.0),

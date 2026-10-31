@@ -73,3 +73,10 @@ tasks.register("copyApkToRoot") {
         }
     }
 }
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}

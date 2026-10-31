@@ -404,36 +404,36 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       }
     });
 
-    // 1. Correctly map every card ID to its respective tab index
+    // 1. Map card ID to its target tab index
     int targetTab = 0;
     if (['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(cardId)) {
       targetTab = 0;
     } else if (['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(cardId)) {
       targetTab = 1;
     } else if (['label_focus', 'income_expenses_labels', 'calendar', 'what_if_scenario'].contains(cardId)) {
-      targetTab = 2; // Analytics tab
+      targetTab = 2; 
     } else {
-      targetTab = 3; // Actions tab
+      targetTab = 3; 
     }
 
     // 2. Animate tab transition smoothly
     _tabController.animateTo(
       targetTab,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeInOutCubic,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
     );
 
-    // 3. Wait for tab view animation & layout pass to complete before scrolling smoothly
-    Future.delayed(const Duration(milliseconds: 220), () {
-      if (!mounted) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+    // 3. Single post-frame callback to scroll securely after layout settles
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 50), () {
+        if (!mounted) return;
         final context = cardConfig.key.currentContext;
         if (context != null) {
           Scrollable.ensureVisible(
             context,
             alignment: 0.1,
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeInOutCubic,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
           );
         }
       });
@@ -2660,6 +2660,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
                   final bool isHighlighted = _highlightedCardId == card.id;
 
+                  // Replace the return inside _buildCardTabContent rowCards mapping with this clean version:
                   return Expanded(
                     child: Padding(
                       padding: EdgeInsets.only(
@@ -2668,18 +2669,16 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                       child: SizedBox(
                         key: card.key,
                         width: cardWidth,
-                        child: RepaintBoundary(
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: isHighlighted ? const Color(0xFFA855F7) : Colors.transparent,
-                                width: 3,
-                              ),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isHighlighted ? const Color(0xFFA855F7) : Colors.transparent,
+                              width: 3,
                             ),
-                            child: _buildCardWidget(card),
                           ),
+                          child: _buildCardWidget(card),
                         ),
                       ),
                     ),
