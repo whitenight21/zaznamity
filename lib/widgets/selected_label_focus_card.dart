@@ -951,7 +951,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                     Row(
                       children: [
                         Text(
-                          'PERIOD TREND (MoM)',
+                          'PERIOD OVER PERIOD TREND (PoP)',
                           style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
                         ),
                         const SizedBox(width: 4),
@@ -959,7 +959,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                           onTap: () => _showInfoModal(
                             context,
                             'Period-over-Period Trend',
-                            'Compares net cash flow of the current selected date range against the exact preceding timeframe span.',
+                            'Compares net cash flow of the current selected period (date range) against the exact preceding period (date range).',
                           ),
                           child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
                         ),
@@ -979,18 +979,16 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        prevStart != null && prevEnd != null
-                            ? '${DateFormat('MM/dd').format(prevStart)} - ${DateFormat('MM/dd').format(prevEnd)} Net:'
-                            : 'Previous Period Net:',
-                        style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                        'PoP Net :  ${_formatAmount(previousPeriodNet)}',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
                       ),
                       Row(
                         children: [
                           Text(
-                            _formatAmount(previousPeriodNet),
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                            'Current Net :  ',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
@@ -998,7 +996,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              '${momDifference >= 0 ? '▲ +' : '▼ '}${momDifference.toStringAsFixed(1)}%',
+                              '${momDifference >= 0 ? '+' : ''}${momDifference.toStringAsFixed(1)}%',
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,

@@ -50,6 +50,8 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> with TickerProviderStateMixin {
   late final TabController _tabController;
 
+  final GlobalKey<NewZaznamCardState> _newZaznamCardKey = GlobalKey<NewZaznamCardState>();
+
   List<TransactionModel> _transactions = [];
   List<LabelModel> _labels = [];
   List<Map<String, dynamic>> _budgets = [];
@@ -2076,6 +2078,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         );
       case 'new_entry':
         return NewZaznamCard(
+          key: _newZaznamCardKey,
           labels: _labels,
           pools: _pools.keys.toList(),
           owners: _owners,
@@ -2773,6 +2776,11 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                               } else {
                                 _navigateToCard(cardId);
                               }
+                            },
+                            onVoiceDataParsed: (spokenText) { // <--- ADD THESE LINES
+                              _newZaznamCardKey.currentState?.populateFieldsFromVoice(spokenText, () {
+                                _newZaznamCardKey.currentState?.submitForm();
+                              });
                             },
                             onToggleVisibility: (card) {
                               setState(() {

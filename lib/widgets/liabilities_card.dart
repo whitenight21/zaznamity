@@ -106,7 +106,7 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Liability Setup Guide',
+                  'Liabilities Guide',
                   style: TextStyle(
                     color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                     fontWeight: FontWeight.bold,
@@ -119,13 +119,14 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
             child: ListBody(
               children: <Widget>[
                 Text(
+                  'Focuses on managing, tracking and paying off debt (loans, mortgages, credit lines) with ease.\n\n'
                   'For the cleanest and most accurate tracking, we recommend:\n\n'
                   '• Enter your current actual remaining liability balance from your latest statement.\n'
                   '• Enter your current active monthly installment.\n'
                   '• Set your due day and current interest rate.\n'
-                  '• Choose the projection end date until which payment installments should be scheduled in ledger history.\n'
+                  '• Choose the projection end date until which payment installments should be scheduled in ledger history (can be updated in Settings at any time).\n'
                   '• Edit and delete liabilities anytime directly in Settings.\n\n'
-                  'When you create a liability, a corresponding [name (L)] label is automatically created, and upcoming amortization installments are scheduled into your calendar and All Zaznams ledger!',
+                  'When you create a liability, a corresponding [name (L)] label is automatically created. Upcoming amortization installments are also scheduled into your calendar and All Zaznams ledger!',
                   style: TextStyle(
                     fontSize: 13,
                     color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
@@ -188,7 +189,7 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                     controller: nameController,
                     style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
                     decoration: InputDecoration(
-                      labelText: 'Liability Name (e.g. Mortgage)',
+                      labelText: 'Liability Name',
                       labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

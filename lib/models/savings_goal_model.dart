@@ -3,7 +3,8 @@ class SavingsGoalModel {
   final String name;
   final double targetAmount;
   final double currentAmount;
-  final String? targetDate;
+  final double monthlyContribution;
+  final String? dueDate;
   final String owner;
 
   SavingsGoalModel({
@@ -11,7 +12,8 @@ class SavingsGoalModel {
     required this.name,
     required this.targetAmount,
     this.currentAmount = 0.0,
-    this.targetDate,
+    this.monthlyContribution = 0.0,
+    this.dueDate,
     this.owner = 'Shared',
   });
 
@@ -21,7 +23,8 @@ class SavingsGoalModel {
       'name': name,
       'target_amount': targetAmount,
       'current_amount': currentAmount,
-      'target_date': targetDate,
+      'monthly_contribution': monthlyContribution,
+      'due_date': dueDate,
       'owner': owner,
     };
   }
@@ -32,7 +35,8 @@ class SavingsGoalModel {
       name: map['name'] as String? ?? '',
       targetAmount: (map['target_amount'] as num?)?.toDouble() ?? 0.0,
       currentAmount: (map['current_amount'] as num?)?.toDouble() ?? 0.0,
-      targetDate: map['target_date'] as String?,
+      monthlyContribution: (map['monthly_contribution'] as num?)?.toDouble() ?? 0.0,
+      dueDate: map['due_date'] as String?,
       owner: map['owner'] as String? ?? 'Shared',
     );
   }
@@ -42,7 +46,8 @@ class SavingsGoalModel {
     String? name,
     double? targetAmount,
     double? currentAmount,
-    String? targetDate,
+    double? monthlyContribution,
+    String? dueDate,
     String? owner,
   }) {
     return SavingsGoalModel(
@@ -50,7 +55,8 @@ class SavingsGoalModel {
       name: name ?? this.name,
       targetAmount: targetAmount ?? this.targetAmount,
       currentAmount: currentAmount ?? this.currentAmount,
-      targetDate: targetDate ?? this.targetDate,
+      monthlyContribution: monthlyContribution ?? this.monthlyContribution,
+      dueDate: dueDate ?? this.dueDate,
       owner: owner ?? this.owner,
     );
   }

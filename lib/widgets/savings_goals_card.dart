@@ -130,19 +130,19 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
     _loadPrefs();
   }
 
-  String? _getCompletionForecastText(SavingsGoalModel goal, double monthlyContribution) {
+  String? _getCompletionForecastText(SavingsGoalModel goal) {
     if (goal.currentAmount >= goal.targetAmount) {
       return 'Goal completed!';
     }
     
-    if (monthlyContribution <= 0) {
+    if (goal.monthlyContribution <= 0) {
       return null;
     }
 
     double remaining = goal.targetAmount - goal.currentAmount;
     if (remaining <= 0) return 'On track';
 
-    int monthsNeeded = (remaining / monthlyContribution).ceil();
+    int monthsNeeded = (remaining / goal.monthlyContribution).ceil();
     DateTime projectedDate = DateTime.now().add(Duration(days: monthsNeeded * 30));
     String formattedDate = DateFormat('MMMM yyyy').format(projectedDate);
 
@@ -184,7 +184,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
           ],
         ),
         content: Text(
-          'Fantastic progress! You have reached ${milestonePct.toStringAsFixed(0)}% of your savings goal for "$goalName". Keep up the great momentum!',
+          'Fantastic progress! You have reached ${milestonePct.toStringAsFixed(0)}% of your goal for "$goalName". Keep up the great momentum!',
           style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
         ),
         actions: [
@@ -192,6 +192,46 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),
             onPressed: () => Navigator.pop(context),
             child: const Text('Awesome!'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCompletionDialog(SavingsGoalModel goal) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded, color: Color(0xFFA855F7), size: 24),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Complete Goal & Remove Funds?',
+                style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Clicking this checkmark will mark the goal as complete and remove the funds from the savings pool balance.',
+          style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600, foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(context);
+              widget.onCompleteGoal(goal.id!);
+            },
+            child: const Text('Proceed'),
           ),
         ],
       ),
@@ -211,7 +251,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Savings Goals Guide',
+                  'Goals & Bills Guide',
                   style: TextStyle(
                     color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                     fontWeight: FontWeight.bold,
@@ -222,12 +262,10 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
           ),
           content: SingleChildScrollView(
             child: Text(
-              'Savings goals help you earmark funds for target milestones:\n\n'
-              '• Add and remove funds dynamically from active pools.\n'
-              '• Set automated standing monthly transfers for hands-free progress.\n'
-              '• Priority ordering helps cascade excess savings into top-priority goals first.\n'
-              '• Milestone celebration effects trigger automatically upon hitting 25%, 50%, 75%, and 100%.\n'
-              '• Edit and delete savings goals anytime in Settings.',
+              'Savings Goals help you build toward milestones, future purchases, or bills:\n\n'
+              '• Set a completion due date to automatically calculate required monthly installments.\n'
+              '• Add or remove funds from active pools and visually track progress.\n'
+              '• Edit and delete Savings Goals anytime in App Settings.',
               style: TextStyle(
                 fontSize: 13,
                 color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
@@ -555,177 +593,211 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
     
     String selectedCurrency = _userCurrencies.first;
     String dialogOwner = widget.owners.isNotEmpty ? widget.owners.first : 'Shared';
-    bool isAutoTransfer = false;
+    DateTime? selectedDueDate;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Create New Savings Goal', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95), fontWeight: FontWeight.bold, fontSize: 16)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: DropdownButtonFormField<String>(
-                        initialValue: widget.owners.contains(dialogOwner) ? dialogOwner : widget.owners.first,
-                        dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                        style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87),
-                        decoration: InputDecoration(
-                          labelText: 'Owner',
-                          labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                          filled: true,
-                          fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
-                        ),
-                        items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
-                        onChanged: (val) {
-                          if (val != null) setDialogState(() => dialogOwner = val);
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 2,
-                      child: Container(
-                        height: 42,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _userCurrencies.contains(selectedCurrency) ? selectedCurrency : _userCurrencies.first,
+        builder: (context, setDialogState) {
+          void updateSuggestedContribution() {
+            if (selectedDueDate != null) {
+              final target = double.tryParse(targetController.text) ?? 0.0;
+              if (target > 0) {
+                final now = DateTime.now();
+                int monthsDifference = (selectedDueDate!.year - now.year) * 12 + selectedDueDate!.month - now.month;
+                if (monthsDifference <= 0) monthsDifference = 1;
+                double suggested = target / monthsDifference;
+                contributionController.text = suggested.toStringAsFixed(2);
+              }
+            }
+          }
+
+          return AlertDialog(
+            backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text('Create New Goal', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95), fontWeight: FontWeight.bold, fontSize: 16)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: DropdownButtonFormField<String>(
+                          initialValue: widget.owners.contains(dialogOwner) ? dialogOwner : widget.owners.first,
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                          decoration: InputDecoration(
+                            labelText: 'Owner',
+                            labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
                             isDense: true,
-                            isExpanded: true,
-                            dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                            items: _userCurrencies.map((c) {
-                              return DropdownMenuItem(
-                                value: c,
-                                child: Text('$c (${_getCurrencySymbol(c)})', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                              );
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null) setDialogState(() => selectedCurrency = val);
-                            },
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                            filled: true,
+                            fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                          ),
+                          items: widget.owners.map((o) => DropdownMenuItem(value: o, child: Text(o, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => dialogOwner = val);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          height: 42,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _userCurrencies.contains(selectedCurrency) ? selectedCurrency : _userCurrencies.first,
+                              isDense: true,
+                              isExpanded: true,
+                              dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                              items: _userCurrencies.map((c) {
+                                return DropdownMenuItem(
+                                  value: c,
+                                  child: Text('$c (${_getCurrencySymbol(c)})', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) setDialogState(() => selectedCurrency = val);
+                              },
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: nameController,
-                  style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
-                  decoration: InputDecoration(
-                    labelText: 'Goal Name (e.g. New Car)',
-                    labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                    filled: true,
-                    fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                    ],
                   ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: targetController,
-                        style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: InputDecoration(
-                          labelText: 'Target Amount',
-                          labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                          filled: true,
-                          fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: nameController,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+                    decoration: InputDecoration(
+                      labelText: 'Goal Name',
+                      labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                      filled: true,
+                      fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: targetController,
+                          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (_) => updateSuggestedContribution(),
+                          decoration: InputDecoration(
+                            labelText: 'Target Amount',
+                            labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                            filled: true,
+                            fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: contributionController,
-                        style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: InputDecoration(
-                          labelText: 'Contribute monthly (opt.)',
-                          labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                          filled: true,
-                          fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: contributionController,
+                          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: 'Monthly Installment',
+                            labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                            filled: true,
+                            fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Auto Standing Transfer', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : Colors.black87)),
-                    Switch(
-                      value: isAutoTransfer,
-                      activeColor: const Color(0xFFA855F7),
-                      onChanged: (val) => setDialogState(() => isAutoTransfer = val),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 12)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 0,
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        selectedDueDate == null ? 'Due Date: Optional' : 'Due Date: ${DateFormat('yyyy-MM-dd').format(selectedDueDate!)}',
+                        style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: DateTime.now().add(const Duration(days: 180)),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime(2045),
+                          );
+                          if (picked != null) {
+                            setDialogState(() {
+                              selectedDueDate = picked;
+                              updateSuggestedContribution();
+                            });
+                          }
+                        },
+                        child: Text('Select Due Date', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              onPressed: () {
-                final name = nameController.text.trim();
-                final target = double.tryParse(targetController.text);
-                if (name.isNotEmpty && target != null && target > 0) {
-                  final newGoal = SavingsGoalModel(
-                    name: name,
-                    targetAmount: target,
-                    currentAmount: 0.0,
-                    owner: dialogOwner,
-                  );
-                  widget.onSaveGoal(newGoal);
-                  setState(() {});
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text('Add Savings Goal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Cancel', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 12)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 0,
+                ),
+                onPressed: () {
+                  final name = nameController.text.trim();
+                  final target = double.tryParse(targetController.text);
+                  final contribution = double.tryParse(contributionController.text) ?? 0.0;
+                  if (name.isNotEmpty && target != null && target > 0) {
+                    final newGoal = SavingsGoalModel(
+                      name: name,
+                      targetAmount: target,
+                      currentAmount: 0.0,
+                      monthlyContribution: contribution,
+                      dueDate: selectedDueDate?.toIso8601String(),
+                      owner: dialogOwner,
+                    );
+                    widget.onSaveGoal(newGoal);
+                    setState(() {});
+                    Navigator.pop(context);
+                  }
+                },
+                child: const Text('Add Goal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -898,8 +970,9 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                           final activeSymbol = _getCurrencySymbol(_userCurrencies.first);
                           final activeFlag = _getCurrencyFlag(_userCurrencies.first);
                           final currencyFormat = NumberFormat.currency(symbol: activeSymbol, decimalDigits: 2);
-                          // Fallback monthly assumption or calculation if model lacks property
-                          final forecastText = _getCompletionForecastText(goal, 150.0);
+                          
+                          final forecastText = _getCompletionForecastText(goal);
+                          final dueDateStr = goal.dueDate != null ? DateFormat('yyyy-MM-dd').format(DateTime.parse(goal.dueDate!)) : null;
 
                           return Container(
                             padding: const EdgeInsets.all(16),
@@ -917,20 +990,18 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                     Expanded(
                                       child: Row(
                                         children: [
-                                          if (isCompleted) ...[
-                                            InkWell(
-                                              onTap: () => widget.onCompleteGoal(goal.id!),
-                                              child: Container(
-                                                padding: const EdgeInsets.all(2),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.green.shade600,
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: const Icon(Icons.check, size: 12, color: Colors.white),
+                                          InkWell(
+                                            onTap: () => _showCompletionDialog(goal),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(2),
+                                              decoration: BoxDecoration(
+                                                color: isCompleted ? Colors.green.shade600 : Colors.grey.shade600,
+                                                shape: BoxShape.circle,
                                               ),
+                                              child: const Icon(Icons.check, size: 12, color: Colors.white),
                                             ),
-                                            const SizedBox(width: 6),
-                                          ],
+                                          ),
+                                          const SizedBox(width: 6),
                                           Text(activeFlag, style: const TextStyle(fontSize: 16)),
                                           const SizedBox(width: 6),
                                           Expanded(
@@ -947,7 +1018,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                                   overflow: TextOverflow.ellipsis,
                                                 ),
                                                 Text(
-                                                  '(${goal.owner})',
+                                                  '(${goal.owner})${dueDateStr != null ? ' • Due: $dueDateStr' : ''}',
                                                   style: TextStyle(
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.w500,
@@ -960,22 +1031,13 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                         ],
                                       ),
                                     ),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          'Target: ${currencyFormat.format(goal.targetAmount)}',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        InkWell(
-                                          onTap: () => widget.onDeleteGoal(goal.id!),
-                                          child: Icon(Icons.close, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), size: 16),
-                                        ),
-                                      ],
+                                    Text(
+                                      'Target: ${currencyFormat.format(goal.targetAmount)}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                        color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -1015,7 +1077,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                     value: progress,
                                     minHeight: 10,
                                     backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
-                                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF34D399)),
+                                    valueColor: const SavedProgressColorAnimation(), // fallback to AlwaysStoppedAnimation below
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -1069,7 +1131,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                               backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
                                               foregroundColor: Colors.white,
                                               padding: EdgeInsets.zero,
-                                           ),
+                                            ),
                                             icon: const Icon(Icons.add, size: 16),
                                             tooltip: 'Add funds to goal',
                                             onPressed: () => _showAddFundsDialog(goal),
@@ -1091,4 +1153,8 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
       },
     );
   }
+}
+
+class SavedProgressColorAnimation extends AlwaysStoppedAnimation<Color> {
+  const SavedProgressColorAnimation() : super(const Color(0xFF34D399));
 }

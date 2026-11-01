@@ -513,7 +513,7 @@ void _showSpeechPresetsManagerDialog() {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Manage Speech Presets',
+                'Manage Voice Input Presets',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -552,7 +552,7 @@ void _showSpeechPresetsManagerDialog() {
                       ? Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8.0),
                           child: Text(
-                            'No voice presets added yet.',
+                            'No Voice Input presets added yet.',
                             style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white60 : Colors.grey),
                           ),
                         )
@@ -624,7 +624,7 @@ void _showSpeechPresetsManagerDialog() {
     );
   }
 
-  void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSave) {
+void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSave) {
     final isEditing = existingPreset != null;
     final nameCtrl = TextEditingController(text: existingPreset?.name ?? '');
     final descCtrl = TextEditingController(text: existingPreset?.description ?? '');
@@ -642,6 +642,7 @@ void _showSpeechPresetsManagerDialog() {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text(
             isEditing ? 'Edit Speech Preset' : 'New Speech Preset',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95)),
@@ -656,7 +657,7 @@ void _showSpeechPresetsManagerDialog() {
                   TextField(
                     controller: nameCtrl,
                     style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 13),
-                    decoration: const InputDecoration(labelText: 'Preset Keyword Name (e.g. "Fresh")', isDense: true, border: OutlineInputBorder()),
+                    decoration: const InputDecoration(labelText: 'Preset Keyword for Voice Input', isDense: true, border: OutlineInputBorder()),
                   ),
                   const SizedBox(height: 10),
                   TextField(
@@ -669,23 +670,27 @@ void _showSpeechPresetsManagerDialog() {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          initialValue: selectedPool,
+                          value: _pools.keys.contains(selectedPool) ? selectedPool : (_pools.keys.isNotEmpty ? _pools.keys.first : null),
                           dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                           style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12),
                           decoration: const InputDecoration(labelText: 'Pool', isDense: true, border: OutlineInputBorder()),
                           items: _pools.keys.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))).toList(),
-                          onChanged: (val) => setDialogState(() => selectedPool = val ?? selectedPool),
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => selectedPool = val);
+                          },
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          initialValue: selectedLabel,
+                          value: widget.labels.any((l) => l.name == selectedLabel) ? selectedLabel : (widget.labels.isNotEmpty ? widget.labels.first.name : null),
                           dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                           style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12),
                           decoration: const InputDecoration(labelText: 'Label', isDense: true, border: OutlineInputBorder()),
                           items: widget.labels.map((l) => DropdownMenuItem(value: l.name, child: Text(l.name))).toList(),
-                          onChanged: (val) => setDialogState(() => selectedLabel = val ?? selectedLabel),
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => selectedLabel = val);
+                          },
                         ),
                       ),
                     ],
@@ -695,7 +700,7 @@ void _showSpeechPresetsManagerDialog() {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          initialValue: selectedType,
+                          value: selectedType,
                           dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                           style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12),
                           decoration: const InputDecoration(labelText: 'Type', isDense: true, border: OutlineInputBorder()),
@@ -703,24 +708,62 @@ void _showSpeechPresetsManagerDialog() {
                             DropdownMenuItem(value: 'expense', child: Text('Expense')),
                             DropdownMenuItem(value: 'income', child: Text('Income')),
                           ],
-                          onChanged: (val) => setDialogState(() => selectedType = val ?? selectedType),
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => selectedType = val);
+                          },
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          initialValue: selectedCurrency,
+                          value: [_primaryCurrency, if (_secondaryCurrency1 != null) _secondaryCurrency1!, if (_secondaryCurrency2 != null) _secondaryCurrency2!, if (_secondaryCurrency3 != null) _secondaryCurrency3!].contains(selectedCurrency) ? selectedCurrency : _primaryCurrency,
                           dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                           style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12),
                           decoration: const InputDecoration(labelText: 'Currency', isDense: true, border: OutlineInputBorder()),
                           items: [_primaryCurrency, if (_secondaryCurrency1 != null) _secondaryCurrency1!, if (_secondaryCurrency2 != null) _secondaryCurrency2!, if (_secondaryCurrency3 != null) _secondaryCurrency3!]
                               .map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                          onChanged: (val) => setDialogState(() => selectedCurrency = val ?? selectedCurrency),
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => selectedCurrency = val);
+                          },
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: dateVal,
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12),
+                          decoration: const InputDecoration(labelText: 'Date Mode', isDense: true, border: OutlineInputBorder()),
+                          items: const [
+                            DropdownMenuItem(value: 'now', child: Text('Current Date (Now)')),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => dateVal = val);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: timeVal,
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 12),
+                          decoration: const InputDecoration(labelText: 'Time Mode', isDense: true, border: OutlineInputBorder()),
+                          items: const [
+                            DropdownMenuItem(value: 'now', child: Text('Current Time (Now)')),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => timeVal = val);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text('Recurring Zaznam', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : Colors.black87)),
@@ -764,7 +807,9 @@ void _showSpeechPresetsManagerDialog() {
 
                   if (isEditing) {
                     final index = _structuredSpeechPresets.indexOf(existingPreset);
-                    if (index != -1) _structuredSpeechPresets[index] = newPreset;
+                    if (index != -1) {
+                      _structuredSpeechPresets[index] = newPreset;
+                    }
                   } else {
                     _structuredSpeechPresets.add(newPreset);
                   }
@@ -3102,7 +3147,7 @@ void _showSpeechPresetsManagerDialog() {
                     ),
                     _buildSubSectionCard(
                       title: 'Savings Goals',
-                      subtitle: 'Edit target amounts, names, and assigned owners for active savings goals',
+                      subtitle: 'Edit target amounts, names, due dates, and assigned owners for active savings goals',
                       children: [
                         Text(
                           'Active Savings Goals',
@@ -3389,12 +3434,12 @@ void _showSpeechPresetsManagerDialog() {
                     ),
                     _buildSubSectionCard(
                       title: 'Voice Input New Zaznam',
-                      subtitle: 'Configure Voice Input (speech-to-text) shortcuts and custom presets for quick inputing New Zaznams',
+                      subtitle: 'Configure Voice Input and custom presets for rapid New Zaznam entries',
                       children: [
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text('Turn on Voice Input', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
-                          subtitle: Text('Enable Voice Input for rapid entry via double-pressing the Zaznamity logo in the Navigation bar. The red border around the Zaznamity logo indicates Voice Input is listening. Double-press Zaznamity logo again to turn Voice Input off. After the successful parsing of fields, a 2 second timer will begin and allow for manual changes - if no changes are needed, the New Zaznam will be automatically saved after the 2 seconds.', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                          subtitle: Text('Enable Voice Input (speech-to-text) for rapid New Zaznam entry via double-pressing the Zaznamity logo in the Navigation bar. A red border around the Zaznamity logo indicates Voice Input is listening. Double-pressing the Zaznamity logo again turns Voice Input off and fields are filled. After the successful filling of fields, a 3 second countdown will begin (for visual confirmation) and once reaching 0, the New Zaznam will be automatically saved. When speaking [amount], the supported method is: "dot" (e.g., "four dot fifty seven" -> "4.57")', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                           value: _speechToTextEnabled,
                           onChanged: (val) async {
                             setState(() => _speechToTextEnabled = val);
@@ -3404,7 +3449,7 @@ void _showSpeechPresetsManagerDialog() {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Speech-to-Text Presets',
+                          'Voice Input Presets',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
@@ -3413,7 +3458,7 @@ void _showSpeechPresetsManagerDialog() {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Add, edit, or remove custom Voice Input presets.',
+                          'Add, edit, or remove custom Voice Input presets. ',
                           style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
                         ),
                         const SizedBox(height: 10),
@@ -3428,7 +3473,7 @@ void _showSpeechPresetsManagerDialog() {
                             ),
                             onPressed: _showSpeechPresetsManagerDialog,
                             icon: const Icon(Icons.mic_none_rounded, size: 16),
-                            label: const Text('Manage Speech Presets', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            label: const Text('Manage Voice Input Presets', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                           ),
                         ),
                       ],

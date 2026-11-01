@@ -19,8 +19,47 @@ class ZaznamityApp extends StatefulWidget {
   State<ZaznamityApp> createState() => _ZaznamityAppState();
 }
 
-class _ZaznamityAppState extends State<ZaznamityApp> {
+class _ZaznamityAppState extends State<ZaznamityApp> with WidgetsBindingObserver {
   ThemeMode _themeMode = ThemeMode.light;
+  bool _isLocked = false;
+  bool _pinEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkInitialLockSettings();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _checkInitialLockSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _pinEnabled = prefs.getBool('biometricsEnabled') ?? false;
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    super.didChangeAppLifecycleState(state);
+    
+    final prefs = await SharedPreferences.getInstance();
+    final securityEnabled = prefs.getBool('biometricsEnabled') ?? false;
+
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      if (securityEnabled) {
+        setState(() {
+          _isLocked = true;
+          _pinEnabled = true;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +79,30 @@ class _ZaznamityAppState extends State<ZaznamityApp> {
         primaryColor: const Color.fromARGB(255, 129, 90, 213),
         colorScheme: ColorScheme.fromSeed(seedColor: const Color.fromARGB(255, 129, 90, 213), brightness: Brightness.dark),
       ),
+      builder: (context, child) {
+        return Stack(
+          children: [
+            child!,
+            // Background lock overlay
+            if (_isLocked)
+              SplashScreen(
+                isBackgroundLock: true,
+                onUnlocked: () {
+                  setState(() {
+                    _isLocked = false;
+                  });
+                },
+                onThemeChanged: (isDark) async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('isDarkMode', isDark);
+                  setState(() {
+                    _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+                  });
+                },
+              ),
+          ],
+        );
+      },
       home: SplashScreen(
         onThemeChanged: (isDark) async {
           final prefs = await SharedPreferences.getInstance();
@@ -55,8 +118,15 @@ class _ZaznamityAppState extends State<ZaznamityApp> {
 
 class SplashScreen extends StatefulWidget {
   final Function(bool) onThemeChanged;
+  final bool isBackgroundLock;
+  final VoidCallback? onUnlocked;
 
-  const SplashScreen({super.key, required this.onThemeChanged});
+  const SplashScreen({
+    super.key, 
+    required this.onThemeChanged,
+    this.isBackgroundLock = false,
+    this.onUnlocked,
+  });
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -85,7 +155,9 @@ class _SplashScreenState extends State<SplashScreen> {
     await DatabaseHelper.instance.database;
 
     // Optional short delay for a smooth startup view
-    await Future.delayed(const Duration(seconds: 1));
+    if (!widget.isBackgroundLock) {
+      await Future.delayed(const Duration(seconds: 1));
+    }
 
     if (!mounted) return;
 
@@ -93,13 +165,18 @@ class _SplashScreenState extends State<SplashScreen> {
       _isInitialized = true;
     });
 
-    // If security lock is disabled, navigate directly to dashboard
-    if (!_pinEnabled) {
+    // If security lock is disabled and it's not a background lock, navigate directly to dashboard
+    if (!_pinEnabled && !widget.isBackgroundLock) {
       _navigateToDashboard();
     }
   }
 
   void _navigateToDashboard() {
+    if (widget.isBackgroundLock && widget.onUnlocked != null) {
+      widget.onUnlocked!();
+      return;
+    }
+
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
@@ -186,9 +263,9 @@ class _SplashScreenState extends State<SplashScreen> {
                 SizedBox(
                   height: 90,
                   child: Center(
-                    child: !_isInitialized
+                    child: (!_isInitialized && !widget.isBackgroundLock)
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : (_pinEnabled
+                        : (_pinEnabled || widget.isBackgroundLock
                             ? Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -216,7 +293,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
 
                 // PIN pad rows if initialized and enabled
-                if (_isInitialized && _pinEnabled) ...[
+                if ((_isInitialized || widget.isBackgroundLock) && (_pinEnabled || widget.isBackgroundLock)) ...[
                   const SizedBox(height: 8),
                   for (var row in [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['', '0', '⌫']])
                     Row(

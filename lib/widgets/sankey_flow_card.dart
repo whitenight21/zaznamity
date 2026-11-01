@@ -891,8 +891,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Selected Node:  $_isolatedNode',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFA855F7)),
+                          'Selected:  $_isolatedNode',
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFA855F7)),
                         ),
                         Row(
                           children: [
@@ -900,7 +900,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                               onTap: () => _showDrillDownModal(_isolatedNode!),
                               child: const Text(
                                 'View Zaznams',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white, decoration: TextDecoration.underline),
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white, decoration: TextDecoration.underline),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -908,7 +908,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                               onTap: () => setState(() => _isolatedNode = null),
                               child: const Text(
                                 'CLEAR',
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red, decoration: TextDecoration.underline),
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.red, decoration: TextDecoration.underline),
                               ),
                             ),
                           ],
@@ -1061,10 +1061,14 @@ class SankeyDiagramPainter extends CustomPainter {
         return const Color(0xFFA855F7).withValues(alpha: 0.7);
       }
       const List<Color> ribbonColors = [
-        Color(0xFFA855F7),
-        Color(0xFFC4B5FD),
-        Color(0xFF7C3AED),
-        Color(0xFF9333EA),
+        Color(0xFF2563EB), // Blue
+        Color(0xFFDC2626), // Red
+        Color(0xFF16A34A), // Green
+        Color(0xFFD97706), // Amber
+        Color(0xFF9333EA), // Purple
+        Color(0xFF0D9488), // Teal
+        Color(0xFFDB2777), // Pink
+        Color(0xFF4F46E5), // Indigo
       ];
       return ribbonColors[targetIdx % ribbonColors.length].withValues(alpha: 0.3);
     } else {

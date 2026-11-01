@@ -8,6 +8,7 @@ import '../models/transaction_model.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'dart:convert';
 
 class NewZaznamCard extends StatefulWidget {
   final List<LabelModel> labels;
@@ -50,10 +51,10 @@ class NewZaznamCard extends StatefulWidget {
   });
 
   @override
-  State<NewZaznamCard> createState() => _NewZaznamCardState();
+  State<NewZaznamCard> createState() => NewZaznamCardState();
 }
 
-class _NewZaznamCardState extends State<NewZaznamCard> {
+class NewZaznamCardState extends State<NewZaznamCard> {
   final _descController = TextEditingController();
   final _amountController = TextEditingController();
   String _type = 'expense';
@@ -111,6 +112,185 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
     _dayOfMonth = _selectedDate.day;
     _loadCurrencyPrefs();
     _amountController.addListener(_onAmountChanged);
+  }
+
+/// Public method to parse spoken voice input using "at" separation, check presets, clean description, and trigger auto-submit after 2 seconds
+  Future<void> populateFieldsFromVoice(String spokenText, Function() onAutoSubmit) async {
+    String rawText = spokenText.trim();
+    String processedText = rawText.toLowerCase();
+
+    // 1. Check if spoken text matches any user-configured Speech Preset keyword safely via maps
+    final prefs = await SharedPreferences.getInstance();
+    final jsonListStr = prefs.getString('speech_presets_json_list');
+    Map<String, dynamic>? matchedPresetMap;
+
+    if (jsonListStr != null) {
+      try {
+        final List<dynamic> decoded = jsonDecode(jsonListStr);
+        for (var item in decoded) {
+          final name = (item['name'] ?? '').toString().toLowerCase();
+          if (name.isNotEmpty && processedText.contains(name)) {
+            matchedPresetMap = item as Map<String, dynamic>;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+
+    setState(() {
+      // 2. Check if the speech uses the "at" separator (e.g. "four dot fifty five at groceries")
+      String amountPart = processedText;
+      String descriptionPart = "";
+
+      if (processedText.contains(" at ")) {
+        final splitByAt = processedText.split(" at ");
+        amountPart = splitByAt[0].trim();
+        descriptionPart = splitByAt.sublist(1).join(" at ").trim();
+      }
+
+      // 3. Convert written number phrasing supporting "dot" or "point" in the amount section
+      amountPart = _convertSpokenNumbersToDecimal(amountPart);
+
+      // 4. Extract the numerical amount from the amount section
+      final words = amountPart.split(' ');
+      String foundAmountStr = '';
+      
+      for (var word in words) {
+        final cleanWord = word.replaceAll(RegExp(r'[^0-9.]'), '');
+        final parsedAmount = double.tryParse(cleanWord);
+        if (parsedAmount != null && parsedAmount > 0) {
+          foundAmountStr = parsedAmount.toString();
+          _amountController.text = foundAmountStr;
+          break;
+        }
+      }
+
+      // Fallback: If no amount found in the first part, try scanning the whole text
+      if (foundAmountStr.isEmpty) {
+        for (var word in processedText.split(' ')) {
+          final cleanWord = word.replaceAll(RegExp(r'[^0-9.]'), '');
+          final parsedAmount = double.tryParse(cleanWord);
+          if (parsedAmount != null && parsedAmount > 0) {
+            foundAmountStr = parsedAmount.toString();
+            _amountController.text = foundAmountStr;
+            break;
+          }
+        }
+      }
+
+      // 5. Apply Preset values if matched, otherwise assign separated description & auto-detect type
+      if (matchedPresetMap != null) {
+        _descController.text = matchedPresetMap['description'] ?? '';
+        _type = matchedPresetMap['type'] ?? 'expense';
+        
+        final poolVal = matchedPresetMap['pool'];
+        if (poolVal != null && widget.pools.contains(poolVal)) {
+          _selectedPool = poolVal;
+        }
+        
+        final currencyVal = matchedPresetMap['currency'];
+        if (currencyVal != null && _availableCurrencies.contains(currencyVal)) {
+          _selectedCurrency = currencyVal;
+        }
+        
+        _isRecurring = matchedPresetMap['isRecurring'] ?? false;
+        
+        final labelName = (matchedPresetMap['label'] ?? '').toString();
+        final labelMatch = widget.labels.where((l) => l.name.toLowerCase() == labelName.toLowerCase());
+        if (labelMatch.isNotEmpty) {
+          _selectedLabelId = labelMatch.first.id;
+        }
+      } else {
+        if (descriptionPart.isNotEmpty) {
+          // Capitalize first letter of description for neatness
+          _descController.text = descriptionPart[0].toUpperCase() + descriptionPart.substring(1);
+        } else {
+          // Clean up description if "at" wasn't used: Remove the extracted amount numbers and currency/dot phrasing
+          String cleanDescription = rawText;
+          if (foundAmountStr.isNotEmpty) {
+            cleanDescription = cleanDescription
+                .replaceAll(RegExp(foundAmountStr.replaceAll('.', r'\.')), '')
+                .replaceAll(RegExp(r'\b(dot|point)\b', caseSensitive: false), '')
+                .replaceAll(RegExp(r'[$€£¥KčFtzłCHF₽R\$]'), '')
+                .trim();
+          }
+          _descController.text = cleanDescription.isNotEmpty ? cleanDescription : "Voice Entry";
+        }
+
+        // Auto-detect transaction type
+        if (processedText.contains('income') || processedText.contains('salary') || processedText.contains('vinted')) {
+          _type = 'income';
+        } else {
+          _type = 'expense';
+        }
+      }
+    });
+
+    // 6. Keep fields filled during the 2-second countdown, then submit and clear fields once saved
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        onAutoSubmit(); // Triggers submission and clears the form fields afterward
+      }
+    });
+  }
+
+  /// Helper to translate written number phrasing supporting "dot" or "point" (e.g., "four dot fifty five" -> "4.55")
+  String _convertSpokenNumbersToDecimal(String text) {
+    final Map<String, int> numberMap = {
+      'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4,
+      'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9,
+      'ten': 10, 'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14,
+      'fifteen': 15, 'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19,
+      'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50,
+      'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90,
+    };
+
+    if (RegExp(r'\d').hasMatch(text)) {
+      return text;
+    }
+
+    if (text.contains('dot') || text.contains('point')) {
+      final parts = text.split(RegExp(r'\b(dot|point)\b'));
+      if (parts.length >= 2) {
+        String wholePartWords = parts[0].trim();
+        String decimalPartWords = parts[1].trim();
+
+        int wholeVal = 0;
+        for (var token in wholePartWords.split(' ')) {
+          if (numberMap.containsKey(token)) {
+            wholeVal += numberMap[token]!;
+          }
+        }
+
+        int decimalVal = 0;
+        for (var token in decimalPartWords.split(' ')) {
+          if (numberMap.containsKey(token)) {
+            decimalVal = decimalVal * 10 + numberMap[token]!;
+          }
+        }
+
+        return text.replaceAll(RegExp(r'[a-zA-Z\s]+'), ' $wholeVal.$decimalVal ');
+      }
+    }
+
+    final tokens = text.split(' ');
+    List<int> collectedNumbers = [];
+
+    for (var token in tokens) {
+      if (numberMap.containsKey(token)) {
+        collectedNumbers.add(numberMap[token]!);
+      }
+    }
+
+    if (collectedNumbers.length >= 2) {
+      int whole = collectedNumbers[0];
+      String fractional = collectedNumbers.skip(1).join('');
+      return text.replaceAll(RegExp(r'[a-zA-Z]+'), '$whole.$fractional');
+    } else if (collectedNumbers.length == 1) {
+      return text.replaceAll(RegExp(r'[a-zA-Z]+'), '${collectedNumbers[0]}');
+    }
+
+    return text;
   }
 
   void _onAmountChanged() {
@@ -199,7 +379,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
     super.dispose();
   }
 
-  void _clearForm() {
+  void clearForm() {
     setState(() {
       _descController.clear();
       _amountController.clear();
@@ -261,17 +441,50 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
     return (spentSoFar + _currentInputAmount) > categoryBudgetLimit;
   }
 
+  void submitForm() {
+    FocusScope.of(context).unfocus();
+
+    final amount = double.tryParse(_amountController.text) ?? 0.0;
+    if (amount <= 0) return;
+
+    final targetDay = _frequency == 'Monthly' ? _dayOfMonth : _selectedDate.day;
+    
+    DateTime baseDate = _selectedDate;
+    try {
+      baseDate = DateTime(_selectedDate.year, _selectedDate.month, targetDay, _selectedTime.hour, _selectedTime.minute);
+    } catch (_) {
+      baseDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 0, _selectedTime.hour, _selectedTime.minute);
+    }
+
+    widget.onSubmit(
+      _descController.text,
+      amount,
+      _type,
+      _selectedLabelId,
+      _owner,
+      _selectedPool ?? (widget.pools.isNotEmpty ? widget.pools.first : 'checking'),
+      _isRecurring,
+      _frequency,
+      targetDay,
+      _excludedWeekdays,
+      _excludedMonths,
+      _repeatUntilDate,
+      baseDate,
+      _selectedCurrency,
+      _attachedReceiptPath,
+    );
+
+    clearForm();
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool budgetExceeded = _isBudgetExceeded();
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 32;
-
         return Container(
-          padding: EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           decoration: _isZaznamityMode
               ? BoxDecoration(
                   color: Colors.black,
@@ -1084,41 +1297,7 @@ class _NewZaznamCardState extends State<NewZaznamCard> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
-                  onPressed: () {
-                    FocusScope.of(context).unfocus();
-
-                    final amount = double.tryParse(_amountController.text) ?? 0.0;
-                    if (amount <= 0) return;
-
-                    final targetDay = _frequency == 'Monthly' ? _dayOfMonth : _selectedDate.day;
-                    
-                    DateTime baseDate = _selectedDate;
-                    try {
-                      baseDate = DateTime(_selectedDate.year, _selectedDate.month, targetDay, _selectedTime.hour, _selectedTime.minute);
-                    } catch (_) {
-                      baseDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 0, _selectedTime.hour, _selectedTime.minute);
-                    }
-
-                    widget.onSubmit(
-                      _descController.text,
-                      amount,
-                      _type,
-                      _selectedLabelId,
-                      _owner,
-                      _selectedPool ?? (widget.pools.isNotEmpty ? widget.pools.first : 'checking'),
-                      _isRecurring,
-                      _frequency,
-                      targetDay,
-                      _excludedWeekdays,
-                      _excludedMonths,
-                      _repeatUntilDate,
-                      baseDate,
-                      _selectedCurrency,
-                      _attachedReceiptPath,
-                    );
-
-                    _clearForm();
-                  },
+                  onPressed: submitForm,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [

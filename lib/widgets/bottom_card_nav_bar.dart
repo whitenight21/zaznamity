@@ -1,7 +1,9 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../models/card_config.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 class BottomCardNavBar extends StatefulWidget {
   final List<CardConfig> cards;
@@ -10,6 +12,7 @@ class BottomCardNavBar extends StatefulWidget {
   final VoidCallback onSelectOwner;
   final Function(CardConfig card) onToggleVisibility;
   final Function(String cardId) onNavigateToCard;
+  final Function(String spokenText)? onVoiceDataParsed;
   final List<String> leftItems;
   final List<String> rightItems;
   final bool isLandscape;
@@ -24,6 +27,7 @@ class BottomCardNavBar extends StatefulWidget {
     required this.onSelectOwner,
     required this.onToggleVisibility,
     required this.onNavigateToCard,
+    this.onVoiceDataParsed,
     this.leftItems = const ['owner', 'metrics', 'budget'],
     this.rightItems = const ['history', 'calendar', 'snapshot'],
     this.isLandscape = false,
@@ -41,6 +45,8 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
   
   // Speech-to-text recording state variables
   bool _isRecordingActive = false;
+  final stt.SpeechToText _speech = stt.SpeechToText(); 
+  String _lastWords = "";                               
 
   void _triggerPressEffect(String key) {
     setState(() {
@@ -55,28 +61,121 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
     });
   }
 
-  void _toggleSpeechToTextMode() {
-    setState(() {
-      _isRecordingActive = !_isRecordingActive;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Center(
-          child: Text(
-            _isRecordingActive
-                ? 'Voice Input Activated (Listening...)'
-                : 'Voice Input Deactivated',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
+  /// Requests microphone permission before starting Voice Input
+  Future<bool> _requestMicrophonePermission() async {
+    PermissionStatus status = await Permission.microphone.status;
+    
+    if (status.isGranted) {
+      return true;
+    }
+
+    // Request permission from the system
+    status = await Permission.microphone.request();
+
+    if (status.isGranted) {
+      return true;
+    }
+
+    // Prompt user to enable permission in system settings if permanently denied
+    if (status.isPermanentlyDenied) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Microphone permission is required for voice input. Please enable it in Settings.'),
+            action: SnackBarAction(
+              label: 'Settings',
+              textColor: Colors.white,
+              onPressed: () => openAppSettings(),
             ),
-            textAlign: TextAlign.center,
+            backgroundColor: Colors.red.shade700,
           ),
-        ),
-        duration: const Duration(seconds: 1),
-        backgroundColor: _isRecordingActive ? Colors.red.shade700 : const Color(0xFF582F95),
-      ),
-    );
+        );
+      }
+    }
+
+    return false;
+  }
+
+/// Toggles Speech-to-Text Mode: Listens to microphone, parses speech, navigates, and auto-submits with a countdown
+  Future<void> _toggleSpeechToTextMode() async {
+    if (!_isRecordingActive) {
+      final hasPermission = await _requestMicrophonePermission();
+      if (!hasPermission) return;
+
+      bool available = await _speech.initialize(
+        onStatus: (status) => print('onStatus: $status'),
+        onError: (error) => print('onError: $error'),
+      );
+
+      if (available) {
+        widget.onNavigateToCard('new_entry');
+
+        setState(() {
+          _isRecordingActive = true;
+          _lastWords = "";
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Center(
+                child: Text(
+                  'Listening... Speak your Zaznam',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              duration: Duration(seconds: 4),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+
+        _speech.listen(
+          onResult: (result) {
+            setState(() {
+              _lastWords = result.recognizedWords;
+            });
+          },
+        );
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Speech recognition not available on this device.')),
+          );
+        }
+      }
+    } else {
+      await _speech.stop();
+      setState(() {
+        _isRecordingActive = false;
+      });
+
+      String spokenResult = _lastWords.isNotEmpty ? _lastWords : "Incomplete Voice Input Zaznam";
+
+      if (widget.onVoiceDataParsed != null) {
+        widget.onVoiceDataParsed!(spokenResult);
+      }
+
+      // Live 2-second decreasing countdown in the Snackbar while fields remain populated
+      for (int i = 2; i >= 1; i--) {
+        if (!mounted) break;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Center(
+              child: Text(
+                'Captured: "$spokenResult" - Saving in ${i}s...',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            duration: const Duration(milliseconds: 950),
+            backgroundColor: const Color(0xFF582F95),
+          ),
+        );
+        await Future.delayed(const Duration(seconds: 1));
+      }
+    }
   }
 
   @override
@@ -202,7 +301,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
                       _buildRotatedNavItem(context, effectiveLeft[1]),
                       _buildRotatedNavItem(context, effectiveLeft[2]),
 
-                      // Center Logo: Single tap opens New Zaznam; Double tap toggles Speech to Text with Red Border indicator
+                      // Center Logo: Single tap opens New Zaznam; Double tap navigates to New Zaznam & toggles Speech to Text
                       GestureDetector(
                         onTap: () {
                           _triggerPressEffect('logo');
@@ -308,7 +407,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
                 _buildNavItem(context, effectiveLeft[1]),
                 _buildNavItem(context, effectiveLeft[2]),
 
-                // Center Logo: Single tap opens New Zaznam; Double tap toggles Speech to Text with Red Border indicator
+                // Center Logo: Single tap opens New Zaznam; Double tap navigates to New Zaznam & toggles Speech to Text
                 GestureDetector(
                   onTap: () {
                     _triggerPressEffect('logo');

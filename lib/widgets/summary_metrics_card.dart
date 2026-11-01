@@ -387,7 +387,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
       }
     }
 
-    double finalNetWorth = totalLiquidNet - (_includeLiabilitiesInNetWorth ? totalLiabilities : 0.0);
+    double totalNetWorthInclLiabilities = totalLiquidNet - totalLiabilities;
 
     Map<String, double> displayedPools = Map.fromEntries(
       totalPoolsForCurr.entries.where((e) => e.value != 0.0 && (_visiblePools[e.key] ?? true))
@@ -457,27 +457,29 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                'TOTAL LIQUID NET WORTH',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
-                  letterSpacing: 0.8,
+              if (_includeLiabilitiesInNetWorth) ...[
+                Text(
+                  'TOTAL NET WORTH (INCL. LIABILITIES)',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
+                    letterSpacing: 0.8,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                _formatCurrency(totalLiquidNet, currencyCode),
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: _isZaznamityMode ? Colors.white70 : Colors.grey.shade700,
+                const SizedBox(height: 2),
+                Text(
+                  _formatCurrency(totalNetWorthInclLiabilities, currencyCode),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: _isZaznamityMode ? Colors.white70 : Colors.grey.shade700,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
+                const SizedBox(height: 10),
+              ],
               Text(
-                _includeLiabilitiesInNetWorth ? 'NET WORTH (INCL. LIABILITIES)' : 'LIQUID NET WORTH',
+                'LIQUID',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
@@ -487,7 +489,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
               ),
               const SizedBox(height: 3),
               Text(
-                _formatCurrency(finalNetWorth, currencyCode),
+                _formatCurrency(totalLiquidNet, currencyCode),
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
@@ -495,7 +497,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                 ),
               ),
               const SizedBox(height: 4),
-              Row(
+/*               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
@@ -521,7 +523,7 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                     ),
                   ),
                 ],
-              ),
+              ), */
             ],
           ),
         ),

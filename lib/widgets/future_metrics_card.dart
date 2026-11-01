@@ -264,7 +264,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
 
   void _showMetricInfo(BuildContext context, String title, String explanation) {
     final lastDateStr = _getLastZaznamDateString();
-    final fullExplanation = '$explanation\n\nBy default based on all Zaznams until last Zaznam on $lastDateStr.';
+    final fullExplanation = '$explanation\n\nUnless a custom date range is specifically set, the default date range is based on all Zaznams until last Zaznam on $lastDateStr.\n\nTo view in a chart, set the same date range in "Liquid Trend" and turn "pending" zaznams on.';
 
     showDialog(
       context: context,

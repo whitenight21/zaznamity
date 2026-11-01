@@ -116,9 +116,10 @@ class _HistoryDisplaySettingsWidgetState extends State<HistoryDisplaySettingsWid
   }
 
   Widget _buildChip(String label, bool value, ValueChanged<bool> onChanged) {
-    return FilterChip(
-      label: Text(label, style: TextStyle(fontSize: 11, color: widget.isZaznamityMode ? Colors.white : Colors.black87)),
+    return ChoiceChip(
+      label: Text(label, style: TextStyle(fontSize: 11, color: value ? Colors.white : (widget.isZaznamityMode ? Colors.white : Colors.black87))),
       selected: value,
+      showCheckmark: false, // Hides the checkmark icon entirely
       selectedColor: const Color(0xFF582F95),
       backgroundColor: widget.isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0),
       onSelected: onChanged,
