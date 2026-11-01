@@ -289,6 +289,24 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     });
   }
 
+  // MOVED OUTSIDE _loadPreferences() TO CLASS LEVEL:
+  Future<void> _handleSaveGoal(SavingsGoalModel goal) async {
+    try {
+      await DatabaseHelper.instance.insertSavingsGoal(goal);
+      await Future.delayed(const Duration(milliseconds: 150));
+      await loadData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Savings goal created successfully!')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error saving goal: $e')),
+      );
+    }
+  }
+
   Future<void> _saveMasterOwner(String? owner) async {
     final prefs = await SharedPreferences.getInstance();
     if (owner == null) {
@@ -909,14 +927,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Liability added, label created & future payments scheduled!')),
     );
-  }
-
-  Future<void> _handleSaveGoal(SavingsGoalModel goal) async {
-    await DatabaseHelper.instance.insertSavingsGoal(goal);
-    await Future.delayed(const Duration(milliseconds: 150));
-    await loadData();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Savings goal created!')));
   }
 
   Future<void> _handleAddFundsToGoal(int goalId, double amountToAdd, String owner, String fromPool, String goalName, String currency) async {

@@ -22,6 +22,7 @@ import 'package:zaznamity/widgets/settings/pool_management_modal.dart';
 import 'package:zaznamity/widgets/csv_import_mapper_dialog.dart';
 import 'package:zaznamity/widgets/settings/history_display_settings_widget.dart';
 import 'package:zaznamity/models/transaction_model.dart';
+import 'package:local_auth/local_auth.dart';
 
 class AppSettingsCard extends StatefulWidget {
   final Map<String, bool> initialPools;
@@ -159,6 +160,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   String _biometricType = 'PIN';
   String _savedPin = "1234";
   bool _isPinVisible = false;
+  final LocalAuthentication _localAuth = LocalAuthentication();
+  bool _useFingerprint = false;
 
   String _primaryCurrency = 'USD';
   String? _secondaryCurrency1;
@@ -3809,17 +3812,16 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                     ),
                   ],
                 ),
-
-                // ==========================================
-                // GROUP 4: SECURITY & NOTIFICATIONS
-                // ==========================================
+// ==========================================
+// GROUP 4: SECURITY & NOTIFICATIONS
+// ==========================================
                 _buildMainCategoryGroup(
                   title: 'Security & Notifications',
                   subtitle: 'App security lock and reminder schedules',
                   children: [
                     _buildSubSectionCard(
                       title: 'Security',
-                      subtitle: 'Secure app with a 4-digit Passcode',
+                      subtitle: 'Secure app with either PIN or Fingerprint authentication',
                       children: [
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
@@ -3829,6 +3831,10 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                             setState(() => _biometricsEnabled = val);
                             final prefs = await SharedPreferences.getInstance();
                             await prefs.setBool('biometricsEnabled', val);
+                            if (!val) {
+                              setState(() => _useFingerprint = false);
+                              await prefs.setBool('useFingerprint', false);
+                            }
                             if (widget.onPinSettingsChanged != null) {
                               widget.onPinSettingsChanged!(val, _savedPin);
                             }
@@ -3836,58 +3842,105 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                         ),
                         if (_biometricsEnabled) ...[
                           const SizedBox(height: 12),
+                          Text('Authentication Method (Choose One)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                          const SizedBox(height: 6),
                           Row(
                             children: [
                               Expanded(
-                                child: TextField(
-                                  controller: _pinController,
-                                  keyboardType: TextInputType.number,
-                                  maxLength: 4,
-                                  obscureText: !_isPinVisible,
-                                  style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 13),
-                                  decoration: const InputDecoration(
-                                    labelText: 'Set 4-Digit Passcode',
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                                    isDense: true,
-                                    counterText: '',
-                                  ),
+                                child: RadioListTile<bool>(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text('PIN Passcode', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                                  value: false,
+                                  groupValue: _useFingerprint,
+                                  activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
                                   onChanged: (val) async {
-                                    if (val.length == 4) {
-                                      setState(() => _savedPin = val);
-                                      final prefs = await SharedPreferences.getInstance();
-                                      await prefs.setString('savedPin', val);
-                                      if (widget.onPinSettingsChanged != null) {
-                                        widget.onPinSettingsChanged!(_biometricsEnabled, val);
+                                    setState(() => _useFingerprint = false);
+                                    final prefs = await SharedPreferences.getInstance();
+                                    await prefs.setBool('useFingerprint', false);
+                                  },
+                                ),
+                              ),
+                              Expanded(
+                                child: RadioListTile<bool>(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text('Fingerprint', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                                  value: true,
+                                  groupValue: _useFingerprint,
+                                  activeColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                  onChanged: (val) async {
+                                    bool canCheck = await _localAuth.canCheckBiometrics || await _localAuth.isDeviceSupported();
+                                    if (canCheck) {
+                                      bool authenticated = await _localAuth.authenticate(
+                                        localizedReason: 'Scan your fingerprint to enable biometric unlock',
+                                      );
+                                      if (authenticated) {
+                                        setState(() => _useFingerprint = true);
+                                        final prefs = await SharedPreferences.getInstance();
+                                        await prefs.setBool('useFingerprint', true);
                                       }
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Biometrics not supported on this device')));
                                     }
                                   },
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                                  foregroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _isPinVisible = !_isPinVisible;
-                                  });
-                                },
-                                icon: Icon(
-                                  _isPinVisible ? Icons.visibility_off : Icons.visibility,
-                                  size: 16,
-                                ),
-                                label: Text(
-                                  _isPinVisible ? 'Hide ' : 'Show',
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                ),
-                              ),
                             ],
                           ),
+                          const SizedBox(height: 12),
+                          if (!_useFingerprint) ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _pinController,
+                                    keyboardType: TextInputType.number,
+                                    maxLength: 4,
+                                    obscureText: !_isPinVisible,
+                                    style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 13),
+                                    decoration: const InputDecoration(
+                                      labelText: 'Set 4-Digit Passcode',
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                                      isDense: true,
+                                      counterText: '',
+                                    ),
+                                    onChanged: (val) async {
+                                      if (val.length == 4) {
+                                        setState(() => _savedPin = val);
+                                        final prefs = await SharedPreferences.getInstance();
+                                        await prefs.setString('savedPin', val);
+                                        if (widget.onPinSettingsChanged != null) {
+                                          widget.onPinSettingsChanged!(_biometricsEnabled, val);
+                                        }
+                                      }
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                    foregroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _isPinVisible = !_isPinVisible;
+                                    });
+                                  },
+                                  icon: Icon(
+                                    _isPinVisible ? Icons.visibility_off : Icons.visibility,
+                                    size: 16,
+                                  ),
+                                  label: Text(
+                                    _isPinVisible ? 'Hide ' : 'Show',
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ],
                     ),

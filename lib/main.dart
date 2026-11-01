@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:local_auth/local_auth.dart';
 import 'screens/dashboard_screen.dart';
 import 'services/database_helper.dart';
 import 'services/notification_service.dart';
@@ -132,16 +133,34 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen> with WidgetsBindingObserver {
   bool _isInitialized = false;
   bool _pinEnabled = false;
   String _savedPin = "1234";
   String _enteredPin = "";
+  final LocalAuthentication _localAuth = LocalAuthentication();
+  bool _useFingerprint = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeApp();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Automatically trigger biometrics again when screen turns back on / app resumes
+    if (state == AppLifecycleState.resumed && _useFingerprint && (_pinEnabled || widget.isBackgroundLock)) {
+      _triggerBiometricAuth();
+    }
   }
 
   Future<void> _initializeApp() async {
@@ -149,6 +168,7 @@ class _SplashScreenState extends State<SplashScreen> {
     
     // Load preferences
     _pinEnabled = prefs.getBool('biometricsEnabled') ?? false;
+    _useFingerprint = prefs.getBool('useFingerprint') ?? false;
     _savedPin = prefs.getString('savedPin') ?? "1234";
 
     // Initialize the database instance on startup
@@ -168,6 +188,26 @@ class _SplashScreenState extends State<SplashScreen> {
     // If security lock is disabled and it's not a background lock, navigate directly to dashboard
     if (!_pinEnabled && !widget.isBackgroundLock) {
       _navigateToDashboard();
+    } else if (_useFingerprint && (_pinEnabled || widget.isBackgroundLock)) {
+      // Use post-frame callback to trigger biometrics the exact moment the frame is rendered
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _triggerBiometricAuth();
+        }
+      });
+    }
+  }
+
+  Future<void> _triggerBiometricAuth() async {
+    try {
+      bool authenticated = await _localAuth.authenticate(
+        localizedReason: 'Authenticate to access Zaznamity',
+      );
+      if (authenticated) {
+        _navigateToDashboard();
+      }
+    } catch (e) {
+      debugPrint('Biometric error: $e');
     }
   }
 
@@ -265,7 +305,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   child: Center(
                     child: (!_isInitialized && !widget.isBackgroundLock)
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : (_pinEnabled || widget.isBackgroundLock
+                        : ((_pinEnabled || widget.isBackgroundLock) && !_useFingerprint
                             ? Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -288,12 +328,32 @@ class _SplashScreenState extends State<SplashScreen> {
                                   ),
                                 ],
                               )
-                            : const SizedBox.shrink()),
+                            : (_useFingerprint && (_pinEnabled || widget.isBackgroundLock)
+                                ? Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Text(
+                                        'Biometric Authentication Required',
+                                        style: TextStyle(fontSize: 14, color: Colors.white70),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.white.withValues(alpha: 0.2),
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        onPressed: _triggerBiometricAuth,
+                                        icon: const Icon(Icons.fingerprint),
+                                        label: const Text('Scan Fingerprint'),
+                                      ),
+                                    ],
+                                  )
+                                : const SizedBox.shrink())),
                   ),
                 ),
 
-                // PIN pad rows if initialized and enabled
-                if ((_isInitialized || widget.isBackgroundLock) && (_pinEnabled || widget.isBackgroundLock)) ...[
+                // PIN pad rows if initialized and enabled and not using fingerprint
+                if ((_isInitialized || widget.isBackgroundLock) && (_pinEnabled || widget.isBackgroundLock) && !_useFingerprint) ...[
                   const SizedBox(height: 8),
                   for (var row in [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['', '0', '⌫']])
                     Row(

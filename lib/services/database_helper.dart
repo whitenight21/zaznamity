@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 9, // Incremented version to support receipt_path
+      version: 10, // Incremented version to support receipt_path
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -91,10 +91,11 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         target_amount REAL NOT NULL,
-        current_amount REAL NOT NULL DEFAULT 0.0,
+        current_amount REAL NOT NULL,
+        monthly_contribution REAL DEFAULT 0.0,
         target_date TEXT,
-        owner TEXT DEFAULT 'Shared'
-      );
+        owner TEXT
+      )
     ''');
 
     await db.rawInsert("INSERT INTO labels (name, color) VALUES ('General', '#6366f1')");
@@ -168,6 +169,17 @@ class DatabaseHelper {
     if (oldVersion < 9) {
       try {
         await db.execute('ALTER TABLE transactions ADD COLUMN receipt_path TEXT;');
+      } catch (_) {}
+    }
+    if (oldVersion < 10) {
+      try {
+        await db.execute("ALTER TABLE savings_goals ADD COLUMN monthly_contribution REAL DEFAULT 0.0;");
+      } catch (_) {}
+      try {
+        await db.execute("ALTER TABLE savings_goals ADD COLUMN target_date TEXT;");
+      } catch (_) {}
+      try {
+        await db.execute("ALTER TABLE savings_goals ADD COLUMN owner TEXT;");
       } catch (_) {}
     }
   }
@@ -572,9 +584,13 @@ class DatabaseHelper {
   }
 
   Future<int> insertSavingsGoal(SavingsGoalModel goal) async {
-    final db = await instance.database;
-    return await db.insert('savings_goals', goal.toMap());
-  }
+  final db = await database;
+  return await db.insert(
+    'savings_goals',
+    goal.toMap(), // Ensure toMap() includes all model fields
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+}
 
   Future<int> updateSavingsGoal(SavingsGoalModel goal) async {
     final db = await instance.database;

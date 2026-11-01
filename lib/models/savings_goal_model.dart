@@ -4,7 +4,7 @@ class SavingsGoalModel {
   final double targetAmount;
   final double currentAmount;
   final double monthlyContribution;
-  final String? dueDate;
+  final String? targetDate; // Ensure this matches your database column 'target_date'
   final String owner;
 
   SavingsGoalModel({
@@ -13,7 +13,7 @@ class SavingsGoalModel {
     required this.targetAmount,
     this.currentAmount = 0.0,
     this.monthlyContribution = 0.0,
-    this.dueDate,
+    this.targetDate,
     this.owner = 'Shared',
   });
 
@@ -24,7 +24,7 @@ class SavingsGoalModel {
       'target_amount': targetAmount,
       'current_amount': currentAmount,
       'monthly_contribution': monthlyContribution,
-      'due_date': dueDate,
+      'target_date': targetDate, // Mapped to SQLite column
       'owner': owner,
     };
   }
@@ -36,7 +36,7 @@ class SavingsGoalModel {
       targetAmount: (map['target_amount'] as num?)?.toDouble() ?? 0.0,
       currentAmount: (map['current_amount'] as num?)?.toDouble() ?? 0.0,
       monthlyContribution: (map['monthly_contribution'] as num?)?.toDouble() ?? 0.0,
-      dueDate: map['due_date'] as String?,
+      targetDate: map['target_date'] as String?,
       owner: map['owner'] as String? ?? 'Shared',
     );
   }
@@ -47,7 +47,7 @@ class SavingsGoalModel {
     double? targetAmount,
     double? currentAmount,
     double? monthlyContribution,
-    String? dueDate,
+    String? targetDate,
     String? owner,
   }) {
     return SavingsGoalModel(
@@ -56,7 +56,7 @@ class SavingsGoalModel {
       targetAmount: targetAmount ?? this.targetAmount,
       currentAmount: currentAmount ?? this.currentAmount,
       monthlyContribution: monthlyContribution ?? this.monthlyContribution,
-      dueDate: dueDate ?? this.dueDate,
+      targetDate: targetDate ?? this.targetDate,
       owner: owner ?? this.owner,
     );
   }

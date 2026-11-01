@@ -127,7 +127,9 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
   @override
   void didUpdateWidget(covariant SavingsGoalsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _loadPrefs();
+    if (widget.goals != oldWidget.goals) {
+      setState(() {}); 
+    }
   }
 
   String? _getCompletionForecastText(SavingsGoalModel goal) {
@@ -785,11 +787,10 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                       targetAmount: target,
                       currentAmount: 0.0,
                       monthlyContribution: contribution,
-                      dueDate: selectedDueDate?.toIso8601String(),
+                      targetDate: selectedDueDate?.toIso8601String(),
                       owner: dialogOwner,
                     );
-                    widget.onSaveGoal(newGoal);
-                    setState(() {});
+                    widget.onSaveGoal(newGoal); // Clean callback dispatch without local setState race
                     Navigator.pop(context);
                   }
                 },
@@ -972,7 +973,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                           final currencyFormat = NumberFormat.currency(symbol: activeSymbol, decimalDigits: 2);
                           
                           final forecastText = _getCompletionForecastText(goal);
-                          final dueDateStr = goal.dueDate != null ? DateFormat('yyyy-MM-dd').format(DateTime.parse(goal.dueDate!)) : null;
+                          final dueDateStr = goal.targetDate != null ? DateFormat('yyyy-MM-dd').format(DateTime.parse(goal.targetDate!)) : null;
 
                           return Container(
                             padding: const EdgeInsets.all(16),
@@ -1077,7 +1078,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                     value: progress,
                                     minHeight: 10,
                                     backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
-                                    valueColor: const SavedProgressColorAnimation(), // fallback to AlwaysStoppedAnimation below
+                                    valueColor: const SavedProgressColorAnimation(),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
