@@ -137,6 +137,62 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
     return DateTime.now();
   }
 
+  void _showLabelAnalysisInfoModal(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Label Analysis',
+                  style: TextStyle(
+                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Text(
+              'Label Analysis provides insights into your spending patterns and helps you make informed financial decisions.\n\n'
+              '• View detailed information about past Zaznams for each label.\n'
+              '• Analyze trends and identify areas where you can optimize your finances.\n'
+              '• Use the date range filter to focus on specific periods and understand your spending behavior.\n'
+              '• The analysis includes inflow, outflow, net amounts, and projected spending based on current trends.\n'
+              '• You can also see the contribution share of each label to your overall spending, helping you prioritize your financial goals.\n'
+              '• Use the "Display below all [#] Zaznams" feature to view detailed records for the selected label and date range in "All Zaznams".\n'
+              '• The system automatically detects fixed and discretionary labels, providing a clearer picture of your essential vs. non-essential spending.\n'
+              '• The analyis only takes into account past Zaznams and spending data. To visualize future spending, view the "Future Analytics" card.\n\n',
+              style: TextStyle(
+                fontSize: 13,
+                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
+                height: 1.4,
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Got it'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showInfoModal(BuildContext context, String title, String description) {
     showDialog(
       context: context,
@@ -395,18 +451,32 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'LABEL ANALYSIS',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                          letterSpacing: 0.8,
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'LABEL ANALYSIS ',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                          onPressed: () => _showLabelAnalysisInfoModal(context),
+                          tooltip: 'Label Analysis',
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 8),

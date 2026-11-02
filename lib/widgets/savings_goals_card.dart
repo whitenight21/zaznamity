@@ -253,7 +253,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Goals & Bills Guide',
+                  'Savings Goals',
                   style: TextStyle(
                     color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                     fontWeight: FontWeight.bold,
@@ -264,9 +264,13 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
           ),
           content: SingleChildScrollView(
             child: Text(
-              'Savings Goals help you build toward milestones, future purchases, or bills:\n\n'
+              'Savings Goals help you build toward milestones, future purchases, bills or any financial targets:\n\n'
               '• Set a completion due date to automatically calculate required monthly installments.\n'
-              '• Add or remove funds from active pools and visually track progress.\n'
+              '• Set a target amount, due date and track your progress visually with the progress bar.\n'
+              '• If you do not set a due date, you can manually add funds to the goal at your own pace.\n'
+              '• You can add funds to a goal from any of your pools, and the app will track the total amount saved toward that goal.\n'
+              '• You can remove funds from a goal and return them to your pool balance if needed.\n'
+              '• You can mark a goal as complete (green checkmark) when you reach your target amount, which will remove the funds from your pool balance.\n'
               '• Edit and delete Savings Goals anytime in App Settings.',
               style: TextStyle(
                 fontSize: 13,

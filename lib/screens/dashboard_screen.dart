@@ -32,6 +32,7 @@ import '../widgets/title_card.dart';
 import '../widgets/liabilities_card.dart'; 
 import '../widgets/smart_insights_card.dart';
 import '../widgets/what_if_scenario_card.dart';
+import '../widgets/future_analytics_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -164,6 +165,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     CardConfig(id: 'what_if_scenario', title: 'What-If Lab', key: GlobalKey()),
     CardConfig(id: 'label_focus', title: 'Label Analysis', key: GlobalKey()),
     CardConfig(id: 'income_expenses_labels', title: 'Labels Analytics', key: GlobalKey()),
+    CardConfig(id: 'future_analytics', title: 'Future Analytics', key: GlobalKey()),
     CardConfig(id: 'new_entry', title: 'New Zaznam', key: GlobalKey()),
     CardConfig(id: 'transfer', title: 'Transfer Funds', key: GlobalKey()),
     CardConfig(id: 'budget', title: 'Budgets', key: GlobalKey()),
@@ -430,7 +432,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       targetTab = 0;
     } else if (['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(cardId)) {
       targetTab = 1;
-    } else if (['label_focus', 'income_expenses_labels', 'calendar', 'what_if_scenario'].contains(cardId)) {
+    } else if (['label_focus', 'income_expenses_labels', 'future_analytics', 'calendar', 'what_if_scenario'].contains(cardId)) {
       targetTab = 2; 
     } else {
       targetTab = 3; 
@@ -517,7 +519,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           builder: (stateContext, setModalState) {
             final metricsCards = cards.where((c) => ['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(c.id)).toList();
             final trendsCards = cards.where((c) => ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
-            final analyticsCards = cards.where((c) => ['label_focus', 'income_expenses_labels', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
+            final analyticsCards = cards.where((c) => ['label_focus', 'income_expenses_labels', 'future_analytics', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
             final actionsCards = cards.where((c) => ['new_entry', 'transfer', 'history'].contains(c.id)).toList();
             final settingsCard = cards.firstWhere((c) => c.id == 'settings', orElse: () => CardConfig(id: 'settings', title: 'Zaznamity Settings', key: GlobalKey()));
 
@@ -675,7 +677,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
             return Container(
               width: MediaQuery.of(context).size.width * 0.95,
-              constraints: const BoxConstraints(maxWidth: 650, maxHeight: 580),
+              constraints: const BoxConstraints(maxWidth: 650, maxHeight: 600),
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -706,7 +708,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                                     '• Click the title of any card to jump directly to it (unhides it automatically if hidden).\n\n'
                                     '• Long press any card title to rearrange its position within its tab.\n\n'
                                     '• Toggle card visibility with the eye icon.\n\n'
-                                    '• Zaznamity Settings are pinned at the bottom of Actions.\n\n'
+                                    '• Zaznamity Settings are pinned at the bottom of Zaznams.\n\n'
                                     '• Toggle app theme to Zaznamity or White at the bottom.',
                                     style: TextStyle(color: _isZaznamityMode ? Colors.white70 : Colors.black87, fontSize: 12),
                                   ),
@@ -763,7 +765,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                                 children: [
                                   buildCategorySection('Trends', trendsCards, isReorderable: true, masterCardsRef: cards),
                                   const SizedBox(height: 10),
-                                  buildCategorySection('Actions', actionsCards, isReorderable: true, masterCardsRef: cards, isActionsCategory: true),
+                                  buildCategorySection('Zaznams', actionsCards, isReorderable: true, masterCardsRef: cards, isActionsCategory: true),
                                 ],
                               ),
                             ),
@@ -2048,12 +2050,15 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       case 'future_metrics':
         return FutureMetricsCard(
           owners: _owners,
-          selectedOwner: _futureMetricsSelectedOwner ?? _globalSelectedOwner,
+          selectedOwner: _globalSelectedOwner,
+          pools: _pools.keys.toList(),
+          selectedPool: _sankeySelectedPool, // or your local pool state variable
           futureFlowByOwner: _futureFlowByOwner,
           totalFutureFlow: _totalFutureFlow,
           prognosisByOwner: _prognosisByOwner,
           totalPrognosis: _totalPrognosis,
           transactions: _transactions,
+          labels: _labels,
           startDate: _futureMetricsStartDate,
           endDate: _futureMetricsEndDate,
           onDateRangeChanged: (start, end) {
@@ -2069,6 +2074,33 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               _futureMetricsEndDate = null;
               calculateMetrics();
             });
+          },
+          onPoolChanged: (pool) {
+            setState(() {
+              _sankeySelectedPool = pool;
+            });
+          },
+          onShow30DayShiftZaznams: () {
+            final now = DateTime.now();
+            final next30Days = now.add(const Duration(days: 30));
+            
+            setState(() {
+              _historyStartDate = now;
+              _historyEndDate = next30Days;
+              _historySelectedType = null;
+            });
+            _navigateToCard('history');
+          },
+          onShowPendingZaznams: () {
+            final now = DateTime.now();
+            final next7Days = now.add(const Duration(days: 7));
+            
+            setState(() {
+              _historyStartDate = now;
+              _historyEndDate = next7Days;
+              _historySelectedType = null;
+            });
+            _navigateToCard('history');
           },
         );
       case 'budget':
@@ -2158,6 +2190,25 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               toCurrency: toCurrency,
               exchangeRate: exchangeRate,
             );
+          },
+        );
+      case 'future_analytics':
+        return FutureAnalyticsCard(
+          owners: _owners,
+          selectedOwner: _globalSelectedOwner,
+          pools: _pools.keys.toList(),
+          selectedPool: _sankeySelectedPool,
+          transactions: _transactions,
+          labels: _labels,
+          onJumpToHistoryForLabel: (labelId, labelName, start, end) {
+            setState(() {
+              _historyStartDate = start;
+              _historyEndDate = end;
+              _historySelectedLabelId = labelId;
+              _historySelectedOwner = _globalSelectedOwner;
+              _historySelectedType = 'expense';
+            });
+            _navigateToCard('history');
           },
         );
       case 'monthly_trend':
@@ -2429,7 +2480,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   void _showZoomOutSnapshotModal() {
     final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(c.id)).toList();
     final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
-    final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
+    final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'future_analytics', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
     final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'history', 'settings'].contains(c.id)).toList();
 
     showDialog(
@@ -2478,7 +2529,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                       const SizedBox(width: 12),
                       _buildTabSnapshotColumn('Analytics', analyticsCards, 2),
                       const SizedBox(width: 12),
-                      _buildTabSnapshotColumn('Actions', actionsCards, 3),
+                      _buildTabSnapshotColumn('Zaznams', actionsCards, 3),
                     ],
                   ),
                 ),
@@ -2731,7 +2782,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
                               final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'smart_insights', 'liabilities_card', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
                               final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
-                              final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
+                              final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'future_analytics', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
                               final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'history', 'settings'].contains(c.id)).toList();
 
                               return TabBarView(
