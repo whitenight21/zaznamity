@@ -24,6 +24,39 @@ import 'package:zaznamity/widgets/settings/history_display_settings_widget.dart'
 import 'package:zaznamity/models/transaction_model.dart';
 import 'package:local_auth/local_auth.dart';
 
+/// Shared helper to determine if a transaction is an internal transfer, goal, savings, or pool move.
+bool isExcludedTransferOrSavings(TransactionModel tx, List<LabelModel> labels) {
+  if (tx.isSavings == 1) return true;
+  
+  final matchLbl = labels.where((l) => l.id == tx.labelId).firstOrNull;
+  if (matchLbl != null) {
+    final name = matchLbl.name.toLowerCase();
+    if (name == 'transfer' ||
+        name == 'goals' ||
+        name == 'goalssavings' ||
+        name == 'savings' ||
+        name == 'goal' ||
+        name.startsWith('withdrawal') ||
+        name.startsWith('deposit') ||
+        name.contains('transfer') ||
+        name.contains('goal') ||
+        name.contains('saving')) {
+      return true;
+    }
+  }
+
+  final desc = tx.description.toLowerCase();
+  if (desc.startsWith('withdrawal') ||
+      desc.startsWith('deposit') ||
+      desc.contains('transfer') ||
+      desc.contains('goal') ||
+      desc.contains('savings')) {
+    return true;
+  }
+
+  return false;
+}
+
 class AppSettingsCard extends StatefulWidget {
   final Map<String, bool> initialPools;
   final Map<String, bool> initialLiquidNetPools;

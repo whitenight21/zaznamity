@@ -29,6 +29,8 @@ class SmartInsightsCard extends StatefulWidget {
 class _SmartInsightsCardState extends State<SmartInsightsCard> {
   bool _isZaznamityMode = true;
   bool _excludeTransfers = true;
+  bool _excludeTransfersForBalance = false; // Issue 5: Separate transfer rule for balance
+  bool _includeSavingsInEmergency = false; // Issue 2: Toggle for emergency pool
   bool _isCollapsed = false;
   String _primaryCurrency = 'USD';
   final Map<String, bool> _multiLabelFixedCategories = {};
@@ -60,6 +62,8 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       setState(() {
         _isZaznamityMode = (savedTheme == 'zaznamity');
         _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
+        _excludeTransfersForBalance = prefs.getBool('exclude_transfers_balance') ?? false;
+        _includeSavingsInEmergency = prefs.getBool('include_savings_emergency') ?? false;
         _primaryCurrency = primary;
         _isCollapsed = collapsed;
         _multiLabelFixedCategories.addAll(fixedMap);
@@ -73,6 +77,14 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       _isCollapsed = !_isCollapsed;
     });
     await prefs.setBool('set_smartInsights_collapsed', _isCollapsed);
+  }
+
+  Future<void> _saveEmergencyPoolPreference(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _includeSavingsInEmergency = value;
+    });
+    await prefs.setBool('include_savings_emergency', value);
   }
 
   String _getCurrencySymbol(String code) {
@@ -117,6 +129,13 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
         lower.contains('loan') ||
         lower.contains('mortgage') ||
         lower.contains('bill');
+  }
+
+  bool _isSavingsLabel(LabelModel? label, String labelName) {
+    if (labelName.contains('saving') || labelName.contains('goal') || labelName.contains('investment')) {
+      return true;
+    }
+    return false;
   }
 
   void _showInfoDialog(BuildContext context, String title, String explanation, {bool includeDisclaimer = false}) {
@@ -211,7 +230,15 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Final Computed Score:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                // Issue 6 Fixed: Explicit text color contrasting with dialog background
+                Text(
+                  'Final Computed Score:', 
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold, 
+                    fontSize: 14, 
+                    color: _isZaznamityMode ? Colors.white : Colors.black87,
+                  ),
+                ),
                 Text('$totalScore / 100', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: analysis['healthColor'])),
               ],
             ),
@@ -243,7 +270,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     double currentMonthExpense = 0;
     double currentMonthIncome = 0;
     double prevMonthExpense = 0;
-    double prevMonthIncome = 0;
 
     double currentMonthExpenseToDate = 0;
     double prevMonthExpenseToDate = 0;
@@ -254,6 +280,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
 
     Map<int, double> labelExpenses = {};
     double totalLiquidChecking = 0;
+    double scheduledNetRestOfMonth = 0;
 
     double needsExpense = 0;
     double wantsExpense = 0;
@@ -261,30 +288,52 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
 
     double fixedOverhead = 0;
     double variableSpending = 0;
+    bool hasFixedCategoriesConfigured = false;
 
     Map<String, Map<int, double>> recurringBillHistory = {};
 
     for (var tx in widget.transactions) {
-      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) {
+      if (widget.selectedOwner != null &&
+          widget.selectedOwner!.isNotEmpty &&
+          widget.selectedOwner != 'All Owners' &&
+          tx.owner != widget.selectedOwner) {
         continue;
       }
 
-      if (tx.isConfirmed != 1) continue;
       final dt = DateTime.tryParse(tx.createdAt);
 
       String labelName = '';
       LabelModel? matchLbl = widget.labels.where((l) => l.id == tx.labelId).firstOrNull;
-      if (matchLbl != null) labelName = matchLbl.name.toLowerCase();
+      if (matchLbl != null) {
+        labelName = matchLbl.name.toLowerCase();
+        if (_isFixedExpenseLabel(matchLbl)) {
+          hasFixedCategoriesConfigured = true;
+        }
+      }
 
-      if (_excludeTransfers && labelName == 'transfer') {
+      // Issue 5: Separate transfer filter for balance vs general spending
+      bool isTransfer = labelName == 'transfer';
+
+      // Balance accumulation calculation rule
+      if (dt != null && !dt.isAfter(now)) {
+        if (!(_excludeTransfersForBalance && isTransfer)) {
+          double signedAmt = tx.type == 'income' ? tx.amount : -tx.amount;
+          if (tx.pool == 'checking' || tx.pool == 'cash' || (_includeSavingsInEmergency && tx.pool == 'savings')) {
+            totalLiquidChecking += signedAmt;
+          }
+        }
+      }
+
+      if (_excludeTransfers && isTransfer) {
         continue;
       }
-      
-      if (dt != null && !dt.isAfter(now)) {
-        double signedAmt = tx.type == 'income' ? tx.amount : -tx.amount;
-        if (tx.pool == 'checking' || tx.pool == 'cash') {
-          totalLiquidChecking += signedAmt;
+
+      if (tx.isConfirmed != 1) {
+        if (dt != null && dt.year == currentYear && dt.month == currentMonth && dt.isAfter(now)) {
+          double signedAmt = tx.type == 'income' ? tx.amount : -tx.amount;
+          scheduledNetRestOfMonth += signedAmt;
         }
+        continue;
       }
 
       if (dt == null) continue;
@@ -297,47 +346,55 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
 
       if (dt.year == currentYear && dt.month == currentMonth) {
         if (tx.type == 'expense') {
-          currentMonthExpense += tx.amount;
-          if (dt.day <= currentDay) currentMonthExpenseToDate += tx.amount;
+          bool isSavings = _isSavingsLabel(matchLbl, labelName);
+          
+          if (!isSavings) {
+            currentMonthExpense += tx.amount;
+            if (dt.day <= currentDay) currentMonthExpenseToDate += tx.amount;
 
-          labelExpenses[tx.labelId] = (labelExpenses[tx.labelId] ?? 0) + tx.amount;
+            // Issue 4: Exclude fixed and savings labels from culprit logic
+            bool isFixed = matchLbl != null ? _isFixedExpenseLabel(matchLbl) : false;
+            if (!isFixed) {
+              labelExpenses[tx.labelId] = (labelExpenses[tx.labelId] ?? 0) + tx.amount;
+            }
 
-          bool isFixed = matchLbl != null ? _isFixedExpenseLabel(matchLbl) : false;
-          if (isFixed) {
-            fixedOverhead += tx.amount;
-            needsExpense += tx.amount;
-          } else {
-            variableSpending += tx.amount;
-            if (labelName.contains('saving') || labelName.contains('goal') || tx.pool == 'savings') {
-              savingsContribution += tx.amount;
+            if (isFixed) {
+              fixedOverhead += tx.amount;
+              needsExpense += tx.amount;
             } else {
+              variableSpending += tx.amount;
               wantsExpense += tx.amount;
             }
+          } else {
+            // Issue 4: Savings contributions tracked separately from general expenses/culprits
+            savingsContribution += tx.amount;
           }
         }
         if (tx.type == 'income') currentMonthIncome += tx.amount;
       } else if (dt.year == prevYear && dt.month == prevMonth) {
         if (tx.type == 'expense') {
           prevMonthExpense += tx.amount;
+          // Issue 1: Track prev month expenses specifically up to currentDay for valid velocity comparison
           if (dt.day <= currentDay) prevMonthExpenseToDate += tx.amount;
         }
         if (tx.type == 'income') {
-          prevMonthIncome += tx.amount;
           if (dt.day <= currentDay) prevMonthIncomeToDate += tx.amount;
         }
       }
     }
 
-    if (needsExpense == 0 && wantsExpense == 0 && currentMonthExpense > 0) {
-      needsExpense = currentMonthExpense * 0.55;
-      wantsExpense = currentMonthExpense * 0.45;
-      fixedOverhead = currentMonthExpense * 0.5;
-      variableSpending = currentMonthExpense * 0.5;
+    // Issue 3: Handle unconfigured fixed categories gracefully without invented data
+    if (!hasFixedCategoriesConfigured && currentMonthExpense > 0) {
+      needsExpense = 0;
+      wantsExpense = currentMonthExpense;
+      fixedOverhead = 0;
+      variableSpending = currentMonthExpense;
     }
 
+    // Issue 1: Accurate velocity comparison using to-date baseline metrics
     double expenseDiffPercent = 0;
-    if (prevMonthExpense > 0) {
-      expenseDiffPercent = ((currentMonthExpense - prevMonthExpense) / prevMonthExpense) * 100;
+    if (prevMonthExpenseToDate > 0) {
+      expenseDiffPercent = ((currentMonthExpenseToDate - prevMonthExpenseToDate) / prevMonthExpenseToDate) * 100;
     }
 
     double currentSavingsRate = currentMonthIncome > 0
@@ -345,17 +402,16 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
         : (currentMonthExpense > 0 ? -100.0 : 0.0);
 
     double monthlyBurnBaseline = prevMonthExpense > 0 ? prevMonthExpense : (currentMonthExpense > 0 ? currentMonthExpense : 1.0);
-    double emergencyRunwayMonths = totalLiquidChecking > 0 ? (totalLiquidChecking / monthlyBurnBaseline) : 0.0;
+    double emergencyRunwayMonths = totalLiquidChecking > 0 ? (totalLiquidChecking / monthlyBurnBaseline) : (totalLiquidChecking / monthlyBurnBaseline);
 
     double dailySpendRate = currentDay > 0 ? (currentMonthExpense / currentDay) : 0;
     double projectedMonthEndExpense = dailySpendRate * daysInMonth;
 
-    double availableChecking = totalLiquidChecking;
-    double protectedSavingsBuffer = availableChecking * 0.20;
-    double safeSpendablePool = (availableChecking - protectedSavingsBuffer).clamp(0.0, double.infinity);
-    double targetBufferAllowance = daysInMonth > 0 ? (safeSpendablePool / daysInMonth) : 0.0;
+    final double daysLeft = (daysInMonth - currentDay + 1).clamp(1, 31).toDouble();
+    final double spendable = (totalLiquidChecking + scheduledNetRestOfMonth) * 0.8;
+    final double targetBufferAllowance = spendable.clamp(0.0, double.infinity) / daysLeft;
 
-    double moneyRunwayDays = dailySpendRate > 0 ? (availableChecking / dailySpendRate) : 999.0;
+    double moneyRunwayDays = dailySpendRate > 0 ? (totalLiquidChecking / dailySpendRate) : 999.0;
 
     double currentNetToDate = currentMonthIncome - currentMonthExpenseToDate;
     double prevNetToDate = prevMonthIncomeToDate - prevMonthExpenseToDate;
@@ -372,7 +428,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       if (matchingLabel != null) topCulpritLabel = matchingLabel.name;
     }
 
-    List<Map<String, dynamic>> insights = [];
+    List insightsList = [];
 
     int currentMonthKey = currentYear * 12 + currentMonth;
     int prevMonthKey = prevYear * 12 + prevMonth;
@@ -382,7 +438,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       if (currVal != null && prevVal != null && prevVal > 0) {
         double hikePct = ((currVal - prevVal) / prevVal) * 100;
         if (hikePct >= 5) {
-          insights.add({
+          insightsList.add({
             'type': 'warning',
             'icon': Icons.trending_up_rounded,
             'title': 'Price Hike Detected: $billName',
@@ -393,22 +449,22 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       }
     });
 
-    double flexibleBudgetCeiling = wantsExpense > 0 ? wantsExpense : (currentMonthExpense * 0.4);
+    double flexibleBudgetCeiling = currentMonthIncome > 0 ? (currentMonthIncome * 0.3) : (currentMonthExpense * 0.4);
     if (flexibleBudgetCeiling > 0 && monthProgressRatio > 0) {
       double flexibleSpendRatio = (wantsExpense / flexibleBudgetCeiling);
       if (flexibleSpendRatio >= 0.8 && monthProgressRatio < 0.8) {
-        insights.add({
+        insightsList.add({
           'type': 'warning',
           'icon': Icons.warning_amber_rounded,
           'title': 'Discretionary Budget Breaker',
-          'message': 'You have consumed over 80% of your flexible spending ceiling (${(flexibleSpendRatio * 100).toStringAsFixed(0)}%) with ${(1.0 - monthProgressRatio) * 100}% of the month still remaining.',
+          'message': 'You have consumed over 80% of your flexible spending ceiling (${(flexibleSpendRatio * 100).toStringAsFixed(0)}%) with ${((1.0 - monthProgressRatio) * 100).toStringAsFixed(0)}% of the month still remaining.',
           'action': 'Exercise strict discretionary caution for the rest of the month.'
         });
       }
     }
 
     if (expenseDiffPercent > 15) {
-      insights.add({
+      insightsList.add({
         'type': 'warning',
         'icon': Icons.trending_up_rounded,
         'title': 'Spending Velocity Alert',
@@ -416,28 +472,31 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
         'action': 'Review recent discretionary Zaznams and check budget thresholds.'
       });
     } else if (expenseDiffPercent < -10) {
-      insights.add({
+      insightsList.add({
         'type': 'positive',
         'icon': Icons.thumb_up_alt_rounded,
         'title': 'Controlled Spending',
-        'message': 'Great job! You spent ${expenseDiffPercent.abs().toStringAsFixed(0)}% less than last month so far.',
+        'message': 'Great job! You spent ${expenseDiffPercent.abs().toStringAsFixed(0)}% less than last month up to this date.',
         'action': 'Consider channeling excess savings into investment or savings goals.'
       });
     }
 
-    if (emergencyRunwayMonths < 3 && totalLiquidChecking > 0) {
-      insights.add({
+    // Issue 2: Trigger emergency warning even if balances are zero or negative
+    if (emergencyRunwayMonths < 3) {
+      insightsList.add({
         'type': 'warning',
         'icon': Icons.security_rounded,
-        'title': 'Low Emergency Runway',
-        'message': 'Your current liquid checking/cash reserves cover only ${emergencyRunwayMonths.toStringAsFixed(1)} months of living expenses (Target: 3-6 mos).',
+        'title': totalLiquidChecking <= 0 ? 'Critical Reserve Deficit' : 'Low Emergency Runway',
+        'message': totalLiquidChecking <= 0 
+            ? 'Your liquid balances are zero or negative, posing an immediate cashflow risk.'
+            : 'Your current liquid checking reserves cover only ${emergencyRunwayMonths.toStringAsFixed(1)} months of living expenses (Target: 3-6 mos).',
         'action': 'Prioritize building your safety net by trimming non-essential outflows.'
       });
     }
 
-    if (topCulpritAmount > 0 && insights.length < 3) {
+    if (topCulpritAmount > 0 && insightsList.length < 3) {
       double culpritShare = currentMonthExpense > 0 ? (topCulpritAmount / currentMonthExpense) * 100 : 0;
-      insights.add({
+      insightsList.add({
         'type': 'neutral',
         'icon': Icons.pie_chart_rounded,
         'title': 'Top Spending Driver: $topCulpritLabel',
@@ -446,8 +505,8 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       });
     }
 
-    if (insights.isEmpty) {
-      insights.add({
+    if (insightsList.isEmpty) {
+      insightsList.add({
         'type': 'neutral',
         'icon': Icons.lightbulb_outline_rounded,
         'title': 'Stable Cashflow Trajectory',
@@ -495,10 +554,12 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       'needsExpense': needsExpense,
       'wantsExpense': wantsExpense,
       'savingsContribution': savingsContribution,
+      'currentMonthIncome': currentMonthIncome > 0 ? currentMonthIncome : (currentMonthExpense > 0 ? currentMonthExpense : 1.0),
       'fixedOverhead': fixedOverhead,
       'variableSpending': variableSpending,
       'totalExpense': currentMonthExpense > 0 ? currentMonthExpense : 1.0,
-      'insights': insights,
+      'hasFixedCategoriesConfigured': hasFixedCategoriesConfigured,
+      'insights': insightsList,
     };
   }
 
@@ -517,12 +578,13 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     final double needs = analysis['needsExpense'];
     final double wants = analysis['wantsExpense'];
     final double savings = analysis['savingsContribution'];
-    final double totalExp = analysis['totalExpense'];
+    final double incomeBase = analysis['currentMonthIncome'];
 
     final double fixed = analysis['fixedOverhead'];
     final double variable = analysis['variableSpending'];
+    final bool hasFixedCategoriesConfigured = analysis['hasFixedCategoriesConfigured'];
 
-    final List<Map<String, dynamic>> insights = analysis['insights'];
+    final List insightsList = analysis['insights'];
     final displayOwner = (widget.selectedOwner == null || widget.selectedOwner!.isEmpty) ? 'All Owners' : widget.selectedOwner!;
 
     return LayoutBuilder(
@@ -744,7 +806,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                                         onTap: () => _showInfoDialog(
                                           context,
                                           'Target-Buffer Allowance',
-                                          'What this means: If you spend exactly this daily allowance every single day, your liquid checking balance would be fully depleted by income day.\n\n50/30/20 Rule Protection: To prevent your balance from hitting zero, this calculation reserves 20% as a safety/savings buffer. Only the remaining safe portion is divided across the month.\n\nMoney Runway: Your current balance will last approximately ${moneyRunwayDays.toStringAsFixed(0)} days at your current daily spend rate.',
+                                          'What this means: If you spend exactly this daily allowance every single day, your liquid checking balance would be fully depleted by income day.\n\n50/30/20 Rule Protection: To prevent your balance from hitting zero, this calculation reserves 20% as a safety/savings buffer. Only the remaining safe portion is divided across the remaining days of the month, accounting for upcoming scheduled items.',
                                         ),
                                         child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
                                       ),
@@ -781,7 +843,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                       child: _buildVitalTile(
                         title: 'EMERGENCY RUNWAY',
                         infoTitle: 'Emergency Fund Runway',
-                        infoExplanation: 'Calculates how many months of baseline living expenses your liquid checking and cash reserves can cover as an immediate survival buffer.',
+                        infoExplanation: 'Calculates how many months of baseline living expenses your checking, cash, and optional savings reserves can cover.',
                         value: '${runway.toStringAsFixed(1)} mos',
                         subtitle: 'Survival buffer',
                         icon: Icons.shield_outlined,
@@ -801,6 +863,37 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 10),
+
+                // Issue 2: Toggle control to include savings pool in emergency reserves
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.account_balance_wallet_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Include Savings Pool in Runway',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155)),
+                          ),
+                        ],
+                      ),
+                      Switch.adaptive(
+                        value: _includeSavingsInEmergency,
+                        activeColor: const Color(0xFFA855F7),
+                        onChanged: (val) => _saveEmergencyPoolPreference(val),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 10),
 
@@ -867,7 +960,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), letterSpacing: 0.8),
                     ),
                     InkWell(
-                      onTap: () => _showInfoDialog(context, '50/30/20 Rule', 'Categorizes monthly outflows into Needs, Wants, and Savings.'),
+                      onTap: () => _showInfoDialog(context, '50/30/20 Rule', 'Compares Needs (≤50%), Wants (≤30%), and Savings (≥20%) against your monthly income. Target ticks indicate ideal thresholds.'),
                       child: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
                     ),
                   ],
@@ -882,11 +975,11 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                   ),
                   child: Column(
                     children: [
-                      _buildBudgetBarRow('Needs (50%)', needs, totalExp, const Color(0xFF60A5FA)),
-                      const SizedBox(height: 8),
-                      _buildBudgetBarRow('Wants (30%)', wants, totalExp, const Color(0xFFFBBF24)),
-                      const SizedBox(height: 8),
-                      _buildBudgetBarRow('Savings (20%)', savings, totalExp + savings, const Color(0xFF34D399)),
+                      _buildBudgetBarRow('Needs (≤50%)', needs, incomeBase, 0.5, true),
+                      const SizedBox(height: 10),
+                      _buildBudgetBarRow('Wants (≤30%)', wants, incomeBase, 0.3, true),
+                      const SizedBox(height: 10),
+                      _buildBudgetBarRow('Savings (≥20%)', savings, incomeBase, 0.2, false),
                     ],
                   ),
                 ),
@@ -906,36 +999,57 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Fixed Overhead', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                          const SizedBox(height: 2),
-                          Text(_formatCurrency(fixed), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
-                        ],
+                // Issue 3: If no fixed categories are set, display structured banner instead of fake splits
+                hasFixedCategoriesConfigured
+                    ? Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Fixed Overhead', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                const SizedBox(height: 2),
+                                Text(_formatCurrency(fixed), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                              ],
+                            ),
+                            Container(height: 24, width: 1, color: _isZaznamityMode ? Colors.white24 : Colors.black26),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('Flexible Discretionary', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                const SizedBox(height: 2),
+                                Text(_formatCurrency(variable), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                              ],
+                            ),
+                          ],
+                        ),
+                      )
+                    : Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'No fixed categories set. Mark categories as fixed to track overhead splits.',
+                                style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      Container(height: 24, width: 1, color: _isZaznamityMode ? Colors.white24 : Colors.black26),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text('Flexible Discretionary', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                          const SizedBox(height: 2),
-                          Text(_formatCurrency(variable), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
                 const SizedBox(height: 16),
 
                 Text(
@@ -944,12 +1058,13 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                 ),
                 const SizedBox(height: 8),
 
-                ...insights.map((insight) {
-                  final IconData icon = insight['icon'];
-                  final String title = insight['title'];
-                  final String message = insight['message'];
-                  final String action = insight['action'];
-                  final String type = insight['type'];
+                ...insightsList.map((item) {
+                  final insight = item as Map;
+                  final IconData icon = insight['icon'] as IconData;
+                  final String title = insight['title'] as String;
+                  final String message = insight['message'] as String;
+                  final String action = insight['action'] as String;
+                  final String type = insight['type'] as String;
 
                   Color badgeColor = const Color(0xFF38BDF8);
                   if (type == 'warning') badgeColor = const Color(0xFFFBBF24);
@@ -1019,7 +1134,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                       ],
                     ),
                   );
-                }),
+                }).toList(),
               ],
             ],
           ),
@@ -1028,8 +1143,12 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     );
   }
 
-  Widget _buildBudgetBarRow(String label, double amount, double total, Color color) {
-    double ratio = total > 0 ? (amount / total).clamp(0.0, 1.0) : 0.0;
+  Widget _buildBudgetBarRow(String label, double amount, double income, double targetRatio, bool isLowerBetter) {
+    double incomeBase = income > 0 ? income : 1.0;
+    double ratio = (amount / incomeBase).clamp(0.0, 1.0);
+    bool isWithinTarget = isLowerBetter ? (amount / incomeBase <= targetRatio) : (amount / incomeBase >= targetRatio);
+    Color color = isWithinTarget ? const Color(0xFF34D399) : const Color(0xFFF87171);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1037,18 +1156,48 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155))),
-            Text('${_formatCurrency(amount)} (${(ratio * 100).toStringAsFixed(0)}%)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
+            Text('${_formatCurrency(amount)} (${((amount / incomeBase) * 100).toStringAsFixed(0)}% of income)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
           ],
         ),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: ratio,
-            minHeight: 6,
-            backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
-            valueColor: AlwaysStoppedAnimation<Color>(color),
-          ),
+        const SizedBox(height: 6),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            double maxWidth = constraints.maxWidth;
+            double targetLeft = (targetRatio * maxWidth).clamp(0.0, maxWidth);
+            return SizedBox(
+              height: 10,
+              child: Stack(
+                alignment: Alignment.centerLeft,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      height: 6,
+                      width: maxWidth,
+                      color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      height: 6,
+                      width: maxWidth * ratio,
+                      color: color,
+                    ),
+                  ),
+                  Positioned(
+                    left: targetLeft - 1,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 2,
+                      color: _isZaznamityMode ? Colors.white : Colors.black,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ],
     );

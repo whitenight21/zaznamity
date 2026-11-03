@@ -221,7 +221,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'POOLS TRENDS',
+                            'POOLS TRENDS  ',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -234,8 +234,14 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                         InkWell(
                           onTap: () => _showInfoModal(
                             context,
-                            'Pools Analytics Guide',
-                            'Analyze liquidity trends, net worth shares, and burn-rate depletion runways across your active financial pools.',
+                            'Pools Trends',
+                            'This card is designed to provide a clear and concise overview of your financial pools, helping you make informed decisions about your liquidity and net worth distribution.\n\n'
+                            '• Analyze liquidity trends, net worth shares, and burn-rate depletion runways across your active financial pools.\n'
+                            '• Use the Pending toggle to include or exclude upcoming scheduled transactions from your analysis.\n'
+                            '• Select a date range to focus on specific periods, and clear the filter to view all historical data.\n'
+                            '• Toggle between Display modes "Absolute Amount" and "Net worth share %" for a comprehensive view of your financial landscape.\n'
+                            '• Depletion warnings indicate how many days remain before a pool may run out of funds based on recent net flow trends.\n'
+                            '• Use the Master Owner filter to analyze trends for specific owners or view all owners collectively.',
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(2.0),

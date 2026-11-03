@@ -528,7 +528,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'SANKEY FLOW TREND',
+                            'SANKEY FLOW TREND ',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -541,8 +541,15 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                         InkWell(
                           onTap: () => _showInfoDialog(
                             context,
-                            'Sankey Flow Guide',
-                            'Visualize money flows across the 2-tier or 3-tier lifecycle stages.\n\n• Percentage Share Badges: Displays % contribution next to each node.\n• View Zaznams: Tap any node to inspect those exact filtered Zaznams.',
+                            'Sankey Flow Trend',
+                            'This card visualizes by color the flow of money between your financial pools and category labels over a selected date range.\n\n'
+                            '• Visualize money flows across the 2-tier or 3-tier lifecycle stages.\n'
+                            '• Toggle between pools to analyze your financial trends.\n'
+                            '• Toggle between Expense and Income flows to see how money is moving in and out of your accounts.\n'
+                            '• Use the date range picker to focus on specific periods, or clear the filter to view all historical data.\n'
+                            '• The width of the flow lines represents the relative amount of money moving between nodes, providing a clear visual representation of your financial activity.\n'
+                            '• Tap on any node to drill down and view the associated transactions for that pool, label, or owner.\n'
+                            '• Select the "View Zaznams:" option to inspect Income or Expense records for that label and date range.\n',
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(2.0),

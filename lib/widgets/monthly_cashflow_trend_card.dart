@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
@@ -35,52 +36,45 @@ class MonthlyCashflowTrendCard extends StatefulWidget {
   State<MonthlyCashflowTrendCard> createState() => _MonthlyCashflowTrendCardState();
 }
 
-class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> with WidgetsBindingObserver {
+class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
   String _selectedTimeframe = 'All time';
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
+  Set<int> _selectedLabelIds = {}; // Empty means All Labels
   bool _showNetTrendLine = true;
   bool _excludeTransfers = true;
   bool _isZaznamityMode = true;
   bool _isCollapsed = false;
+  bool _showYearOverYear = false;
+
+  final ScrollController _chartScrollController = ScrollController();
 
   List<BarChartGroupData> _cachedBarGroups = [];
   List<FlSpot> _cachedNetSpots = [];
+  List<FlSpot> _cachedRollingNetSpots = [];
   List<String> _cachedSortedKeys = [];
   List<String> _cachedMonthLabels = [];
-  List<Map<String, dynamic>> _cachedAnomalyMarkers = [];
+  Map<String, Map<String, double>> _cachedMonthlyRawData = {};
+  Set<String> _cachedAnomalyMonths = {};
+  String? _cachedBestMonth;
+  String? _cachedWorstMonth;
+  double _cachedAvgExpense = 0.0;
+  double _cachedAvgNet = 0.0;
   double _cachedMaxY = 1000.0;
   double _cachedMinY = -1000.0;
-  double _cachedSavingsRate = 0.0;
 
-  int? _lastTxLength;
-  String? _lastOwner;
-  String? _lastPool;
-  String? _lastTimeframe;
-  bool? _lastExcludeTransfers;
+  String? _lastCacheKey;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _loadPrefs();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    _chartScrollController.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _loadPrefs();
-    }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _loadPrefs();
   }
 
   Future<void> _loadPrefs() async {
@@ -92,18 +86,83 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
     final newZaznamityMode = (savedTheme == 'zaznamity');
 
     if (mounted) {
-      if (_isZaznamityMode != newZaznamityMode ||
-          _selectedTimeframe != timeframe ||
-          _excludeTransfers != excludeTr ||
-          _isCollapsed != collapsed) {
-        setState(() {
-          _selectedTimeframe = timeframe;
-          _excludeTransfers = excludeTr;
-          _isZaznamityMode = newZaznamityMode;
-          _isCollapsed = collapsed;
-        });
-      }
+      setState(() {
+        _selectedTimeframe = timeframe;
+        _excludeTransfers = excludeTr;
+        _isZaznamityMode = newZaznamityMode;
+        _isCollapsed = collapsed;
+      });
     }
+  }
+
+  Future<void> _saveTimeframe(String timeframe) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('set_cashFlow_range', timeframe);
+    setState(() {
+      _selectedTimeframe = timeframe;
+    });
+  }
+
+  void _scrollToLatest() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_chartScrollController.hasClients) {
+        _chartScrollController.jumpTo(_chartScrollController.position.maxScrollExtent);
+      }
+    });
+  }
+
+  void _showCashFlowInfoModal(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Cash Flow Trend',
+                  style: TextStyle(
+                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Text(
+              'Cash Flow Trend provides insights into your spending patterns over your selected timeframe.\n\n'
+              '• Filter by pool, timeframe, or multi-select labels.\n'
+              '• The chart features an emphasized zero baseline, nice rounded axis steps, and horizontal scrolling starting at the latest month.\n'
+              '• Anomalies are flagged with warning borders based on leave-one-out median analysis.\n'
+              '• Current month pacing shows your progress so far compared to your usual pace and projected month-end figures.\n'
+              '• Dashed reference lines show average expenses and net cash flow.\n'
+              '• Badges indicate your best and worst months, alongside a rolling 3-month net average line.\n\n',
+              style: TextStyle(
+                fontSize: 13,
+                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
+                height: 1.4,
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Got it'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _toggleCollapse() async {
@@ -112,85 +171,237 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
       _isCollapsed = !_isCollapsed;
     });
     await prefs.setBool('set_monthlyCashflow_collapsed', _isCollapsed);
+    if (!_isCollapsed) {
+      _scrollToLatest();
+    }
   }
 
-  void _showInfoDialog(BuildContext context, String title, String description) {
-    showDialog(
+  Future<void> _pickCustomDateRange(BuildContext context) async {
+    final picked = await showDateRangePicker(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Icon(Icons.info_outline_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), size: 22),
-            const SizedBox(width: 8),
-            Expanded(child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)))),
-          ],
-        ),
-        content: Text(description, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155), height: 1.4)),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      initialDateRange: (_customStartDate != null && _customEndDate != null)
+          ? DateTimeRange(start: _customStartDate!, end: _customEndDate!)
+          : DateTimeRange(start: DateTime.now().subtract(const Duration(days: 90)), end: DateTime.now()),
+      builder: (context, child) {
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10.0),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 1.0,
+                maxHeight: MediaQuery.of(context).size.height * 0.8,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: child!,
+              ),
             ),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Got it'),
           ),
-        ],
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _customStartDate = picked.start;
+        _customEndDate = picked.end;
+      });
+      await _saveTimeframe('Custom Range');
+      _scrollToLatest();
+    }
+  }
+
+  void _showLabelsCheckmarkModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            bool allSelected = _selectedLabelIds.isEmpty;
+
+            return Container(
+              padding: const EdgeInsets.all(20),
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filter Labels',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _selectedLabelIds.clear();
+                          });
+                          setModalState(() {});
+                        },
+                        child: const Text('Clear All', style: TextStyle(color: Color(0xFFF87171))),
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24),
+                  CheckboxListTile(
+                    title: Text(
+                      'All Labels',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                      ),
+                    ),
+                    value: allSelected,
+                    activeColor: const Color(0xFFA855F7),
+                    onChanged: (bool? value) {
+                      setState(() {
+                        if (value == true) {
+                          _selectedLabelIds.clear();
+                        }
+                      });
+                      setModalState(() {});
+                    },
+                  ),
+                  const Divider(color: Colors.white12, height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: widget.labels.length,
+                      itemBuilder: (context, index) {
+                        final label = widget.labels[index];
+                        final isChecked = _selectedLabelIds.contains(label.id);
+
+                        return CheckboxListTile(
+                          title: Text(
+                            label.name,
+                            style: TextStyle(
+                              color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155),
+                            ),
+                          ),
+                          value: isChecked,
+                          activeColor: const Color(0xFFA855F7),
+                          onChanged: (bool? value) {
+                            setState(() {
+                              if (value == true) {
+                                _selectedLabelIds.add(label.id);
+                              } else {
+                                _selectedLabelIds.remove(label.id);
+                              }
+                            });
+                            setModalState(() {});
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
-  void _showAnomalyDialog(BuildContext context, String monthLabel, String explanation) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Icon(Icons.priority_high_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), size: 22),
-            const SizedBox(width: 8),
-            Expanded(child: Text('Anomaly Detected: $monthLabel', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)))),
-          ],
-        ),
-        content: Text(explanation, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155), height: 1.4)),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Got it'),
-          ),
-        ],
-      ),
-    );
+  String _getCacheKey() {
+    final sortedLabels = _selectedLabelIds.toList()..sort();
+    final txSig = widget.transactions
+        .map((t) => '${t.id}:${t.amount}:${t.createdAt}:${t.isConfirmed}:${t.type}:${t.labelId}:${t.pool}')
+        .join('|');
+    return '$txSig|${widget.selectedOwner}|${widget.selectedPool}|$_selectedTimeframe|$_excludeTransfers|$_customStartDate|$_customEndDate|${sortedLabels.join(",")}|$_showYearOverYear';
+  }
+
+  bool _isTransferTransaction(TransactionModel tx) {
+    if (tx.isSavings == 1) return true;
+    final lowerDesc = tx.description.toLowerCase();
+    if (lowerDesc.startsWith('withdrawal from') || lowerDesc.startsWith('deposit into')) {
+      return true;
+    }
+    if (widget.labels.isNotEmpty) {
+      final matchLbl = widget.labels.where((l) => l.id == tx.labelId).firstOrNull;
+      if (matchLbl != null) {
+        final lName = matchLbl.name.toLowerCase();
+        if (lName == 'transfer' || lName == 'goal' || lName == 'goals' || lName == 'goalssavings') {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  double _median(List<double> list) {
+    if (list.isEmpty) return 0.0;
+    final sorted = List<double>.from(list)..sort();
+    int middle = sorted.length ~/ 2;
+    if (sorted.length % 2 == 1) {
+      return sorted[middle];
+    } else {
+      return (sorted[middle - 1] + sorted[middle]) / 2.0;
+    }
+  }
+
+  double _niceStep(double rawRange) {
+    if (rawRange <= 0) return 1.0;
+    final roughStep = rawRange / 5.0;
+    final magnitude = math.pow(10, (math.log(roughStep) / math.ln10).floor()).toDouble();
+    final residual = roughStep / magnitude;
+
+    double niceResidual;
+    if (residual <= 1.0) {
+      niceResidual = 1.0;
+    } else if (residual <= 2.0) {
+      niceResidual = 2.0;
+    } else if (residual <= 5.0) {
+      niceResidual = 5.0;
+    } else {
+      niceResidual = 10.0;
+    }
+    return niceResidual * magnitude;
   }
 
   void _computeChartDataIfNeeded() {
-    _loadPrefs();
-
-    if (_lastTxLength == widget.transactions.length &&
-        _lastOwner == widget.selectedOwner &&
-        _lastPool == widget.selectedPool &&
-        _lastTimeframe == _selectedTimeframe &&
-        _lastExcludeTransfers == _excludeTransfers) {
+    final currentKey = _getCacheKey();
+    if (_lastCacheKey == currentKey) {
       return;
     }
+
+    final now = DateTime.now();
 
     final filteredTxs = widget.transactions.where((tx) {
       if (tx.isConfirmed != 1) return false;
 
-      if (_excludeTransfers && widget.labels.isNotEmpty) {
-        final matchLbl = widget.labels.where((l) => l.id == tx.labelId).firstOrNull;
-        if (matchLbl != null && matchLbl.name.toLowerCase() == 'transfer') {
-          return false;
-        }
+      if (_excludeTransfers && _isTransferTransaction(tx)) {
+        return false;
+      }
+
+      if (_selectedLabelIds.isNotEmpty && !_selectedLabelIds.contains(tx.labelId)) {
+        return false;
       }
 
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && tx.owner != widget.selectedOwner) {
@@ -205,25 +416,29 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
       if (txDate == null) return false;
 
       if (_selectedTimeframe == 'This Year') {
-        if (txDate.year != DateTime.now().year) return false;
-      } else if (_selectedTimeframe == 'Last 12 Months' || _selectedTimeframe == '90 Days') {
-        final days = _selectedTimeframe == '90 Days' ? 90 : 365;
-        final cutoff = DateTime.now().subtract(Duration(days: days));
+        if (txDate.year != now.year) return false;
+      } else if (_selectedTimeframe == 'Last 6 Months') {
+        final cutoff = DateTime(now.year, now.month - 5, 1);
+        if (txDate.isBefore(cutoff)) return false;
+      } else if (_selectedTimeframe == 'Last 12 Months') {
+        final cutoff = DateTime(now.year, now.month - 11, 1);
+        if (txDate.isBefore(cutoff)) return false;
+      } else if (_selectedTimeframe == '90 Days') {
+        final cutoff = DateTime(now.year, now.month - 3, now.day);
         if (txDate.isBefore(cutoff)) return false;
       } else if (_selectedTimeframe == 'Current Month') {
-        final now = DateTime.now();
         if (txDate.year != now.year || txDate.month != now.month) return false;
       } else if (_selectedTimeframe == 'Last 30 Days') {
-        final cutoff = DateTime.now().subtract(const Duration(days: 30));
+        final cutoff = DateTime(now.year, now.month - 1, now.day);
         if (txDate.isBefore(cutoff)) return false;
+      } else if (_selectedTimeframe == 'Custom Range') {
+        if (_customStartDate != null && txDate.isBefore(_customStartDate!)) return false;
+        if (_customEndDate != null && txDate.isAfter(_customEndDate!)) return false;
       }
       return true;
     }).toList();
 
     final Map<String, Map<String, double>> monthlyData = {};
-    final Map<String, List<TransactionModel>> monthlyExpenseTxs = {};
-    double totalIncomeSum = 0;
-    double totalExpenseSum = 0;
 
     for (var tx in filteredTxs) {
       final dt = DateTime.tryParse(tx.createdAt);
@@ -233,35 +448,22 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
       monthlyData.putIfAbsent(key, () => {'income': 0.0, 'expense': 0.0});
       if (tx.type == 'income') {
         monthlyData[key]!['income'] = (monthlyData[key]!['income'] ?? 0) + tx.amount;
-        totalIncomeSum += tx.amount;
       } else if (tx.type == 'expense') {
         monthlyData[key]!['expense'] = (monthlyData[key]!['expense'] ?? 0) + tx.amount;
-        totalExpenseSum += tx.amount;
-
-        monthlyExpenseTxs.putIfAbsent(key, () => []).add(tx);
       }
-    }
-
-    double savingsRate = 0.0;
-    if (totalIncomeSum > 0) {
-      savingsRate = ((totalIncomeSum - totalExpenseSum) / totalIncomeSum) * 100;
     }
 
     final sortedKeys = monthlyData.keys.toList()..sort();
 
-    double totalHistoricalExpense = 0;
-    for (var k in sortedKeys) {
-      totalHistoricalExpense += (monthlyData[k]!['expense'] ?? 0.0);
-    }
-    double avgMonthlyExpense = sortedKeys.isNotEmpty ? totalHistoricalExpense / sortedKeys.length : 0.0;
-
     List<BarChartGroupData> barGroups = [];
     List<FlSpot> netSpots = [];
+    List<FlSpot> rollingNetSpots = [];
     List<String> monthLabels = [];
-    List<Map<String, dynamic>> anomalyMarkers = [];
 
     double maxY = 1000.0;
     double minY = -1000.0;
+    double totalExpenseSum = 0.0;
+    double totalNetSum = 0.0;
 
     for (int i = 0; i < sortedKeys.length; i++) {
       String mKey = sortedKeys[i];
@@ -269,46 +471,16 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
       double exp = monthlyData[mKey]!['expense'] ?? 0.0;
       double net = inc - exp;
 
+      totalExpenseSum += exp;
+      totalNetSum += net;
+
       if (inc > maxY) maxY = inc;
       if (-exp < minY) minY = -exp;
       if (net > maxY) maxY = net;
       if (net < minY) minY = net;
 
-      if (avgMonthlyExpense > 0 && exp > (avgMonthlyExpense * 1.35) && exp > 200) {
-        String driverDescription = 'general expenses';
-        if (monthlyExpenseTxs.containsKey(mKey)) {
-          final txs = monthlyExpenseTxs[mKey]!;
-          txs.sort((a, b) => b.amount.compareTo(a.amount));
-          
-          List<String> topDescriptions = [];
-          double accumulatedAmt = 0;
-          for (var tx in txs) {
-            String desc = tx.description.trim().isNotEmpty ? tx.description : 'Expense';
-            if (widget.labels.isNotEmpty && tx.labelId != null) {
-              final lbl = widget.labels.where((l) => l.id == tx.labelId).firstOrNull;
-              if (lbl != null) {
-                desc = '$desc (${lbl.name})';
-              }
-            }
-            topDescriptions.add('"$desc" (\$${tx.amount.toStringAsFixed(0)})');
-            accumulatedAmt += tx.amount;
-            if (topDescriptions.length >= 2 || accumulatedAmt >= exp * 0.7) {
-              break;
-            }
-          }
-          if (topDescriptions.isNotEmpty) {
-            driverDescription = topDescriptions.join(', ');
-          }
-        }
-
-        anomalyMarkers.add({
-          'index': i,
-          'monthKey': mKey,
-          'explanation': 'Unusually high total expense: \n\n \$${exp.toStringAsFixed(0)} vs avg \$${avgMonthlyExpense.toStringAsFixed(0)} \n\nprimarily driven by:\n\n• $driverDescription.',
-        });
-      }
-
-      monthLabels.add(DateFormat('MMM yyyy').format(DateTime.parse('$mKey-01')));
+      DateTime dt = DateTime.parse('$mKey-01');
+      monthLabels.add(DateFormat('MMM').format(dt));
 
       barGroups.add(
         BarChartGroupData(
@@ -332,18 +504,78 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
       netSpots.add(FlSpot(i.toDouble(), net));
     }
 
+    // Rolling 3-month net average calculation
+    for (int i = 0; i < sortedKeys.length; i++) {
+      int startIdx = math.max(0, i - 2);
+      double sum = 0;
+      for (int j = startIdx; j <= i; j++) {
+        double inc = monthlyData[sortedKeys[j]]!['income'] ?? 0.0;
+        double exp = monthlyData[sortedKeys[j]]!['expense'] ?? 0.0;
+        sum += (inc - exp);
+      }
+      double rollingAvg = sum / (i - startIdx + 1);
+      rollingNetSpots.add(FlSpot(i.toDouble(), rollingAvg));
+      if (rollingAvg > maxY) maxY = rollingAvg;
+      if (rollingAvg < minY) minY = rollingAvg;
+    }
+
+    double avgExpense = sortedKeys.isNotEmpty ? totalExpenseSum / sortedKeys.length : 0.0;
+    double avgNet = sortedKeys.isNotEmpty ? totalNetSum / sortedKeys.length : 0.0;
+
+    // Anomaly Detection against leave-one-out median
+    Set<String> anomalyMonths = {};
+    if (sortedKeys.length >= 3) {
+      List<double> expenses = sortedKeys.map((k) => monthlyData[k]!['expense'] ?? 0.0).toList();
+      double medianExpense = _median(expenses);
+      double medianAbsDev = _median(expenses.map((e) => (e - medianExpense).abs()).toList());
+      double threshold = math.max(200.0, medianAbsDev * 2.5);
+
+      for (int i = 0; i < sortedKeys.length; i++) {
+        List<double> leaveOneOut = List.from(expenses)..removeAt(i);
+        double looMedian = _median(leaveOneOut);
+        if ((expenses[i] - looMedian).abs() > threshold && expenses[i] > medianExpense) {
+          anomalyMonths.add(sortedKeys[i]);
+          barGroups[i] = barGroups[i].copyWith(
+            barRods: barGroups[i].barRods.map((rod) {
+              return rod.copyWith(
+                borderSide: const BorderSide(color: Color(0xFFF59E0B), width: 2),
+              );
+            }).toList(),
+          );
+        }
+      }
+    }
+
+    // Best and Worst months by Net
+    String? bestMonthKey;
+    String? worstMonthKey;
+    double maxNetVal = -double.infinity;
+    double minNetVal = double.infinity;
+    for (var k in sortedKeys) {
+      double net = (monthlyData[k]!['income'] ?? 0.0) - (monthlyData[k]!['expense'] ?? 0.0);
+      if (net > maxNetVal) {
+        maxNetVal = net;
+        bestMonthKey = k;
+      }
+      if (net < minNetVal) {
+        minNetVal = net;
+        worstMonthKey = k;
+      }
+    }
+
     List<String> computedSortedKeys = List.from(sortedKeys);
 
-    if (computedSortedKeys.isNotEmpty) {
-      int recentCount = computedSortedKeys.length >= 3 ? 3 : computedSortedKeys.length;
-      double sumInc = 0;
-      double sumExp = 0;
-      for (int i = computedSortedKeys.length - recentCount; i < computedSortedKeys.length; i++) {
-        sumInc += monthlyData[computedSortedKeys[i]]!['income'] ?? 0.0;
-        sumExp += monthlyData[computedSortedKeys[i]]!['expense'] ?? 0.0;
-      }
-      double forecastInc = sumInc / recentCount;
-      double forecastExp = sumExp / recentCount;
+    // Forecast for complete months
+    final currentMonthKey = DateFormat('yyyy-MM').format(now);
+    final completeMonthKeys = sortedKeys.where((k) => k != currentMonthKey).toList();
+
+    if (completeMonthKeys.length >= 3) {
+      final recentKeys = completeMonthKeys.sublist(completeMonthKeys.length - 3);
+      final incList = recentKeys.map((k) => monthlyData[k]!['income'] ?? 0.0).toList();
+      final expList = recentKeys.map((k) => monthlyData[k]!['expense'] ?? 0.0).toList();
+
+      double forecastInc = _median(incList);
+      double forecastExp = _median(expList);
       double forecastNet = forecastInc - forecastExp;
 
       if (forecastInc > maxY) maxY = forecastInc;
@@ -356,10 +588,12 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
       try {
         DateTime lastDt = DateTime.parse('${computedSortedKeys.last}-01');
         DateTime nextDt = DateTime(lastDt.year, lastDt.month + 1, 1);
-        monthLabels.add(DateFormat('MMM yyyy').format(nextDt));
+        monthLabels.add(DateFormat('MMM').format(nextDt));
       } catch (_) {
-        monthLabels.add('Next Month');
+        monthLabels.add('Next');
       }
+
+      monthlyData['Forecast'] = {'income': forecastInc, 'expense': forecastExp};
 
       barGroups.add(
         BarChartGroupData(
@@ -386,29 +620,67 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
 
     _cachedBarGroups = barGroups;
     _cachedNetSpots = netSpots;
+    _cachedRollingNetSpots = rollingNetSpots;
     _cachedSortedKeys = computedSortedKeys;
     _cachedMonthLabels = monthLabels;
-    _cachedAnomalyMarkers = anomalyMarkers;
+    _cachedMonthlyRawData = monthlyData;
+    _cachedAnomalyMonths = anomalyMonths;
+    _cachedBestMonth = bestMonthKey;
+    _cachedWorstMonth = worstMonthKey;
+    _cachedAvgExpense = avgExpense;
+    _cachedAvgNet = avgNet;
     _cachedMaxY = maxY;
     _cachedMinY = minY;
-    _cachedSavingsRate = savingsRate;
 
-    _lastTxLength = widget.transactions.length;
-    _lastOwner = widget.selectedOwner;
-    _lastPool = widget.selectedPool;
-    _lastTimeframe = _selectedTimeframe;
-    _lastExcludeTransfers = _excludeTransfers;
+    _lastCacheKey = currentKey;
   }
 
   @override
   Widget build(BuildContext context) {
     _computeChartDataIfNeeded();
 
+    final validPoolValue = (widget.selectedPool != null && widget.pools.contains(widget.selectedPool))
+        ? widget.selectedPool
+        : null;
+
+    const availableTimeframes = [
+      'All time',
+      'Current Month',
+      'Last 30 Days',
+      'Last 6 Months',
+      '90 Days',
+      'This Year',
+      'Last 12 Months',
+      'Custom Range'
+    ];
+    final validTimeframeValue = availableTimeframes.contains(_selectedTimeframe)
+        ? _selectedTimeframe
+        : 'All time';
+
+    String labelButtonText = 'All Labels';
+    if (_selectedLabelIds.length == 1) {
+      final singleLabel = widget.labels.where((l) => l.id == _selectedLabelIds.first).firstOrNull;
+      labelButtonText = singleLabel?.name ?? '1 Selected';
+    } else if (_selectedLabelIds.length > 1) {
+      labelButtonText = '${_selectedLabelIds.length} Selected';
+    }
+
+    // Current month pacing calculations
+    final now = DateTime.now();
+    final currentMonthKey = DateFormat('yyyy-MM').format(now);
+    final currentMonthData = _cachedMonthlyRawData[currentMonthKey];
+    double currentMonthExpenseSoFar = currentMonthData?['expense'] ?? 0.0;
+    int daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    double pacingProjectedExpense = (now.day > 0) ? (currentMonthExpenseSoFar / now.day) * daysInMonth : 0.0;
+    double usualExpenseMedian = _cachedAvgExpense;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
         final double fullWidth = availableWidth - 32;
         final double boxWidth = (fullWidth - 12) / 2;
+        final double columnWidth = 44.0;
+        final double chartWidth = math.max(fullWidth, _cachedSortedKeys.length * columnWidth);
 
         return Container(
           padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
@@ -462,37 +734,33 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
                             ),
                           ),
                         ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                          onPressed: () => _showCashFlowInfoModal(context),
+                          tooltip: 'Cash Flow Trend',
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                        ), 
                       ],
                     ),
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        height: 28,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                      if (_cachedSortedKeys.length > 12) ...[
+                        IconButton(
+                          icon: Icon(
+                            Icons.compare_arrows_rounded,
+                            size: 18,
+                            color: _showYearOverYear ? const Color(0xFFA855F7) : Colors.grey,
+                          ),
+                          onPressed: () => setState(() => _showYearOverYear = !_showYearOverYear),
+                          tooltip: 'Year-over-Year Toggle',
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                            const SizedBox(width: 4),
-                            Text(
-                              widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty ? widget.selectedOwner! : 'All Owners',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 6),
+                      ],
                       SizedBox(
                         height: 28,
                         width: 28,
@@ -518,6 +786,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
               if (!_isCollapsed) ...[
                 const SizedBox(height: 12),
 
+                // Filters row 1: Pool & Date Selector (replacing All Labels spot)[cite: 16]
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -533,22 +802,22 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.person_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            Icon(Icons.account_balance_wallet_outlined, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                             const SizedBox(width: 6),
                             Expanded(
                               child: DropdownButtonHideUnderline(
                                 child: DropdownButton<String>(
-                                  value: widget.selectedOwner,
+                                  value: validPoolValue,
                                   isDense: true,
                                   isExpanded: true,
                                   dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                  hint: Text('All Owners', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                  hint: Text('All Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                                   items: [
-                                    DropdownMenuItem<String>(value: null, child: Text('All Owners', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                    ...widget.owners.map((o) => DropdownMenuItem<String>(value: o, child: Text(o, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
+                                    DropdownMenuItem<String>(value: null, child: Text('All Pools', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
+                                    ...widget.pools.map((p) => DropdownMenuItem<String>(value: p, child: Text(p.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
                                   ],
-                                  onChanged: widget.onOwnerChanged,
+                                  onChanged: widget.onPoolChanged,
                                 ),
                               ),
                             ),
@@ -573,16 +842,25 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
                             Expanded(
                               child: DropdownButtonHideUnderline(
                                 child: DropdownButton<String>(
-                                  value: _selectedTimeframe,
+                                  value: validTimeframeValue,
                                   isDense: true,
                                   isExpanded: true,
                                   dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                  items: ['All time', 'Current Month', 'Last 30 Days', 'This Year', 'Last 12 Months']
+                                  items: availableTimeframes
                                       .map((t) => DropdownMenuItem(value: t, child: Text(t, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))))
                                       .toList(),
-                                  onChanged: (val) {
-                                    if (val != null) setState(() => _selectedTimeframe = val);
+                                  onChanged: (val) async {
+                                    if (val == 'Custom Range') {
+                                      await _pickCustomDateRange(context);
+                                    } else if (val != null) {
+                                      setState(() {
+                                        _customStartDate = null;
+                                        _customEndDate = null;
+                                      });
+                                      await _saveTimeframe(val);
+                                      _scrollToLatest();
+                                    }
                                   },
                                 ),
                               ),
@@ -595,219 +873,152 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
                 ),
                 const SizedBox(height: 12),
 
-                LayoutBuilder(
-                  builder: (context, rowConstraints) {
-                    final double rowWidth = rowConstraints.maxWidth;
-                    final double w25 = (rowWidth - 16) * 0.24;
-                    final double w50 = (rowWidth - 16) * 0.48;
+                // Filters row 2: List all labels in label dropdown, Net Trend Line toggle
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: Container(
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => _showLabelsCheckmarkModal(context),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.label_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      labelButtonText,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Icon(Icons.arrow_drop_down, size: 18, color: _isZaznamityMode ? Colors.white70 : Colors.grey),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: boxWidth,
+                      child: InkWell(
+                        onTap: () => setState(() => _showNetTrendLine = !_showNetTrendLine),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          height: 44,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: _showNetTrendLine
+                                ? (_isZaznamityMode ? const Color(0xFFA855F7).withValues(alpha: 0.25) : const Color(0xFF582F95).withValues(alpha: 0.15))
+                                : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC)),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _showNetTrendLine
+                                  ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                                  : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.show_chart_rounded,
+                                size: 15,
+                                color: _showNetTrendLine
+                                    ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
+                                    : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _showNetTrendLine ? 'Net Line: On' : 'Net Line: Off',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: _showNetTrendLine
+                                      ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155))
+                                      : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
 
-                    return Row(
+                // Current Month Pacing Banner
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.speed_rounded, size: 18, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Pacing (Month ${now.day}/$daysInMonth): ${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(currentMonthExpenseSoFar)} spent. Projected: ${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(pacingProjectedExpense)} (Usual ~${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(usualExpenseMedian)})',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                if (_selectedTimeframe == 'Custom Range' && _customStartDate != null && _customEndDate != null) ...[
+                  Container(
+                    width: double.infinity,
+                    height: 38,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                    ),
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        SizedBox(
-                          width: w25,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Container(
-                                height: 48,
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: _isZaznamityMode
-                                      ? const Color(0xFF1E1333)
-                                      : (_cachedSavingsRate >= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2)),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: _isZaznamityMode
-                                        ? Colors.white12
-                                        : (_cachedSavingsRate >= 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
-                                  ),
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.savings_outlined,
-                                          size: 11,
-                                          color: _cachedSavingsRate >= 0 ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                                        ),
-                                        const SizedBox(width: 3),
-                                        Text(
-                                          'Savings',
-                                          style: TextStyle(
-                                            fontSize: 9.5,
-                                            fontWeight: FontWeight.bold,
-                                            color: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 1),
-                                    Text(
-                                      'rate: ${_cachedSavingsRate.toStringAsFixed(1)}%',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        color: _cachedSavingsRate >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Positioned(
-                                top: -6,
-                                right: -4,
-                                child: InkWell(
-                                  onTap: () => _showInfoDialog(
-                                    context,
-                                    'Savings Rate',
-                                    'Savings rate calculates the percentage of total income that is retained as net savings ((Total Income - Total Expenses) / Total Income) over the selected timeframe.',
-                                  ),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: BoxDecoration(
-                                      color: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                        Text(
+                          'Range: ${DateFormat('MMM dd, yyyy').format(_customStartDate!)} - ${DateFormat('MMM dd, yyyy').format(_customEndDate!)}',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)),
                         ),
-
-                        SizedBox(
-                          width: w25,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              InkWell(
-                                onTap: () => setState(() => _showNetTrendLine = !_showNetTrendLine),
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  height: 48,
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: _showNetTrendLine
-                                        ? (_isZaznamityMode ? const Color(0xFFA855F7).withValues(alpha: 0.25) : const Color(0xFF582F95).withValues(alpha: 0.15))
-                                        : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC)),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: _showNetTrendLine
-                                          ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
-                                          : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                                    ),
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.show_chart_rounded,
-                                            size: 11,
-                                            color: _showNetTrendLine
-                                                ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
-                                                : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                          ),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            'Net Line',
-                                            style: TextStyle(
-                                              fontSize: 9.5,
-                                              fontWeight: FontWeight.bold,
-                                              color: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 1),
-                                      Text(
-                                        _showNetTrendLine ? 'Visible' : 'Hidden',
-                                        style: TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          color: _showNetTrendLine
-                                              ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
-                                              : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                top: -6,
-                                right: -4,
-                                child: InkWell(
-                                  onTap: () => _showInfoDialog(
-                                    context,
-                                    'Net Trend Line',
-                                    'The net trend line connects monthly net cashflow points (Income minus Expenses), providing a visual trajectory of whether your monthly savings balance is expanding or contracting over time.',
-                                  ),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: BoxDecoration(
-                                      color: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        SizedBox(
-                          width: w50,
-                          child: Container(
-                            height: 48,
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            decoration: BoxDecoration(
-                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.account_balance_wallet_outlined, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: DropdownButtonHideUnderline(
-                                    child: DropdownButton<String>(
-                                      value: widget.selectedPool,
-                                      isDense: true,
-                                      isExpanded: true,
-                                      dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                      hint: Text('All Pools', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                      items: [
-                                        DropdownMenuItem<String>(value: null, child: Text('All Pools', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                        ...widget.pools.map((p) => DropdownMenuItem<String>(value: p, child: Text(p.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
-                                      ],
-                                      onChanged: widget.onPoolChanged,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                        InkWell(
+                          onTap: () => _pickCustomDateRange(context),
+                          child: Text('Change', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                         ),
                       ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
                 _cachedSortedKeys.isEmpty
                     ? Center(
@@ -816,195 +1027,321 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> wit
                           child: Text('No transaction history found for this view.', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 12)),
                         ),
                       )
-                    : SizedBox(
-                        height: 310,
-                        child: Stack(
-                          children: [
-                            BarChart(
-                              BarChartData(
-                                alignment: BarChartAlignment.spaceAround,
-                                maxY: _cachedMaxY * 1.25,
-                                minY: _cachedMinY * 1.25,
-                                barTouchData: BarTouchData(
-                                  enabled: true,
-                                  touchCallback: (FlTouchEvent event, barTouchResponse) {
-                                    if (event is FlTapUpEvent &&
-                                        barTouchResponse != null &&
-                                        barTouchResponse.spot != null &&
-                                        widget.onJumpToHistory != null) {
-                                      final groupIndex = barTouchResponse.spot!.touchedBarGroupIndex;
-                                      if (groupIndex >= 0 && groupIndex < _cachedSortedKeys.length) {
-                                        final monthKey = _cachedSortedKeys[groupIndex];
-                                        if (monthKey == 'Forecast') return;
-                                        showDialog(
-                                          context: context,
-                                          builder: (ctx) => AlertDialog(
-                                            backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                            title: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(
-                                                  'View Zaznams',
-                                                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  _cachedMonthLabels[groupIndex],
-                                                  style: TextStyle(fontSize: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold),
-                                                ),
+                    : SingleChildScrollView(
+                        controller: _chartScrollController,
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: chartWidth,
+                          height: 310,
+                          child: Stack(
+                            children: [
+                              BarChart(
+                                BarChartData(
+                                  alignment: BarChartAlignment.spaceAround,
+                                  maxY: _cachedMaxY * 1.25,
+                                  minY: _cachedMinY * 1.25,
+                                  barTouchData: BarTouchData(
+                                    enabled: true,
+                                    touchTooltipData: BarTouchTooltipData(
+                                      getTooltipColor: (_) => Colors.transparent,
+                                      tooltipBorder: const BorderSide(color: Colors.transparent),
+                                      getTooltipItem: (_, __, ___, ____) => null,
+                                    ),
+                                    touchCallback: (FlTouchEvent event, barTouchResponse) {
+                                      if (event is FlTapUpEvent &&
+                                          barTouchResponse != null &&
+                                          barTouchResponse.spot != null) {
+                                        final groupIndex = barTouchResponse.spot!.touchedBarGroupIndex;
+                                        if (groupIndex >= 0 && groupIndex < _cachedSortedKeys.length) {
+                                          final monthKey = _cachedSortedKeys[groupIndex];
+                                          final monthLabel = _cachedMonthLabels[groupIndex];
+                                          final data = _cachedMonthlyRawData[monthKey] ?? {'income': 0.0, 'expense': 0.0};
+                                          final inc = data['income'] ?? 0.0;
+                                          final exp = data['expense'] ?? 0.0;
+                                          final net = inc - exp;
+                                          final savingsRate = inc > 0 ? (net / inc) * 100 : 0.0;
+                                          final isForecast = monthKey == 'Forecast';
+                                          final isAnomaly = _cachedAnomalyMonths.contains(monthKey);
+                                          final isBest = monthKey == _cachedBestMonth;
+                                          final isWorst = monthKey == _cachedWorstMonth;
+
+                                          showDialog(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                              title: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Text(
+                                                        'View Zaznams',
+                                                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                                                      ),
+                                                      if (isBest)
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                          decoration: BoxDecoration(color: const Color(0xFF10B981), borderRadius: BorderRadius.circular(6)),
+                                                          child: const Text('Best Month', style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
+                                                        ),
+                                                      if (isWorst)
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                          decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(6)),
+                                                          child: const Text('Worst Month', style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    isForecast ? '$monthLabel (Est)' : monthLabel,
+                                                    style: TextStyle(fontSize: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold),
+                                                  ),
+                                                ],
+                                              ),
+                                              content: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  if (isAnomaly) ...[
+                                                    Container(
+                                                      padding: const EdgeInsets.all(8),
+                                                      margin: const EdgeInsets.only(bottom: 10),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        border: Border.all(color: const Color(0xFFF59E0B)),
+                                                      ),
+                                                      child: const Row(
+                                                        children: [
+                                                          Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B), size: 16),
+                                                          SizedBox(width: 6),
+                                                          Expanded(child: Text('Anomaly detected: High spending spike!', style: TextStyle(fontSize: 11, color: Color(0xFFF59E0B), fontWeight: FontWeight.bold))),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                  Container(
+                                                    width: double.infinity,
+                                                    padding: const EdgeInsets.all(12),
+                                                    decoration: BoxDecoration(
+                                                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                                      borderRadius: BorderRadius.circular(10),
+                                                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                                                    ),
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text('Income: ${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(inc)}', style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                        const SizedBox(height: 4),
+                                                        Text('Expenses: ${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(exp)}', style: const TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                        const SizedBox(height: 4),
+                                                        Text('Net: ${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(net)}', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                        const SizedBox(height: 4),
+                                                        Text('Savings Rate: ${savingsRate.toStringAsFixed(1)}%', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  if (!isForecast && widget.onJumpToHistory != null) ...[
+                                                    const SizedBox(height: 16),
+                                                    Text('Display in All Zaznams:', style: TextStyle(color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155), fontWeight: FontWeight.w500)),
+                                                  ],
+                                                ],
+                                              ),
+                                              actions: [
+                                                if (isForecast)
+                                                  ElevatedButton(
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                                      foregroundColor: Colors.white,
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                                    ),
+                                                    onPressed: () => Navigator.pop(ctx),
+                                                    child: const Text('Close'),
+                                                  )
+                                                else if (widget.onJumpToHistory != null) ...[
+                                                  ElevatedButton(
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: const Color(0xFFEF4444),
+                                                      foregroundColor: Colors.white,
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                                    ),
+                                                    onPressed: () {
+                                                      Navigator.pop(ctx);
+                                                      widget.onJumpToHistory!(monthKey, 'expense', widget.selectedOwner);
+                                                    },
+                                                    child: const Text('Expenses'),
+                                                  ),
+                                                  ElevatedButton(
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: const Color(0xFF10B981),
+                                                      foregroundColor: Colors.white,
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                                    ),
+                                                    onPressed: () {
+                                                      Navigator.pop(ctx);
+                                                      widget.onJumpToHistory!(monthKey, 'income', widget.selectedOwner);
+                                                    },
+                                                    child: const Text('Income'),
+                                                  ),
+                                                ],
                                               ],
-                                            ),
-                                            content: Text('Display in All Zaznams:', style: TextStyle(color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155))),
-                                            actions: [
-                                              ElevatedButton(
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: const Color(0xFFEF4444),
-                                                  foregroundColor: Colors.white,
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                                ),
-                                                onPressed: () {
-                                                  Navigator.pop(ctx);
-                                                  widget.onJumpToHistory!(monthKey, 'expense', widget.selectedOwner);
-                                                },
-                                                child: const Text('Expenses'),
-                                              ),
-                                              ElevatedButton(
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: const Color(0xFF10B981),
-                                                  foregroundColor: Colors.white,
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                                ),
-                                                onPressed: () {
-                                                  Navigator.pop(ctx);
-                                                  widget.onJumpToHistory!(monthKey, 'income', widget.selectedOwner);
-                                                },
-                                                child: const Text('Income'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  },
-                                ),
-                                titlesData: FlTitlesData(
-                                  show: true,
-                                  bottomTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      getTitlesWidget: (value, meta) {
-                                        int index = value.toInt();
-                                        if (index >= 0 && index < _cachedMonthLabels.length) {
-                                          bool isForecast = index == _cachedSortedKeys.length - 1 && _cachedSortedKeys.last == 'Forecast';
-                                          return Padding(
-                                            padding: const EdgeInsets.only(top: 8.0),
-                                            child: Transform.rotate(
-                                              angle: -1.5708,
-                                              child: Text(
-                                                isForecast ? '${_cachedMonthLabels[index]} (Est)' : _cachedMonthLabels[index],
-                                                style: TextStyle(
-                                                  fontSize: 9,
-                                                  color: isForecast
-                                                      ? const Color(0xFFA855F7)
-                                                      : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
                                             ),
                                           );
                                         }
-                                        return const Text('');
-                                      },
-                                      reservedSize: 50,
-                                    ),
+                                      }
+                                    },
                                   ),
-                                  leftTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      reservedSize: 45,
-                                      getTitlesWidget: (value, meta) {
-                                        return Text(
-                                          '\$${value.toInt()}',
-                                          style: TextStyle(fontSize: 9, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
+                                  titlesData: FlTitlesData(
+                                    show: true,
+                                    bottomTitles: AxisTitles(
+                                      sideTitles: SideTitles(
+                                        showTitles: true,
+                                        getTitlesWidget: (value, meta) {
+                                          int index = value.toInt();
+                                          if (index >= 0 && index < _cachedMonthLabels.length && index < _cachedSortedKeys.length) {
+                                            bool isForecast = index == _cachedSortedKeys.length - 1 && _cachedSortedKeys.last == 'Forecast';
+                                            String mKey = _cachedSortedKeys[index];
+                                            
+                                            // Show year only when it changes or for the first item
+                                            String labelText = _cachedMonthLabels[index];
+                                            if (!isForecast) {
+                                              try {
+                                                DateTime dt = DateTime.parse('$mKey-01');
+                                                if (index == 0 || DateTime.parse('${_cachedSortedKeys[index - 1]}-01').year != dt.year) {
+                                                  labelText = '${_cachedMonthLabels[index]} \'${dt.year.toString().substring(2)}';
+                                                }
+                                              } catch (_) {}
+                                            }
+
+                                            return Padding(
+                                              padding: const EdgeInsets.only(top: 8.0),
+                                              child: Transform.rotate(
+                                                angle: -1.5708,
+                                                child: Text(
+                                                  isForecast ? '$labelText (Est)' : labelText,
+                                                  style: TextStyle(
+                                                    fontSize: 9,
+                                                    color: isForecast
+                                                        ? const Color(0xFFA855F7)
+                                                        : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                          return const Text('');
+                                        },
+                                        reservedSize: 50,
+                                      ),
+                                    ),
+                                    leftTitles: AxisTitles(
+                                      sideTitles: SideTitles(
+                                        showTitles: true,
+                                        reservedSize: 50,
+                                        getTitlesWidget: (value, meta) {
+                                          return Text(
+                                            NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(value),
+                                            style: TextStyle(fontSize: 9, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                  ),
+                                  gridData: FlGridData(
+                                    show: true,
+                                    drawVerticalLine: false,
+                                    horizontalInterval: _niceStep(_cachedMaxY - _cachedMinY),
+                                    getDrawingHorizontalLine: (value) {
+                                      // Emphasize zero baseline
+                                      if (value == 0) {
+                                        return FlLine(
+                                          color: _isZaznamityMode ? Colors.white : Colors.black87,
+                                          strokeWidth: 2,
                                         );
-                                      },
-                                    ),
+                                      }
+                                      return FlLine(
+                                        color: _isZaznamityMode ? Colors.white10 : const Color(0xFFE2E8F0),
+                                        strokeWidth: 1,
+                                      );
+                                    },
                                   ),
-                                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                  borderData: FlBorderData(show: false),
+                                  barGroups: _cachedBarGroups,
                                 ),
-                                gridData: FlGridData(
-                                  show: true,
-                                  drawVerticalLine: false,
-                                  horizontalInterval: (_cachedMaxY - _cachedMinY) > 0 ? (_cachedMaxY - _cachedMinY) / 5 : 1000,
-                                  getDrawingHorizontalLine: (value) => FlLine(color: _isZaznamityMode ? Colors.white10 : const Color(0xFFE2E8F0), strokeWidth: 1),
-                                ),
-                                borderData: FlBorderData(show: false),
-                                barGroups: _cachedBarGroups,
                               ),
-                            ),
-                            if (_showNetTrendLine)
+                              // Average Expense and Net Reference Lines & Rolling average / Net Trend Line
                               IgnorePointer(
                                 child: LineChart(
                                   LineChartData(
+                                    minX: -0.5,
+                                    maxX: _cachedBarGroups.isNotEmpty ? _cachedBarGroups.length - 0.5 : 0.5,
                                     maxY: _cachedMaxY * 1.25,
                                     minY: _cachedMinY * 1.25,
                                     lineTouchData: const LineTouchData(enabled: false),
-                                    titlesData: const FlTitlesData(show: false),
+                                    titlesData: FlTitlesData(
+                                      leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 50, getTitlesWidget: (_, __) => const SizedBox.shrink())),
+                                      bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 50, getTitlesWidget: (_, __) => const SizedBox.shrink())),
+                                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                    ),
                                     gridData: const FlGridData(show: false),
                                     borderData: FlBorderData(show: false),
                                     lineBarsData: [
+                                      if (_showNetTrendLine) ...[
+                                        LineChartBarData(
+                                          spots: _cachedNetSpots,
+                                          isCurved: true,
+                                          color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                          barWidth: 2.5,
+                                          isStrokeCapRound: true,
+                                          dotData: const FlDotData(show: true),
+                                        ),
+                                        LineChartBarData(
+                                          spots: _cachedRollingNetSpots,
+                                          isCurved: true,
+                                          color: const Color(0xFF38BDF8),
+                                          barWidth: 1.5,
+                                          isStrokeCapRound: true,
+                                          dashArray: [4, 4],
+                                          dotData: const FlDotData(show: false),
+                                        ),
+                                      ],
+                                      // Average Expense Line (negative representation)
                                       LineChartBarData(
-                                        spots: _cachedNetSpots,
-                                        isCurved: true,
-                                        color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                                        barWidth: 2.5,
-                                        isStrokeCapRound: true,
-                                        dotData: const FlDotData(show: true),
+                                        spots: [
+                                          FlSpot(-0.5, -_cachedAvgExpense),
+                                          FlSpot(_cachedBarGroups.isNotEmpty ? _cachedBarGroups.length - 0.5 : 0.5, -_cachedAvgExpense),
+                                        ],
+                                        isCurved: false,
+                                        color: const Color(0xFFEF4444).withValues(alpha: 0.7),
+                                        barWidth: 1.5,
+                                        dashArray: [5, 5],
+                                        dotData: const FlDotData(show: false),
+                                      ),
+                                      // Average Net Line
+                                      LineChartBarData(
+                                        spots: [
+                                          FlSpot(-0.5, _cachedAvgNet),
+                                          FlSpot(_cachedBarGroups.isNotEmpty ? _cachedBarGroups.length - 0.5 : 0.5, _cachedAvgNet),
+                                        ],
+                                        isCurved: false,
+                                        color: const Color(0xFF10B981).withValues(alpha: 0.7),
+                                        barWidth: 1.5,
+                                        dashArray: [5, 5],
+                                        dotData: const FlDotData(show: false),
                                       ),
                                     ],
                                   ),
                                 ),
                               ),
-                            LayoutBuilder(
-                              builder: (context, boxConstraints) {
-                                final double chartWidth = boxConstraints.maxWidth - 45;
-                                final int count = _cachedBarGroups.isNotEmpty ? _cachedBarGroups.length : 1;
-                                final double colWidth = chartWidth / count;
-
-                                return Stack(
-                                  children: _cachedAnomalyMarkers.map((marker) {
-                                    int idx = marker['index'];
-                                    double leftPos = 45.0 + (idx * colWidth) + (colWidth / 2) - 9.0;
-                                    return Positioned(
-                                      top: 8,
-                                      left: leftPos.clamp(45.0, boxConstraints.maxWidth - 25),
-                                      child: InkWell(
-                                        onTap: () => _showAnomalyDialog(context, _cachedMonthLabels[idx], marker['explanation']),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(2),
-                                          decoration: BoxDecoration(
-                                            color: (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)).withValues(alpha: 0.2),
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                                              width: 1.0,
-                                            ),
-                                          ),
-                                          child: Icon(
-                                            Icons.priority_high_rounded,
-                                            size: 11,
-                                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                );
-                              },
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
               ],

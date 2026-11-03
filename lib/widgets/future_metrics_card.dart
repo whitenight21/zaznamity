@@ -30,6 +30,7 @@ class FutureMetricsCard extends StatefulWidget {
   final VoidCallback? onShowPendingZaznams;
   final VoidCallback? onShow30DayShiftZaznams;
   final Function(String?)? onPoolChanged;
+  final VoidCallback? onJumpToAnalytics; // Quick-jump bridge to Future Analytics card
 
   const FutureMetricsCard({
     super.key,
@@ -52,6 +53,7 @@ class FutureMetricsCard extends StatefulWidget {
     this.onShowPendingZaznams,
     this.onShow30DayShiftZaznams,
     this.onPoolChanged,
+    this.onJumpToAnalytics,
   });
 
   @override
@@ -342,7 +344,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
 
   void _showMetricInfo(BuildContext context, String title, String explanation) {
     final lastDateStr = _getLastZaznamDateString();
-    final fullExplanation = '$explanation\n\nUnless a custom date range is specifically set, the default date range is based on all Zaznams until last Zaznam on $lastDateStr.\n\nTo view in a chart, set the same date range in "Liquid Trend" and turn "pending" zaznams on.';
+    final fullExplanation = '$explanation\n\nUnless a custom date range is specifically set, the default date range is based on all Zaznams until last Zaznam on $lastDateStr.\n\n';
 
     showDialog(
       context: context,
@@ -482,7 +484,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                'FUTURE METRICS',
+                                'FUTURE METRICS ',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -496,8 +498,14 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                           InkWell(
                             onTap: () => _showMetricInfo(
                               context,
-                              'ABOUT FUTURE METRICS & PREDICTIONS',
-                              'This card aggregates forward-looking financial forecasting and risk indicators.\n\n• Nature of Data: These figures represent predictive modeling and trend extrapolations rather than absolute certainties.\n• Basis of Calculation: Projections are computed using a combination of past historical Zaznams, future scheduled recurring/recorded entries, and average burn-rate modeling.\n• Disclaimer: Actual financial outcomes may differ due to unexpected expenses or variable income shifts. This tool provides analytical insight and does not constitute certified professional financial advice.',
+                              'Future Metrics ',
+                              'This card aggregates forward-looking financial forecasting and risk indicators.\n\n'
+                              '• Basis of Calculation: Projections are computed using a combination of past historical Zaznams, future scheduled recurring/recorded entries, and average burn-rate modeling.\n'
+                              '• Interpretation: Use these metrics to anticipate potential cash flow shortfalls, plan for upcoming expenses, and make informed financial decisions.\n'
+                              '• This card is connected to the "Future Analytics" card, which provides a more detailed breakdown of these metrics by labels and in bar chart form.\n'
+                              '• Caveats: The metrics are sensitive to the accuracy of your Zaznams and may not account for unforeseen financial events or irregular patterns.\n'
+                              '• Disclaimer: Actual financial outcomes may differ due to unexpected expenses or variable income shifts. This tool does not constitute certified professional financial advice.\n'
+                              '• To view in a chart, set the same date range in "Liquid Trend" and turn "pending" zaznams on.',
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(2.0),
@@ -510,31 +518,40 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          height: 28,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.account_balance_wallet_outlined, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                              const SizedBox(width: 4),
-                              Text(
-                                _selectedPool,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                        if (widget.onJumpToAnalytics != null) ...[
+                          Tooltip(
+                            message: 'Jump to Future Analytics',
+                            child: InkWell(
+                              onTap: widget.onJumpToAnalytics,
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                height: 28,
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: _isZaznamityMode ? const Color(0xFF3D256B) : const Color(0xFFEDE9FE),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: _isZaznamityMode ? const Color(0xFFA855F7).withValues(alpha: 0.4) : const Color(0xFFDDD6FE)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.pie_chart_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Analytics',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
+                          const SizedBox(width: 6),
+                        ],
                         SizedBox(
                           height: 28,
                           width: 28,
@@ -709,7 +726,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                         amount: currentPrognosis,
                         amountColor: _isZaznamityMode ? Colors.white : const Color(0xFF000000),
                         width: boxWidth,
-                        infoExplanation: 'Prognosis estimates your projected balance trajectory over time by combining current liquid funds with upcoming future cashflows.\n\nHow to use & relevance: Provides a comprehensive long-term view of your financial trajectory, combining current holdings with expected future earnings and bills.',
+                        infoExplanation: 'Prognosis calculates your projected remaining balance at the end of the time period by combining current liquid funds with upcoming future cashflows.\n\nHow to use & relevance: Provides a comprehensive long-term view of your financial trajectory, combining current holdings with expected future income and expenses.',
                       ),
                     ),
                   ],
@@ -779,7 +796,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                             onTap: () => _showMetricInfo(
                               context,
                               'RUNWAY DEPLETION DATE',
-                              'Starts from your current liquid balance and applies scheduled income and expenses in date order. Once nothing more is scheduled, it extends the projection using your average monthly burn. Transfers and goal contributions are ignored when \"exclude transfers\" is on.\n\nShows the date your balance could first go below zero, so you can act early.',
+                              'Starts from your current liquid balance and applies scheduled income and expenses in date order. Once nothing more is scheduled, it extends the projection using your average monthly burn. Transfers and goal contributions are ignored when "exclude transfers" is on.\n\nShows the date your balance could first go below zero, so you can act early.',
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(2.0),
@@ -840,7 +857,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                                   onTap: () => _showMetricInfo(
                                     context,
                                     'NEXT 30-DAY CASH SHIFT',
-                                    'Calculates the absolute net change in your liquid cash over the next 30 days by combining both incoming scheduled cashflows (income) and outgoing pending cashflows (expenses/bills).\n\nClicking on this row displays the precise list of zaznams contributing to this amount.',
+                                    'Calculates the absolute net change in your liquid cash over the next 30 days by combining both scheduled income and expenses.\n\nClicking on this row displays the precise list of zaznams contributing to this amount.',
                                   ),
                                   child: Padding(
                                     padding: const EdgeInsets.all(2.0),
@@ -900,7 +917,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                                   onTap: () => _showMetricInfo(
                                     context,
                                     'PENDING ZAZNAMS (NEXT 7 DAYS)',
-                                    'Shows the total number of unconfirmed scheduled zaznams or bills coming due within the next 7 days, helping you stay ahead of upcoming payments.\n\nClicking on this row takes you directly to the All Zaznams card and displays exactly those pending Zaznams within 7 days for quick confirmation.',
+                                    'Shows the total number of unconfirmed scheduled Zaznams coming due within the next 7 days, helping you stay ahead of upcoming payments.\n\nClicking on this row takes you directly to the All Zaznams card and displays those pending Zaznams within 7 days for quick confirmation.',
                                   ),
                                   child: Padding(
                                     padding: const EdgeInsets.all(2.0),

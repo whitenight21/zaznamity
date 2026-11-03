@@ -951,7 +951,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     }
 
     final outboundTx = TransactionModel(
-      description: 'Withdrawal from $fromPool',
+      description: 'Withdrawal',
       amount: amountToAdd,
       type: 'expense',
       pool: fromPool,
@@ -964,7 +964,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     );
 
     final inboundTx = TransactionModel(
-      description: 'Deposit into Goal: $goalName',
+      description: 'Deposit',
       amount: amountToAdd,
       type: 'income',
       pool: 'goals',
@@ -1005,7 +1005,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     }
 
     final outboundTx = TransactionModel(
-      description: 'Withdrawal from goals',
+      description: 'Withdrawal',
       amount: amountToRemove,
       type: 'expense',
       pool: 'goals',
@@ -1018,7 +1018,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     );
 
     final inboundTx = TransactionModel(
-      description: 'Deposit into $toPool',
+      description: 'Deposit',
       amount: amountToRemove,
       type: 'income',
       pool: toPool,
@@ -1359,7 +1359,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   Future<void> _deleteTransaction(int id) async {
     final txToDelete = _transactions.firstWhere((tx) => tx.id == id, orElse: () => _transactions.first);
     
-    if (txToDelete.description.contains('Deposit into Goal:') || txToDelete.description.contains('Withdrawal from')) {
+    if (txToDelete.description.contains('Deposit') || txToDelete.description.contains('Withdrawal')) {
       final goalName = txToDelete.description.contains(':') ? txToDelete.description.split(':').last.trim() : '';
       
       if (goalName.isNotEmpty) {
@@ -1520,8 +1520,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final outbound = TransactionModel(
       createdAt: date.toIso8601String(),
       description: description.isNotEmpty 
-          ? 'Withdrawal from $fromPool ($fromCurrency): $description' 
-          : 'Withdrawal from $fromPool ($fromCurrency)',
+          ? 'Withdrawal: $description' 
+          : 'Withdrawal',
       amount: amount,
       type: 'expense',
       labelId: transferLabelId,
@@ -1536,8 +1536,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final inbound = TransactionModel(
       createdAt: date.add(const Duration(seconds: 5)).toIso8601String(),
       description: description.isNotEmpty 
-          ? 'Deposit into $toPool ($toCurrency): $description' 
-          : 'Deposit into $toPool ($toCurrency)',
+          ? 'Deposit $description' 
+          : 'Deposit',
       amount: convertedAmount,
       type: 'income',
       labelId: transferLabelId,
