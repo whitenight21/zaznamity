@@ -27,7 +27,7 @@ class FutureMetricsCard extends StatefulWidget {
   final DateTime? endDate;
   final Function(DateTime?, DateTime?)? onDateRangeChanged;
   final VoidCallback onClearDateFilter;
-  final VoidCallback? onShowPendingZaznams;
+  final Function(DateTime start, DateTime end)? onShowPendingZaznams; // Updated to pass 7-day window
   final VoidCallback? onShow30DayShiftZaznams;
   final Function(String?)? onPoolChanged;
   final VoidCallback? onJumpToAnalytics; // Quick-jump bridge to Future Analytics card
@@ -63,7 +63,7 @@ class FutureMetricsCard extends StatefulWidget {
 class _FutureMetricsCardState extends State<FutureMetricsCard> {
   late String _selectedOwner;
   late String _selectedPool;
-  String _dateRangeSetting = '90 Days';
+  String _burnRateBaseline = 'Last 90 Days';
   bool _isZaznamityMode = true;
   bool _excludeTransfers = true;
   String _primaryCurrency = 'USD';
@@ -85,7 +85,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     if (mounted) {
       setState(() {
         _isZaznamityMode = (savedTheme == 'zaznamity');
-        _dateRangeSetting = prefs.getString('set_futureMetrics_range') ?? '90 Days';
+        _burnRateBaseline = prefs.getString('set_burn_rate_baseline') ?? 'Last 90 Days';
         _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
         _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
         _isCollapsed = prefs.getBool('set_futureMetrics_collapsed') ?? false;
@@ -205,9 +205,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
   }
 
   double _currentLiquidBalance() {
-    if (_selectedOwner == 'All Owners' && _selectedPool == 'All Pools') {
-      return widget.totalCurrentBalance ?? (widget.totalPrognosis - widget.totalFutureFlow);
-    }
     double balance = 0.0;
     for (var tx in widget.transactions) {
       if (!_matchesFilters(tx)) continue;
@@ -220,18 +217,18 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     return balance;
   }
 
-  Map<String, double> _calculateBurnAndSavingsRate() {
+  double _calculateMonthlyBurn() {
     final now = DateTime.now();
-
     int baselineDays = 90;
-    if (_dateRangeSetting == '30 Days') {
+    if (_burnRateBaseline == 'Last 30 Days') {
       baselineDays = 30;
-    } else if (_dateRangeSetting == '1 Year' || _dateRangeSetting == 'Next 1 Year') {
+    } else if (_burnRateBaseline == 'Last 90 Days') {
+      baselineDays = 90;
+    } else if (_burnRateBaseline == 'Fixed Baseline') {
       baselineDays = 365;
     }
     final pastLimit = now.subtract(Duration(days: baselineDays));
 
-    double totalIncome = 0;
     double totalExpense = 0;
     DateTime? firstDate;
 
@@ -244,7 +241,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
       if (firstDate == null || dt.isBefore(firstDate)) firstDate = dt;
 
       if (dt.isAfter(pastLimit)) {
-        if (tx.type == 'income') totalIncome += tx.amount;
         if (tx.type == 'expense') totalExpense += tx.amount;
       }
     }
@@ -253,15 +249,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     final effectiveDays = math.min(baselineDays, math.max(7, historyDays));
     final monthsDiv = effectiveDays / 30.0;
 
-    final monthlyBurn = totalExpense > 0 ? totalExpense / monthsDiv : 0.0;
-    final monthlyIncome = totalIncome > 0 ? totalIncome / monthsDiv : 0.0;
-    final savingsRate =
-        monthlyIncome > 0 ? ((monthlyIncome - monthlyBurn) / monthlyIncome) * 100 : 0.0;
-
-    return {
-      'burnRate': monthlyBurn,
-      'savingsRate': savingsRate.clamp(-100.0, 100.0),
-    };
+    return totalExpense > 0 ? totalExpense / monthsDiv : 0.0;
   }
 
   double _calculate30DayNetShift() {
@@ -287,11 +275,58 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     for (final tx in widget.transactions) {
       if (!_matchesFilters(tx)) continue;
       final dt = DateTime.tryParse(tx.createdAt);
+      // Strictly check: future date within 7 days AND explicitly unconfirmed (isConfirmed != 1)
       if (dt != null && dt.isAfter(now) && dt.isBefore(next7Days) && tx.isConfirmed != 1) {
         count++;
       }
     }
     return count;
+  }
+
+  ({int days, DateTime? date, double amount})? _calculateNextIncomeInfo() {
+    final now = DateTime.now();
+    DateTime? nextDate;
+    double nextAmount = 0.0;
+
+    for (final tx in widget.transactions) {
+      if (!_matchesFilters(tx)) continue;
+      if (tx.type != 'income') continue;
+      final dt = DateTime.tryParse(tx.createdAt);
+      if (dt != null && dt.isAfter(now)) {
+        if (nextDate == null || dt.isBefore(nextDate)) {
+          nextDate = dt;
+          nextAmount = tx.amount;
+        }
+      }
+    }
+
+    if (nextDate == null) return null;
+    final days = nextDate.difference(now).inDays;
+    return (days: days < 0 ? 0 : days, date: nextDate, amount: nextAmount);
+  }
+
+  List<({DateTime date, double amount, String description})> _getTopThreeUpcomingBills() {
+    final now = DateTime.now();
+    final bills = <({DateTime date, double amount, String description})>[];
+
+    for (final tx in widget.transactions) {
+      if (!_includeInForecast(tx)) continue;
+      if (tx.type != 'expense') continue;
+      final dt = DateTime.tryParse(tx.createdAt);
+      if (dt == null || !dt.isAfter(now)) continue;
+
+      bills.add((date: dt, amount: tx.amount, description: tx.description ?? 'Expense'));
+    }
+
+    bills.sort((a, b) {
+      int amountComparison = b.amount.compareTo(a.amount);
+      if (amountComparison != 0) {
+        return amountComparison;
+      }
+      return a.date.compareTo(b.date);
+    });
+
+    return bills.take(3).toList();
   }
 
   Map<String, dynamic> _calculateRunwayDepletionInfo(double monthlyBurn) {
@@ -378,9 +413,12 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
   }
 
   Future<void> _pickDateRange(BuildContext context) async {
+    final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+
     final picked = await showDateRangePicker(
       context: context,
-      firstDate: DateTime(2020),
+      firstDate: todayMidnight,
       lastDate: DateTime(2030),
       initialDateRange: (widget.startDate != null && widget.endDate != null)
           ? DateTimeRange(start: widget.startDate!, end: widget.endDate!)
@@ -418,22 +456,49 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         final double fullWidth = availableWidth - 32;
         final double boxWidth = (fullWidth - 12) / 2;
 
-        double currentFutureFlow = _selectedOwner == 'All Owners'
-            ? widget.totalFutureFlow
-            : (widget.futureFlowByOwner[_selectedOwner] ?? 0.0);
+        double calculatedFutureFlow = 0.0;
+        final now = DateTime.now();
+        final effectiveStart = widget.startDate ?? now;
+        final effectiveEnd = widget.endDate;
 
-        double currentPrognosis = _selectedOwner == 'All Owners'
-            ? widget.totalPrognosis
-            : (widget.prognosisByOwner[_selectedOwner] ?? 0.0);
+        for (final tx in widget.transactions) {
+          if (!_includeInForecast(tx)) continue;
+          final dt = DateTime.tryParse(tx.createdAt);
+          if (dt == null) continue;
 
-        final burnAndSavings = _calculateBurnAndSavingsRate();
-        final monthlyBurn = burnAndSavings['burnRate'] ?? 0.0;
-        final savingsRate = burnAndSavings['savingsRate'] ?? 0.0;
+          if (dt.isBefore(now)) continue;
+
+          if (effectiveEnd != null) {
+            if (dt.isAfter(effectiveStart.subtract(const Duration(days: 1))) && dt.isBefore(effectiveEnd.add(const Duration(days: 1)))) {
+              calculatedFutureFlow += _signedAmount(tx);
+            }
+          } else {
+            calculatedFutureFlow += _signedAmount(tx);
+          }
+        }
+
+        double currentFutureFlow = calculatedFutureFlow;
+        double currentLiquid = _currentLiquidBalance();
+        double currentPrognosis = currentLiquid + currentFutureFlow;
+
+        final monthlyBurn = _calculateMonthlyBurn();
         final net30Shift = _calculate30DayNetShift();
         final upcomingCount = _calculateUpcomingScheduledCount();
+        final nextIncome = _calculateNextIncomeInfo();
+        final topBills = _getTopThreeUpcomingBills();
         
         final runwayInfo = _calculateRunwayDepletionInfo(monthlyBurn);
         final DateTime? deficitDate = runwayInfo['deficitDate'];
+
+        final daysToDeficit = deficitDate != null ? deficitDate.difference(now).inDays : 999;
+        Color runwayColor;
+        if (deficitDate != null && daysToDeficit < 30) {
+          runwayColor = const Color(0xFFF87171); // Red
+        } else if (deficitDate != null && daysToDeficit < 90) {
+          runwayColor = const Color(0xFFF59E0B); // Yellow
+        } else {
+          runwayColor = const Color(0xFF34D399); // Green
+        }
 
         final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
 
@@ -484,7 +549,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                'FUTURE METRICS ',
+                                'FUTURE OUTLOOK ',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -498,14 +563,15 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                           InkWell(
                             onTap: () => _showMetricInfo(
                               context,
-                              'Future Metrics ',
-                              'This card aggregates forward-looking financial forecasting and risk indicators.\n\n'
+                              'Future Outlook ',
+                              ' “Will I be okay?” - This card provides forward-looking financial forecasting and risk indicators.\n\n'
                               '• Basis of Calculation: Projections are computed using a combination of past historical Zaznams, future scheduled recurring/recorded entries, and average burn-rate modeling.\n'
-                              '• Interpretation: Use these metrics to anticipate potential cash flow shortfalls, plan for upcoming expenses, and make informed financial decisions.\n'
-                              '• This card is connected to the "Future Analytics" card, which provides a more detailed breakdown of these metrics by labels and in bar chart form.\n'
-                              '• Caveats: The metrics are sensitive to the accuracy of your Zaznams and may not account for unforeseen financial events or irregular patterns.\n'
-                              '• Disclaimer: Actual financial outcomes may differ due to unexpected expenses or variable income shifts. This tool does not constitute certified professional financial advice.\n'
-                              '• To view in a chart, set the same date range in "Liquid Trend" and turn "pending" zaznams on.',
+                              '• Interpretation: Anticipate potential cash flow shortfalls, plan for upcoming expenses, and make informed financial decisions.\n'
+                              '• Date Range: By default, this card considers all Zaznams up to the last recorded Zaznam. You can set a custom date range to focus on specific periods.\n'
+                              '• Exclusions: Transfers and savings-related Zaznams are excluded from the calculations to provide a clearer picture of actual spendable cash flow.\n'
+                              '• Burn Rate Baseline: The burn rate is calculated based on the selected baseline period (Last 30 Days, Last 90 Days, or Fixed Baseline). Adjusting this can provide different perspectives on your spending habits.\n'
+                              '• Next 7-day Pending Zaznams: The number of scheduled Zaznams in the next 7 days and clicking the link will allow you to view them in "All Zaznams".\n'
+                              '• This card is connected to the "Future Breakdown" card, which provides a more detailed breakdown of these metrics by labels and in bar chart form.',
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(2.0),
@@ -706,53 +772,67 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                 ),
                 const SizedBox(height: 12),
 
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    SizedBox(
-                      width: boxWidth,
-                      child: _buildMetricBox(
-                        title: 'FUTURE FLOW',
-                        amount: currentFutureFlow,
-                        amountColor: currentFutureFlow >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                        width: boxWidth,
-                        infoExplanation: 'Future Flow calculates the net sum of all scheduled incoming and outgoing transactions (income minus expenses) dated after today.\n\nHow to use & relevance: Use this metric to immediately gauge whether your scheduled cash flow for upcoming days is net positive or negative, helping you anticipate shortfalls before they occur.',
+                Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.local_fire_department_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                      const SizedBox(width: 6),
+                      Text('Burn Rate Basis:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _burnRateBaseline,
+                            isDense: true,
+                            isExpanded: true,
+                            dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                            items: ['Last 30 Days', 'Last 90 Days', 'Fixed Baseline'].map((b) => DropdownMenuItem(value: b, child: Text(b, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
+                            onChanged: (val) async {
+                              if (val != null) {
+                                setState(() => _burnRateBaseline = val);
+                                final prefs = await SharedPreferences.getInstance();
+                                await prefs.setString('set_burn_rate_baseline', val);
+                              }
+                            },
+                          ),
+                        ),
                       ),
-                    ),
-                    SizedBox(
-                      width: boxWidth,
-                      child: _buildMetricBox(
-                        title: 'PROGNOSIS',
-                        amount: currentPrognosis,
-                        amountColor: _isZaznamityMode ? Colors.white : const Color(0xFF000000),
-                        width: boxWidth,
-                        infoExplanation: 'Prognosis calculates your projected remaining balance at the end of the time period by combining current liquid funds with upcoming future cashflows.\n\nHow to use & relevance: Provides a comprehensive long-term view of your financial trajectory, combining current holdings with expected future income and expenses.',
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 12),
 
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    SizedBox(
-                      width: boxWidth,
-                      child: _buildMetricBox(
-                        title: 'MONTHLY BURN RATE',
-                        amount: monthlyBurn,
-                        amountColor: const Color(0xFFF87171),
-                        width: boxWidth,
-                        infoExplanation: 'Monthly Burn Rate represents your average monthly baseline spending calculated over your configured timeframe setting.\n\nHow to use & relevance: Essential for understanding your baseline overhead and determining how quickly your cash reserves deplete each month.',
+                    Expanded(
+                      child: Center(
+                        child: _buildMetricBox(
+                          title: 'FUTURE FLOW',
+                          amount: currentFutureFlow,
+                          amountColor: currentFutureFlow >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                          width: boxWidth,
+                          infoExplanation: 'Future Flow calculates the net sum of all scheduled incoming and outgoing transactions (income minus expenses) for the selected pool within your timeframe from today forward.',
+                        ),
                       ),
                     ),
-                    SizedBox(
-                      width: boxWidth,
-                      child: _buildSavingsRateBox(
-                        title: 'SAVINGS RATE',
-                        savingsRate: savingsRate,
-                        width: boxWidth,
-                        infoExplanation: 'Savings Rate shows the exact percentage of your monthly income that you successfully retain rather than spend, based on your configured timeframe setting.\n\nHow to use & relevance: Helps track your wealth-building efficiency. A rate above 20% indicates healthy financial retention, while negative rates signal that spending exceeds earnings.',
+                    Expanded(
+                      child: Center(
+                        child: _buildMetricBox(
+                          title: 'PROGNOSIS',
+                          amount: currentPrognosis,
+                          amountColor: _isZaznamityMode ? Colors.white : const Color(0xFF000000),
+                          width: boxWidth,
+                          infoExplanation: 'Prognosis calculates your projected remaining balance for the selected pool at the end of the timeframe by combining current liquid funds with upcoming future cashflows from today forward.',
+                        ),
                       ),
                     ),
                   ],
@@ -763,13 +843,9 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: deficitDate != null 
-                        ? const Color(0xFF7F1D1D).withValues(alpha: 0.3) 
-                        : (_isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC)),
+                    color: runwayColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: deficitDate != null ? const Color(0xFFF87171) : (_isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                    ),
+                    border: Border.all(color: runwayColor),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -777,9 +853,9 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                       Row(
                         children: [
                           Icon(
-                            deficitDate != null ? Icons.warning_rounded : Icons.shield_rounded,
+                            daysToDeficit < 90 ? Icons.warning_rounded : Icons.shield_rounded,
                             size: 16,
-                            color: deficitDate != null ? const Color(0xFFF87171) : const Color(0xFF34D399),
+                            color: runwayColor,
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -796,7 +872,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                             onTap: () => _showMetricInfo(
                               context,
                               'RUNWAY DEPLETION DATE',
-                              'Starts from your current liquid balance and applies scheduled income and expenses in date order. Once nothing more is scheduled, it extends the projection using your average monthly burn. Transfers and goal contributions are ignored when "exclude transfers" is on.\n\nShows the date your balance could first go below zero, so you can act early.',
+                              'Starts from your current liquid balance and applies scheduled income and expenses in date order, extending using your burn rate basis. Alerts red if <30 days, yellow if <90 days, green if >180 days.',
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(2.0),
@@ -810,9 +886,107 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: deficitDate != null ? const Color(0xFFF87171) : const Color(0xFF34D399),
+                          color: runwayColor,
                         ),
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.arrow_downward_rounded, size: 16, color: Color(0xFF34D399)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'NEXT INCOME:',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        nextIncome != null
+                            ? 'in ${nextIncome.days} days (${DateFormat('MMM dd').format(nextIncome.date!)}) • ${_formatCurrency(nextIncome.amount)}'
+                            : 'No scheduled income',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: nextIncome != null ? const Color(0xFF34D399) : (_isZaznamityMode ? Colors.white54 : Colors.grey),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.receipt_long_rounded, size: 16, color: Color(0xFFF87171)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'NEXT 3 BIGGEST BILLS:',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      topBills.isEmpty
+                          ? Text('No upcoming scheduled bills', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white38 : Colors.grey))
+                          : Column(
+                              children: topBills.map((bill) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 3),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          '• ${bill.description} (${DateFormat('MMM dd').format(bill.date)})',
+                                          style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155)),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Text(
+                                        _formatCurrency(bill.amount),
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFF87171)),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
                     ],
                   ),
                 ),
@@ -844,24 +1018,12 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'NEXT 30-DAY CASH SHIFT:',
+                                  'NEXT 30-DAY CASH SHIFT :',
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w900,
                                     color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
                                     letterSpacing: 0.6,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                InkWell(
-                                  onTap: () => _showMetricInfo(
-                                    context,
-                                    'NEXT 30-DAY CASH SHIFT',
-                                    'Calculates the absolute net change in your liquid cash over the next 30 days by combining both scheduled income and expenses.\n\nClicking on this row displays the precise list of zaznams contributing to this amount.',
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(2.0),
-                                    child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
                                   ),
                                 ),
                               ],
@@ -882,6 +1044,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                 ),
                 const SizedBox(height: 8),
 
+                // Updated Pending Zaznams tap action to pass the next 7 days window (excluding past zaznams)
                 Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
@@ -892,7 +1055,13 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: widget.onShowPendingZaznams,
+                      onTap: () {
+                        if (widget.onShowPendingZaznams != null) {
+                          final nowTime = DateTime.now();
+                          final next7Days = nowTime.add(const Duration(days: 7));
+                          widget.onShowPendingZaznams!(nowTime, next7Days);
+                        }
+                      },
                       borderRadius: BorderRadius.circular(10),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -904,24 +1073,12 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                                 const Icon(Icons.notification_important_rounded, size: 16, color: Color(0xFFF59E0B)),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'PENDING ZAZNAMS (NEXT 7 DAYS):',
+                                  'NEXT 7-DAY PENDING ZAZNAMS :',
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w900,
                                     color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
                                     letterSpacing: 0.6,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                InkWell(
-                                  onTap: () => _showMetricInfo(
-                                    context,
-                                    'PENDING ZAZNAMS (NEXT 7 DAYS)',
-                                    'Shows the total number of unconfirmed scheduled Zaznams coming due within the next 7 days, helping you stay ahead of upcoming payments.\n\nClicking on this row takes you directly to the All Zaznams card and displays those pending Zaznams within 7 days for quick confirmation.',
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(2.0),
-                                    child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
                                   ),
                                 ),
                               ],
@@ -992,57 +1149,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
                 color: amountColor,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSavingsRateBox({
-    required String title,
-    required double savingsRate,
-    required double width,
-    required String infoExplanation,
-  }) {
-    return SizedBox(
-      width: width,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w900,
-                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
-                  letterSpacing: 0.6,
-                ),
-              ),
-              const SizedBox(width: 4),
-              InkWell(
-                onTap: () => _showMetricInfo(context, title, infoExplanation),
-                child: Padding(
-                  padding: const EdgeInsets.all(2.0),
-                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '${savingsRate.toStringAsFixed(1)}%',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: savingsRate >= 20 ? const Color(0xFF34D399) : const Color(0xFFF87171),
               ),
             ),
           ),

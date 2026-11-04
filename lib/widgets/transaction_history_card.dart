@@ -176,6 +176,33 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
   void didUpdateWidget(covariant TransactionHistoryCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     _loadPrefs();
+
+    // Force re-sync local filters with parent props when a new jump/filter occurs
+    if (widget.selectedType != oldWidget.selectedType || 
+        widget.startDate != oldWidget.startDate || 
+        widget.endDate != oldWidget.endDate ||
+        widget.selectedLabelId != oldWidget.selectedLabelId ||
+        widget.selectedOwner != oldWidget.selectedOwner) {
+      
+      _localOwner = widget.selectedOwner;
+      _localCurrency = widget.selectedCurrency;
+      _localType = widget.selectedType;
+      
+      _localSelectedTypes.clear();
+      if (_localType != null) {
+        _localSelectedTypes.add(_localType!);
+      } else {
+        // Always fallback to enabling both income and expense on jumps
+        _localSelectedTypes.addAll(['income', 'expense']);
+      }
+
+      _localStartDate = widget.startDate;
+      _localEndDate = widget.endDate;
+
+      if (widget.selectedLabelId != null) {
+        _localSelectedLabels = {widget.selectedLabelId!};
+      }
+    }
   }
 
   void _onSearchChanged(String val) {

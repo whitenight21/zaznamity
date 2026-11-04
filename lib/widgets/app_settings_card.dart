@@ -3070,8 +3070,8 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                       children: [
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: Text('Show Title Card', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
-                          subtitle: Text('Toggle visibility of the Title Card', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                          title: Text('Show Welcome Card', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                          subtitle: Text('Toggle visibility of the Welcome Card', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                           value: _titleCardVisible,
                           onChanged: (val) async {
                             setState(() => _titleCardVisible = val);
@@ -3079,7 +3079,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                             await prefs.setBool('titleCardVisible', val);
                           },
                         ),
-                      ],
+                      ], 
                     ),
                     _buildSubSectionCard(
                       title: 'Metrics',

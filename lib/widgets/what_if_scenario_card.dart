@@ -7,10 +7,13 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/liability_model.dart';
+import '../models/label.dart';
 
 class WhatIfScenarioCard extends StatefulWidget {
   final List<String> owners;
   final String? selectedOwner;
+  final List<String> pools;
+  final List<LabelModel> labels;
   final List<TransactionModel> transactions;
   final List<LiabilityModel> liabilities;
   final double basePrognosis;
@@ -19,6 +22,8 @@ class WhatIfScenarioCard extends StatefulWidget {
     super.key,
     required this.owners,
     this.selectedOwner,
+    required this.pools,
+    required this.labels,
     required this.transactions,
     required this.liabilities,
     required this.basePrognosis,
@@ -33,6 +38,10 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
   String _primaryCurrency = 'USD';
   bool _isCollapsed = false;
 
+  // Filter Sets (Empty means ALL selected)
+  Set<String> _selectedPoolNames = {};
+  Set<int> _selectedLabelIds = {};
+
   // Simulation Levers
   double _incomeMultiplier = 1.0; // 0% to 150%
   double _expenseSqueezePercent = 0.0; // 0% to 50%
@@ -44,7 +53,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
   final Set<String> _hiddenDefaultPresets = {};
 
   // Custom Saved Presets
-  List<Map<String, dynamic>> _customPresets = [];
+  List _customPresets = [];
 
   // Head-to-Head Comparison Slots
   Map<String, dynamic>? _scenarioSlotA;
@@ -62,19 +71,35 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     final savedPresetsStr = prefs.getString('set_whatIf_custom_presets');
     final hiddenDefaultsStr = prefs.getString('set_whatIf_hidden_defaults');
     
-    List<Map<String, dynamic>> loadedPresets = [];
+    final savedPoolsList = prefs.getStringList('whatIf_selected_pools');
+    Set<String> loadedPools = {};
+    if (savedPoolsList != null) {
+      loadedPools = savedPoolsList.toSet();
+    }
+
+    final savedLabelsList = prefs.getStringList('whatIf_selected_labels');
+    Set<int> loadedLabels = {};
+    if (savedLabelsList != null) {
+      loadedLabels = savedLabelsList.map((e) => int.parse(e)).toSet();
+    }
+
+    List loadedPresets = [];
     if (savedPresetsStr != null) {
       try {
-        final decoded = jsonDecode(savedPresetsStr) as List;
-        loadedPresets = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+        final decoded = jsonDecode(savedPresetsStr);
+        if (decoded is List) {
+          loadedPresets = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
       } catch (_) {}
     }
 
     Set<String> hiddenDefaults = {};
     if (hiddenDefaultsStr != null) {
       try {
-        final decoded = jsonDecode(hiddenDefaultsStr) as List;
-        hiddenDefaults = decoded.map((e) => e.toString()).toSet();
+        final decoded = jsonDecode(hiddenDefaultsStr);
+        if (decoded is List) {
+          hiddenDefaults = decoded.map((e) => e.toString()).toSet();
+        }
       } catch (_) {}
     }
 
@@ -85,8 +110,27 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
         _isCollapsed = prefs.getBool('set_whatIf_collapsed') ?? false;
         _customPresets = loadedPresets;
         _hiddenDefaultPresets.addAll(hiddenDefaults);
+        if (savedPoolsList != null) _selectedPoolNames = loadedPools;
+        if (savedLabelsList != null) _selectedLabelIds = loadedLabels;
       });
     }
+  }
+
+  Future<void> _savePoolPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('whatIf_selected_pools', _selectedPoolNames.toList());
+  }
+
+  Future<void> _saveLabelPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('whatIf_selected_labels', _selectedLabelIds.map((e) => e.toString()).toList());
+  }
+
+  @override
+  void dispose() {
+    _savePoolPrefs();
+    _saveLabelPrefs();
+    super.dispose();
   }
 
   Future<void> _toggleCollapse() async {
@@ -169,6 +213,286 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     });
   }
 
+  void _showPoolsCheckmarkModal(BuildContext context) {
+    Set<String> tempSelectedPools = _selectedPoolNames.isEmpty
+        ? widget.pools.toSet()
+        : Set.from(_selectedPoolNames);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            bool allSelected = tempSelectedPools.length == widget.pools.length;
+
+            return Container(
+              padding: const EdgeInsets.all(20),
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filter Pools',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              setModalState(() {
+                                tempSelectedPools = widget.pools.toSet();
+                              });
+                            },
+                            child: const Text('Select All', style: TextStyle(color: Color(0xFFA855F7))),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setModalState(() {
+                                tempSelectedPools.clear();
+                              });
+                            },
+                            child: const Text('Clear All', style: TextStyle(color: Color(0xFFF87171))),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24),
+                  CheckboxListTile(
+                    title: Text(
+                      'All Pools',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                      ),
+                    ),
+                    value: allSelected,
+                    activeColor: const Color(0xFFA855F7),
+                    onChanged: (bool? value) {
+                      setModalState(() {
+                        if (value == true) {
+                          tempSelectedPools = widget.pools.toSet();
+                        } else {
+                          tempSelectedPools.clear();
+                        }
+                      });
+                    },
+                  ),
+                  const Divider(color: Colors.white12, height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: widget.pools.length,
+                      itemBuilder: (context, index) {
+                        final pool = widget.pools[index];
+                        final isChecked = tempSelectedPools.contains(pool);
+
+                        return CheckboxListTile(
+                          title: Text(
+                            pool.toUpperCase(),
+                            style: TextStyle(
+                              color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155),
+                            ),
+                          ),
+                          value: isChecked,
+                          activeColor: const Color(0xFFA855F7),
+                          onChanged: (bool? value) {
+                            setModalState(() {
+                              if (value == true) {
+                                tempSelectedPools.add(pool);
+                              } else {
+                                tempSelectedPools.remove(pool);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () {
+                        setState(() {
+                          if (tempSelectedPools.length == widget.pools.length) {
+                            _selectedPoolNames.clear();
+                          } else {
+                            _selectedPoolNames = tempSelectedPools;
+                          }
+                        });
+                        _savePoolPrefs();
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showLabelsCheckmarkModal(BuildContext context) {
+    Set<int> tempSelectedIds = _selectedLabelIds.isEmpty
+        ? widget.labels.map((l) => l.id).toSet()
+        : Set.from(_selectedLabelIds);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            bool allSelected = tempSelectedIds.length == widget.labels.length;
+
+            return Container(
+              padding: const EdgeInsets.all(20),
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filter Labels',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              setModalState(() {
+                                tempSelectedIds = widget.labels.map((l) => l.id).toSet();
+                              });
+                            },
+                            child: const Text('Select All', style: TextStyle(color: Color(0xFFA855F7))),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setModalState(() {
+                                tempSelectedIds.clear();
+                              });
+                            },
+                            child: const Text('Clear All', style: TextStyle(color: Color(0xFFF87171))),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24),
+                  CheckboxListTile(
+                    title: Text(
+                      'All Labels',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                      ),
+                    ),
+                    value: allSelected,
+                    activeColor: const Color(0xFFA855F7),
+                    onChanged: (bool? value) {
+                      setModalState(() {
+                        if (value == true) {
+                          tempSelectedIds = widget.labels.map((l) => l.id).toSet();
+                        } else {
+                          tempSelectedIds.clear();
+                        }
+                      });
+                    },
+                  ),
+                  const Divider(color: Colors.white12, height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: widget.labels.length,
+                      itemBuilder: (context, index) {
+                        final label = widget.labels[index];
+                        final isChecked = tempSelectedIds.contains(label.id);
+
+                        return CheckboxListTile(
+                          title: Text(
+                            label.name,
+                            style: TextStyle(
+                              color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155),
+                            ),
+                          ),
+                          value: isChecked,
+                          activeColor: const Color(0xFFA855F7),
+                          onChanged: (bool? value) {
+                            setModalState(() {
+                              if (value == true) {
+                                tempSelectedIds.add(label.id);
+                              } else {
+                                tempSelectedIds.remove(label.id);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () {
+                        setState(() {
+                          if (tempSelectedIds.length == widget.labels.length) {
+                            _selectedLabelIds.clear();
+                          } else {
+                            _selectedLabelIds = tempSelectedIds;
+                          }
+                        });
+                        _saveLabelPrefs();
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Map<String, dynamic> _calculateSimulationResults({
     double? incMul,
     double? expSqz,
@@ -189,6 +513,21 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     double baselineExpense = 0;
 
     for (var tx in widget.transactions) {
+      if (widget.selectedOwner != null &&
+          widget.selectedOwner!.isNotEmpty &&
+          widget.selectedOwner != 'All Owners' &&
+          tx.owner != widget.selectedOwner) {
+        continue;
+      }
+
+      if (_selectedPoolNames.isNotEmpty && !_selectedPoolNames.contains(tx.pool)) {
+        continue;
+      }
+
+      if (_selectedLabelIds.isNotEmpty && !_selectedLabelIds.contains(tx.labelId)) {
+        continue;
+      }
+
       final dt = DateTime.tryParse(tx.createdAt);
       if (dt != null && dt.isAfter(now) && dt.isBefore(horizonEnd)) {
         if (tx.type == 'income') {
@@ -360,7 +699,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
               horizon: slotB['horizonDays'],
             );
 
-            List<Map<String, dynamic>> allAvailablePresets = [
+            List allAvailablePresets = [
               {'name': 'Current Active Levers', ...currentSnapshot},
               {'name': 'Late Paycheck (-50% Inc.)', 'incomeMultiplier': 0.5, 'expenseSqueeze': 0.0, 'lumpSum': 0.0, 'extraDebt': 0.0, 'horizonDays': 30},
               {'name': 'Zero Income Break', 'incomeMultiplier': 0.0, 'expenseSqueeze': 0.0, 'lumpSum': 0.0, 'extraDebt': 0.0, 'horizonDays': 30},
@@ -374,7 +713,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: Row(
                 children: [
-                  Icon(Icons.compare_arrows_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                  Icon(Icons.compare_arrows_rounded, color: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -410,14 +749,14 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                                     ),
-                                    child: DropdownButton<Map<String, dynamic>>(
+                                    child: DropdownButton(
                                       value: slotA,
                                       isDense: true,
                                       isExpanded: true,
                                       dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                       style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87),
                                       items: allAvailablePresets.map((p) {
-                                        return DropdownMenuItem<Map<String, dynamic>>(
+                                        return DropdownMenuItem(
                                           value: p,
                                           child: Text(p['name'] ?? 'Preset', overflow: TextOverflow.ellipsis),
                                         );
@@ -425,7 +764,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                                       onChanged: (val) {
                                         if (val != null) {
                                           setModalState(() {
-                                            _scenarioSlotA = val;
+                                            _scenarioSlotA = val as Map<String, dynamic>;
                                           });
                                           setState(() {});
                                         }
@@ -451,14 +790,14 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                                     ),
-                                    child: DropdownButton<Map<String, dynamic>>(
+                                    child: DropdownButton(
                                       value: slotB,
                                       isDense: true,
                                       isExpanded: true,
                                       dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                       style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87),
                                       items: allAvailablePresets.map((p) {
-                                        return DropdownMenuItem<Map<String, dynamic>>(
+                                        return DropdownMenuItem(
                                           value: p,
                                           child: Text(p['name'] ?? 'Preset', overflow: TextOverflow.ellipsis),
                                         );
@@ -466,7 +805,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                                       onChanged: (val) {
                                         if (val != null) {
                                           setModalState(() {
-                                            _scenarioSlotB = val;
+                                            _scenarioSlotB = val as Map<String, dynamic>;
                                           });
                                           setState(() {});
                                         }
@@ -577,6 +916,24 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     } else if (runwayDays < 180) {
       healthColor = Colors.yellow;
       healthLabel = 'Resilient (3-6 Mos)';
+    }
+
+    final double availableWidth = MediaQuery.of(context).size.width - 32;
+    final double boxWidth = (availableWidth - 12) / 2;
+
+    String poolsButtonText = 'All Pools';
+    if (_selectedPoolNames.length == 1) {
+      poolsButtonText = _selectedPoolNames.first.toUpperCase();
+    } else if (_selectedPoolNames.length > 1 && _selectedPoolNames.length < widget.pools.length) {
+      poolsButtonText = '${_selectedPoolNames.length} Pools';
+    }
+
+    String labelsButtonText = 'All Labels';
+    if (_selectedLabelIds.length == 1) {
+      final singleLabel = widget.labels.where((l) => l.id == _selectedLabelIds.first).firstOrNull;
+      labelsButtonText = singleLabel?.name ?? '1 Label';
+    } else if (_selectedLabelIds.length > 1 && _selectedLabelIds.length < widget.labels.length) {
+      labelsButtonText = '${_selectedLabelIds.length} Labels';
     }
 
     return LayoutBuilder(
@@ -703,7 +1060,93 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
               if (!_isCollapsed) ...[
                 const SizedBox(height: 12),
 
-                // NEXT ROW: Horizon & Reset All & Head-to-Head Comparison Button
+                // DROPDOWNS ROW: Pools & Labels Multi-Select Selectors
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: Container(
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => _showPoolsCheckmarkModal(context),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.account_balance_wallet_outlined, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      poolsButtonText,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Icon(Icons.arrow_drop_down, size: 18, color: _isZaznamityMode ? Colors.white70 : Colors.grey),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: boxWidth,
+                      child: Container(
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => _showLabelsCheckmarkModal(context),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.label_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      labelsButtonText,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Icon(Icons.arrow_drop_down, size: 18, color: _isZaznamityMode ? Colors.white70 : Colors.grey),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // NEXT ROW: Horizon & Reset All
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -735,7 +1178,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                           },
                           borderRadius: BorderRadius.circular(8),
                           selectedColor: Colors.white,
-                          fillColor: const Color(0xFFA855F7),
+                          fillColor: const Color(0xFF582F95),
                           color: _isZaznamityMode ? Colors.white70 : Colors.black87,
                           constraints: const BoxConstraints(minHeight: 26, minWidth: 40),
                           children: const [
@@ -832,7 +1275,6 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                         ],
                       ),
                       const Divider(height: 16),
-                      // Monte Carlo Risk Indicator Row
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -871,7 +1313,6 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                 ),
                 const SizedBox(height: 14),
 
-                // Presets Header & Head-to-Head Comparison Button Row
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [

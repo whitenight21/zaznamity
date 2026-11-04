@@ -153,19 +153,19 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   List<String> _owners = ['Mathias', 'Julia', 'Shared'];
 
-  final CardConfig _titleCardConfig = CardConfig(id: 'title_card', title: 'Title Card', key: GlobalKey());
+  final CardConfig _titleCardConfig = CardConfig(id: 'title_card', title: 'Welcome Card', key: GlobalKey());
 
   late final List<CardConfig> _cards = [
     CardConfig(id: 'settings', title: 'Settings', key: GlobalKey(), isVisible: false),
     CardConfig(id: 'metrics', title: 'Metrics', key: GlobalKey()),
     CardConfig(id: 'smart_insights', title: 'Health & Insights', key: GlobalKey()),
-    CardConfig(id: 'future_metrics', title: 'Future Metrics', key: GlobalKey()),
+    CardConfig(id: 'future_metrics', title: 'Future Outlook', key: GlobalKey()),
     CardConfig(id: 'liabilities_card', title: 'Liabilities', key: GlobalKey()),    
     CardConfig(id: 'savings_goals', title: 'Savings Goals', key: GlobalKey()),
     CardConfig(id: 'what_if_scenario', title: 'What-If Lab', key: GlobalKey()),
-    CardConfig(id: 'label_focus', title: 'Label Analysis', key: GlobalKey()),
-    CardConfig(id: 'income_expenses_labels', title: 'Labels Analytics', key: GlobalKey()),
-    CardConfig(id: 'future_analytics', title: 'Future Analytics', key: GlobalKey()),
+    CardConfig(id: 'label_focus', title: 'Label Focus', key: GlobalKey()),
+    CardConfig(id: 'income_expenses_labels', title: 'Money Breakdown', key: GlobalKey()),
+    CardConfig(id: 'future_analytics', title: 'Future Breakdown', key: GlobalKey()),
     CardConfig(id: 'new_entry', title: 'New Zaznam', key: GlobalKey()),
     CardConfig(id: 'transfer', title: 'Transfer Funds', key: GlobalKey()),
     CardConfig(id: 'budget', title: 'Budgets', key: GlobalKey()),
@@ -330,6 +330,26 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     }
   }
 
+  void _jumpToHistoryWithClearedFilters({
+    DateTime? startDate,
+    DateTime? endDate,
+    int? labelId,
+    String? owner,
+    String? type,
+  }) {
+    // Clear out all filters 3 times to ensure nothing lingers
+    for (int i = 0; i < 3; i++) {
+      setState(() {
+        _historyStartDate = startDate;
+        _historyEndDate = endDate;
+        _historySelectedLabelId = labelId;
+        _historySelectedOwner = owner;
+        _historySelectedType = type;
+      });
+    }
+    _navigateToCard('history');
+  }
+
   Future<void> _savePoolsPreferences(Map<String, bool> updatedPools) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -463,13 +483,11 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   void _jumpToHistoryForDate(DateTime date) {
-    setState(() {
-      _historyStartDate = date;
-      _historyEndDate = date;
-      final historyCard = _cards.firstWhere((c) => c.id == 'history');
-      historyCard.isVisible = true;
-      _highlightedCardId = 'history';
-    });
+    _jumpToHistoryWithClearedFilters(
+      startDate: date, 
+      endDate: date, 
+      type: null,
+    );
     _saveCardLayoutPreferences();
 
     Future.delayed(const Duration(milliseconds: 200), () {
@@ -2037,14 +2055,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _labelFocusEndDate = null;
           }),
           onJumpToHistory: (labelId, owner, start, end) {
-            setState(() {
-              _historySelectedLabelId = labelId;
-              _historySelectedOwner = owner;
-              _historyStartDate = start;
-              _historyEndDate = end;
-              _historySelectedType = null;
-            });
-            _navigateToCard('history');
+            _jumpToHistoryWithClearedFilters(
+              startDate: start, 
+              endDate: end, 
+              labelId: labelId, 
+              owner: owner, 
+              type: null,
+            );
           },
         );
       case 'future_metrics':
@@ -2083,24 +2100,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           onShow30DayShiftZaznams: () {
             final now = DateTime.now();
             final next30Days = now.add(const Duration(days: 30));
-            
-            setState(() {
-              _historyStartDate = now;
-              _historyEndDate = next30Days;
-              _historySelectedType = null;
-            });
-            _navigateToCard('history');
+            _jumpToHistoryWithClearedFilters(startDate: now, endDate: next30Days, type: null);
           },
-          onShowPendingZaznams: () {
-            final now = DateTime.now();
-            final next7Days = now.add(const Duration(days: 7));
-            
-            setState(() {
-              _historyStartDate = now;
-              _historyEndDate = next7Days;
-              _historySelectedType = null;
-            });
-            _navigateToCard('history');
+          onShowPendingZaznams: (start, end) {
+                _jumpToHistoryWithClearedFilters(startDate: start, endDate: end, type: null);
           },
         );
       case 'budget':
@@ -2158,6 +2161,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       case 'what_if_scenario':
         return WhatIfScenarioCard(
           owners: _owners,
+          pools: _pools.keys.toList(),
+          labels: _labels,
           selectedOwner: _globalSelectedOwner,
           transactions: _transactions,
           liabilities: _liabilities,
@@ -2201,14 +2206,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           transactions: _transactions,
           labels: _labels,
           onJumpToHistoryForLabel: (labelId, labelName, start, end) {
-            setState(() {
-              _historyStartDate = start;
-              _historyEndDate = end;
-              _historySelectedLabelId = labelId;
-              _historySelectedOwner = _globalSelectedOwner;
-              _historySelectedType = 'expense';
-            });
-            _navigateToCard('history');
+            _jumpToHistoryWithClearedFilters(
+              startDate: start, 
+              endDate: end, 
+              labelId: labelId, 
+              owner: _globalSelectedOwner, 
+              type: null,
+            );
           },
         );
       case 'monthly_trend':
@@ -2227,14 +2231,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             final start = DateTime(year, month, 1);
             final end = DateTime(year, month + 1, 0);
 
-            setState(() {
-              _historyStartDate = start;
-              _historyEndDate = end;
-              _historySelectedType = type;
-              _historySelectedOwner = owner;
-            });
-
-            _navigateToCard('history');
+            _jumpToHistoryWithClearedFilters(
+              startDate: start, 
+              endDate: end, 
+              type: type, 
+              owner: owner,
+            );
           },
         );
       case 'trend_chart':
@@ -2420,6 +2422,19 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           onHide: () {
             setState(() => card.isVisible = false);
             _saveCardLayoutPreferences();
+          },
+          // ADD THESE TWO CALLBACKS HERE:
+          onLabelSelected: (labelId) {
+            setState(() {
+              _labelFocusSelectedLabelId = labelId;
+            });
+            _navigateToCard('label_focus');
+          },
+          onDateRangeSelected: (start, end) {
+            setState(() {
+              _labelFocusStartDate = start;
+              _labelFocusEndDate = end;
+            });
           },
         );
       case 'history':

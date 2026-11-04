@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_model_use
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +6,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
+import 'dart:math' as math;
 
 class IncomeExpensesByLabelsCard extends StatefulWidget {
   final List<TransactionModel> transactions;
@@ -23,6 +24,9 @@ class IncomeExpensesByLabelsCard extends StatefulWidget {
   final VoidCallback? onToggleWidth;
   final Function(int? labelId, String? owner, DateTime? start, DateTime? end)? onJumpToHistory;
 
+  final ValueChanged<int?>? onLabelSelected;
+  final Function(DateTime? start, DateTime? end)? onDateRangeSelected;
+
   const IncomeExpensesByLabelsCard({
     super.key,
     required this.transactions,
@@ -39,6 +43,8 @@ class IncomeExpensesByLabelsCard extends StatefulWidget {
     this.isWide = false,
     this.onToggleWidth,
     this.onJumpToHistory,
+    this.onLabelSelected,
+    this.onDateRangeSelected,
   });
 
   @override
@@ -52,13 +58,21 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   
   final Set<int> selectedIncomeLabels = {};
   final Set<int> selectedExpenseLabels = {};
+  
+  final Map<int, bool> _multiLabelFixedCategoriesById = {};
   final Map<String, bool> _multiLabelFixedCategories = {};
+  
   bool _initializedLabels = false;
   String? _localOwner;
   String _multiLabelDefaultRange = '';
   bool _isZaznamityMode = true;
   bool _excludeTransfers = true;
   bool _isCollapsed = false;
+
+  String _primaryCurrency = 'USD';
+
+  Map<int, double> _labelBudgetsById = {};
+  Map<String, double> _labelBudgetsByName = {};
 
   double _cachedTotalIncome = 0;
   double _cachedTotalExpenses = 0;
@@ -68,9 +82,12 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   double _cachedMaxChartAmount = 1.0;
   double _cachedFixedExpenses = 0;
   double _cachedDiscretionaryExpenses = 0;
+  
   Map<String, double> _cachedLabelMoMDelta = {};
+  Map<String, String> _cachedShareOfIncome = {};
+  Set<String> _cachedFlagged30PercentLabels = {};
 
-  int? _lastTxLength;
+  String _lastTxFingerprint = '';
   String? _lastOwner;
   DateTime? _lastStartDate;
   DateTime? _lastEndDate;
@@ -79,18 +96,22 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   String _lastExpenseLabelsKey = '';
   String _lastFixedLabelsKey = '';
   bool? _lastExcludeTransfers;
+  String? _lastCurrencyKey;
 
   @override
   void initState() {
     super.initState();
     _localOwner = widget.selectedOwner;
-    _loadMultiLabelSettings();
+    _loadMultiLabelSettingsOnce();
   }
 
-  Future<void> _loadMultiLabelSettings() async {
+  Future<void> _loadMultiLabelSettingsOnce() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     final collapsed = prefs.getBool('set_incomeExpensesByLabels_collapsed') ?? false;
+    final primaryCurr = prefs.getString('primaryCurrency') ?? prefs.getString('currency') ?? 'USD';
     
     final savedIncomeStr = prefs.getString('selected_income_labels');
     if (savedIncomeStr != null && savedIncomeStr.isNotEmpty) {
@@ -110,19 +131,103 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       }
     }
 
+    final Map<int, bool> fixedById = {};
+    final Map<String, bool> fixedByName = {};
+    final Map<int, double> budgetsById = {};
+    final Map<String, double> budgetsByName = {};
+
+    for (var label in widget.labels) {
+      final isFixed = prefs.getBool('set_multilabel_fixed_id_${label.id}') ??
+          prefs.getBool('set_multilabel_fixed_${label.name}') ??
+          false;
+      fixedById[label.id] = isFixed;
+      fixedByName[label.name] = isFixed;
+
+      final budgetVal = prefs.getDouble('budget_label_id_${label.id}') ??
+          prefs.getDouble('budget_label_${label.name}');
+      if (budgetVal != null) {
+        budgetsById[label.id] = budgetVal;
+        budgetsByName[label.name] = budgetVal;
+      }
+    }
+
+    if (!mounted) return;
     setState(() {
       _multiLabelDefaultRange = prefs.getString('set_multiLabel_range') ?? 'Current Month';
       _isZaznamityMode = (savedTheme == 'zaznamity');
       _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
       _isCollapsed = collapsed;
-      for (var label in widget.labels) {
-        _multiLabelFixedCategories[label.name] = prefs.getBool('set_multilabel_fixed_${label.name}') ?? false;
-      }
+      _primaryCurrency = primaryCurr;
+      _multiLabelFixedCategoriesById.clear();
+      _multiLabelFixedCategoriesById.addAll(fixedById);
+      _multiLabelFixedCategories.clear();
+      _multiLabelFixedCategories.addAll(fixedByName);
+      _labelBudgetsById = budgetsById;
+      _labelBudgetsByName = budgetsByName;
     });
+  }
+
+  void _showMoneyBreakdownInfoModal(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Money Breakdown',
+                  style: TextStyle(
+                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Text(
+              '“What is my money made of?” - Money Breakdown provides a detailed view of your income and expenses categorized by labels.\n\n' 
+              '• This card helps you understand where your money is coming from and where it is going, allowing for better financial planning and decision-making.\n'
+              '• You can select which income and expense labels to include in the analysis, giving you a tailored view of your finances.\n'
+              '• It displays the total income, total expenses, and a breakdown of each label\'s contribution to the overall financial picture.\n'
+              '• You can switch between different chart types (bar, pie, tree) to visualize the data in a way that best suits your preferences.\n'
+              '• It provides insights into fixed and discretionary expenses, helping you identify areas where you can potentially save money.\n'
+              '• The card calculates month-over-month changes for each label (in percentages: "+ [red] %" (more than last month) or "- [green] %" (less than last month)), allowing you to track trends and identify areas of concern or improvement.\n'
+              '• It automatically detects and flags labels (yellow !) that have exceeded 30% above their 3-month average, alerting you to potential overspending in those categories.\n'
+              '• The share-of-income calculation shows how much each label contributes to your total income, providing a clear picture of your financial priorities.\n'
+              '• You can filter by date range, owner, and choose to include or exclude transfers in Settings.\n'
+              '• Clicking on a specific label in the chart will bring you directly to the "Label Focus" card, providing a deeper understanding of your financial habits regarding that label.',
+              style: TextStyle(
+                fontSize: 13,
+                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
+                height: 1.4,
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Got it'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _toggleCollapse() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _isCollapsed = !_isCollapsed;
     });
@@ -139,14 +244,14 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   void didUpdateWidget(covariant IncomeExpensesByLabelsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.selectedOwner != oldWidget.selectedOwner) {
-      setState(() {
-        _localOwner = widget.selectedOwner;
-      });
+      _localOwner = widget.selectedOwner;
     }
-    _loadMultiLabelSettings();
   }
 
   bool _isFixedExpenseLabel(LabelModel label) {
+    if (_multiLabelFixedCategoriesById.containsKey(label.id)) {
+      return _multiLabelFixedCategoriesById[label.id] == true;
+    }
     if (_multiLabelFixedCategories.containsKey(label.name)) {
       return _multiLabelFixedCategories[label.name] == true;
     }
@@ -161,6 +266,21 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
         lower.contains('bill');
   }
 
+  DateTime _subtractMonths(DateTime date, int months) {
+    int year = date.year;
+    int month = date.month - months;
+    while (month < 1) {
+      month += 12;
+      year -= 1;
+    }
+    int day = date.day;
+    int maxDaysInTargetMonth = DateTime(year, month + 1, 0).day;
+    if (day > maxDaysInTargetMonth) {
+      day = maxDaysInTargetMonth;
+    }
+    return DateTime(year, month, day, date.hour, date.minute, date.second);
+  }
+
   DateTime? _getEffectiveStartDate() {
     if (widget.startDate != null) return widget.startDate;
     if (_multiLabelDefaultRange.isEmpty) return null;
@@ -173,7 +293,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       case 'Current Month':
         return DateTime(now.year, now.month, 1);
       case '3 Months':
-        return DateTime(now.year, now.month - 3, now.day);
+        return _subtractMonths(now, 3);
       default:
         return DateTime(now.year, now.month, 1);
     }
@@ -184,15 +304,47 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     return DateTime.now();
   }
 
+  String _formatCurrency(double amount) {
+    final formatter = NumberFormat.currency(
+      symbol: '',
+      decimalDigits: 2,
+    );
+    final formattedVal = formatter.format(amount).trim();
+    final code = _primaryCurrency.toUpperCase();
+
+    if (code == 'EUR' || code == '€') {
+      return '$formattedVal €';
+    } else if (code == 'GBP' || code == '£') {
+      return '£$formattedVal';
+    } else if (code == 'JPY' || code == 'CNY' || code == '¥') {
+      return '¥$formattedVal';
+    } else if (code == 'CZK' || code == 'KČ') {
+      return '$formattedVal Kč';
+    } else {
+      return '\$$formattedVal';
+    }
+  }
+
+  String _createTxFingerprint(List<TransactionModel> txs) {
+    final sb = StringBuffer();
+    sb.write(txs.length);
+    sb.write('_');
+    for (var tx in txs) {
+      sb.write('${tx.id}:${tx.amount}:${tx.createdAt}:${tx.labelId};');
+    }
+    return sb.toString();
+  }
+
   void _computeDataIfNeeded() {
     final activeOwner = widget.selectedOwner ?? _localOwner;
     final incomeLabelsKey = selectedIncomeLabels.join(',');
     final expenseLabelsKey = selectedExpenseLabels.join(',');
-    final fixedLabelsKey = _multiLabelFixedCategories.entries.where((e) => e.value).map((e) => e.key).join(',');
+    final fixedLabelsKey = _multiLabelFixedCategoriesById.entries.where((e) => e.value).map((e) => e.key).join(',');
     final effectiveStart = _getEffectiveStartDate();
     final effectiveEnd = _getEffectiveEndDate();
+    final currentTxFingerprint = _createTxFingerprint(widget.transactions);
 
-    if (_lastTxLength == widget.transactions.length &&
+    if (_lastTxFingerprint == currentTxFingerprint &&
         _lastOwner == activeOwner &&
         _lastStartDate == effectiveStart &&
         _lastEndDate == effectiveEnd &&
@@ -200,74 +352,92 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
         _lastIncomeLabelsKey == incomeLabelsKey &&
         _lastExpenseLabelsKey == expenseLabelsKey &&
         _lastFixedLabelsKey == fixedLabelsKey &&
-        _lastExcludeTransfers == _excludeTransfers) {
+        _lastExcludeTransfers == _excludeTransfers &&
+        _lastCurrencyKey == _primaryCurrency) {
       return;
     }
 
-    final filteredTransactions = widget.transactions.where((tx) {
-      if (activeOwner != null && activeOwner.isNotEmpty && activeOwner != 'All Owners' && tx.owner != activeOwner) {
-        return false;
-      }
-      final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
-      if (effectiveStart != null && txDate.isBefore(effectiveStart)) {
-        return false;
-      }
-      if (effectiveEnd != null) {
-        final endOfDay = DateTime(effectiveEnd.year, effectiveEnd.month, effectiveEnd.day, 23, 59, 59);
-        if (txDate.isAfter(endOfDay)) return false;
-      }
-      return true;
-    }).toList();
+    final now = DateTime.now();
+    final Map<int, LabelModel> labelById = {for (var l in widget.labels) l.id: l};
+    final fallbackGeneralLabel = LabelModel(id: 0, name: 'General', color: '#4338CA');
+
+    Duration periodSpan = const Duration(days: 30);
+    if (effectiveStart != null && effectiveEnd != null) {
+      periodSpan = effectiveEnd.difference(effectiveStart);
+      if (periodSpan.inDays < 1) periodSpan = const Duration(days: 1);
+    }
+    final prevStart = effectiveStart?.subtract(periodSpan);
+    final prevEnd = effectiveStart;
+
+    final threeMonthsAgo = _subtractMonths(now, 3);
 
     double totalIncome = 0;
     double totalExpenses = 0;
     double fixedExp = 0;
     double discExp = 0;
+
     final Map<String, double> labelTotals = {};
     final Map<String, double> previousPeriodLabelTotals = {};
+    final Map<String, double> label3MonthTotals = {};
 
-    for (var tx in filteredTransactions) {
-      final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
-      final bool timePassed = txDate.isBefore(DateTime.now());
-      
+    for (var tx in widget.transactions) {
+      if (activeOwner != null && activeOwner.isNotEmpty && activeOwner != 'All Owners' && tx.owner != activeOwner) {
+        continue;
+      }
+
+      final txDate = DateTime.tryParse(tx.createdAt) ?? now;
+      final bool timePassed = txDate.isBefore(now);
       if (tx.isConfirmed != 1 && !timePassed) continue;
-      
-      final labelObj = widget.labels.firstWhere(
-        (l) => l.id == tx.labelId,
-        orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
-      );
+
+      final labelObj = labelById[tx.labelId] ?? fallbackGeneralLabel;
 
       if (_excludeTransfers && labelObj.name.toLowerCase() == 'transfer') {
         continue;
       }
 
-      final isCurrentPeriod = (effectiveStart == null || !txDate.isBefore(effectiveStart));
+      final isCurrentPeriod = (effectiveStart == null || !txDate.isBefore(effectiveStart)) &&
+          (effectiveEnd == null || !txDate.isAfter(DateTime(effectiveEnd.year, effectiveEnd.month, effectiveEnd.day, 23, 59, 59)));
+
+      final isPrevPeriod = (prevStart != null && !txDate.isBefore(prevStart)) &&
+          (prevEnd != null && txDate.isBefore(prevEnd));
+
+      final is3MonthPeriod = !txDate.isBefore(threeMonthsAgo) && !txDate.isAfter(now);
 
       if (tx.type == 'income') {
-        if (!selectedIncomeLabels.contains(labelObj.id)) continue;
-        totalIncome += tx.amount;
-        if (chartDisplayMode == 'Show Income') {
-          if (isCurrentPeriod) {
+        if (!selectedIncomeLabels.contains(labelObj.id) && labelObj.id != 0) continue;
+
+        if (isCurrentPeriod) {
+          totalIncome += tx.amount;
+          if (chartDisplayMode == 'Show Income') {
             labelTotals[labelObj.name] = (labelTotals[labelObj.name] ?? 0) + tx.amount;
-          } else {
-            previousPeriodLabelTotals[labelObj.name] = (previousPeriodLabelTotals[labelObj.name] ?? 0) + tx.amount;
           }
+        }
+        if (isPrevPeriod && chartDisplayMode == 'Show Income') {
+          previousPeriodLabelTotals[labelObj.name] = (previousPeriodLabelTotals[labelObj.name] ?? 0) + tx.amount;
+        }
+        if (is3MonthPeriod && chartDisplayMode == 'Show Income') {
+          label3MonthTotals[labelObj.name] = (label3MonthTotals[labelObj.name] ?? 0) + tx.amount;
         }
       } else {
-        if (!selectedExpenseLabels.contains(labelObj.id)) continue;
-        totalExpenses += tx.amount;
-        if (_isFixedExpenseLabel(labelObj)) {
-          fixedExp += tx.amount;
-        } else {
-          discExp += tx.amount;
-        }
+        if (!selectedExpenseLabels.contains(labelObj.id) && labelObj.id != 0) continue;
 
-        if (chartDisplayMode == 'Show Expenses') {
-          if (isCurrentPeriod) {
-            labelTotals[labelObj.name] = (labelTotals[labelObj.name] ?? 0) + tx.amount;
+        if (isCurrentPeriod) {
+          totalExpenses += tx.amount;
+          if (_isFixedExpenseLabel(labelObj)) {
+            fixedExp += tx.amount;
           } else {
-            previousPeriodLabelTotals[labelObj.name] = (previousPeriodLabelTotals[labelObj.name] ?? 0) + tx.amount;
+            discExp += tx.amount;
           }
+
+          if (chartDisplayMode == 'Show Expenses') {
+            labelTotals[labelObj.name] = (labelTotals[labelObj.name] ?? 0) + tx.amount;
+          }
+        }
+        if (isPrevPeriod && chartDisplayMode == 'Show Expenses') {
+          previousPeriodLabelTotals[labelObj.name] = (previousPeriodLabelTotals[labelObj.name] ?? 0) + tx.amount;
+        }
+        if (is3MonthPeriod && chartDisplayMode == 'Show Expenses') {
+          label3MonthTotals[labelObj.name] = (label3MonthTotals[labelObj.name] ?? 0) + tx.amount;
         }
       }
     }
@@ -277,8 +447,29 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       final prevVal = previousPeriodLabelTotals[label] ?? 0.0;
       if (prevVal > 0) {
         labelDeltas[label] = ((currentVal - prevVal) / prevVal) * 100;
+      } else if (currentVal > 0) {
+        labelDeltas[label] = 100.0;
       } else {
-        labelDeltas[label] = currentVal > 0 ? 100.0 : 0.0;
+        labelDeltas[label] = 0.0;
+      }
+    });
+
+    final Map<String, String> shareOfIncomeMap = {};
+    labelTotals.forEach((label, amount) {
+      if (totalIncome > 0) {
+        final share = (amount / totalIncome) * 100;
+        shareOfIncomeMap[label] = '$label is ${share.toStringAsFixed(1)}% of income';
+      } else {
+        shareOfIncomeMap[label] = '$label (N/A vs income)';
+      }
+    });
+
+    final Set<String> flaggedLabels = {};
+    labelTotals.forEach((label, currentAmount) {
+      final total3M = label3MonthTotals[label] ?? 0.0;
+      final avg3M = total3M / 3.0;
+      if (avg3M > 0 && currentAmount > (avg3M * 1.30)) {
+        flaggedLabels.add(label);
       }
     });
 
@@ -291,13 +482,16 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     _cachedDiscretionaryExpenses = discExp;
     _cachedSortedEntries = sortedEntries;
     _cachedLabelMoMDelta = labelDeltas;
+    _cachedShareOfIncome = shareOfIncomeMap;
+    _cachedFlagged30PercentLabels = flaggedLabels;
+
     _cachedActiveModeTotalSum = sortedEntries.fold(0.0, (sum, entry) => sum + entry.value);
     _cachedMaxTopAmount = (totalIncome > totalExpenses ? totalIncome : totalExpenses) > 0 
         ? (totalIncome > totalExpenses ? totalIncome : totalExpenses) 
         : 1.0;
     _cachedMaxChartAmount = sortedEntries.isNotEmpty ? sortedEntries.first.value : 1.0;
 
-    _lastTxLength = widget.transactions.length;
+    _lastTxFingerprint = currentTxFingerprint;
     _lastOwner = activeOwner;
     _lastStartDate = effectiveStart;
     _lastEndDate = effectiveEnd;
@@ -306,6 +500,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     _lastExpenseLabelsKey = expenseLabelsKey;
     _lastFixedLabelsKey = fixedLabelsKey;
     _lastExcludeTransfers = _excludeTransfers;
+    _lastCurrencyKey = _primaryCurrency;
   }
 
   void _showInfoModal(BuildContext context, String title, String description) {
@@ -337,34 +532,22 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     );
   }
 
-  void _handleLabelDrillDown(String labelName) {
-    if (widget.onJumpToHistory == null) return;
-    
+  void _handleLabelTap(String labelName) {
     final matchedLabel = widget.labels.where((l) => l.name == labelName).firstOrNull;
-    final labelId = matchedLabel?.id;
-    final activeOwner = widget.selectedOwner ?? _localOwner;
-    
-    widget.onJumpToHistory!(
-      labelId,
-      activeOwner == 'All Owners' ? null : activeOwner,
-      _getEffectiveStartDate(),
-      _getEffectiveEndDate(),
-    );
+    final labelId = matchedLabel?.id ?? 0;
+    final start = _getEffectiveStartDate();
+    final end = _getEffectiveEndDate();
+
+    if (widget.onLabelSelected != null) {
+      widget.onLabelSelected!(labelId);
+    }
+    if (widget.onDateRangeSelected != null) {
+      widget.onDateRangeSelected!(start, end);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    Future.microtask(() async {
-      final prefs = await SharedPreferences.getInstance();
-      final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
-      final zaznamityActive = (themeStr == 'zaznamity');
-      if (zaznamityActive != _isZaznamityMode && mounted) {
-        setState(() {
-          _isZaznamityMode = zaznamityActive;
-        });
-      }
-    });
-
     if (!_initializedLabels && widget.labels.isNotEmpty) {
       if (selectedIncomeLabels.isEmpty) {
         for (var l in widget.labels) {
@@ -379,10 +562,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       _initializedLabels = true;
     }
 
-    _loadMultiLabelSettings();
     _computeDataIfNeeded();
 
-    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
     final activeOwner = widget.selectedOwner ?? _localOwner;
     
     final paletteColors = _isZaznamityMode ? [
@@ -460,7 +641,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        'LABELS ANALYTICS',
+                        'MONEY BREAKDOWN',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -471,6 +652,13 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                     ),
                   ),
                   const SizedBox(width: 8),
+                  IconButton(
+                    icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                    onPressed: () => _showMoneyBreakdownInfoModal(context),
+                    tooltip: 'Money Breakdown',
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                  ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -522,9 +710,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                 ],
               ),
               if (!_isCollapsed) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
-                // Row 1: Date Range Picker (Owner dropdown removed from row 1)
+                // Row 1: Date Range Picker
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -751,7 +939,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                 ),
                 const SizedBox(height: 16),
 
-                // Fixed vs Discretionary Card Box with 2 separate rows below the bar
+                // Fixed vs Discretionary Card Box
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -799,7 +987,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
-                              'Fixed: ${currencyFormat.format(_cachedFixedExpenses)} (${fixedRatio.toStringAsFixed(1)}%)',
+                              'Fixed: ${_formatCurrency(_cachedFixedExpenses)} (${fixedRatio.toStringAsFixed(1)}%)',
                               style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF38BDF8) : const Color(0xFF0284C7)),
                             ),
                           ),
@@ -807,7 +995,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           Align(
                             alignment: Alignment.centerRight,
                             child: Text(
-                              'Discretionary: ${currencyFormat.format(_cachedDiscretionaryExpenses)} (${discRatio.toStringAsFixed(1)}%)',
+                              'Discretionary: ${_formatCurrency(_cachedDiscretionaryExpenses)} (${discRatio.toStringAsFixed(1)}%)',
                               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFFBBF24)),
                             ),
                           ),
@@ -872,7 +1060,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                   child: FittedBox(
                                     fit: BoxFit.scaleDown,
                                     child: Text(
-                                      currencyFormat.format(_cachedTotalIncome),
+                                      _formatCurrency(_cachedTotalIncome),
                                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
                                     ),
                                   ),
@@ -933,7 +1121,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                   child: FittedBox(
                                     fit: BoxFit.scaleDown,
                                     child: Text(
-                                      currencyFormat.format(_cachedTotalExpenses),
+                                      _formatCurrency(_cachedTotalExpenses),
                                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
                                     ),
                                   ),
@@ -1052,100 +1240,152 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                 final barColor = paletteColors[index % paletteColors.length];
                                 final double widthFactor = _cachedMaxChartAmount > 0 ? (entry.value / _cachedMaxChartAmount).clamp(0.02, 1.0) : 0.02;
                                 final percentageShare = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
+                                
                                 final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
+                                final shareOfIncomeText = _cachedShareOfIncome[entry.key] ?? '';
+                                final isFlagged = _cachedFlagged30PercentLabels.contains(entry.key);
+                                final budget = _labelBudgetsByName[entry.key];
 
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 12.0),
                                   child: InkWell(
-                                    onTap: () => _handleLabelDrillDown(entry.key),
+                                    onTap: () => _handleLabelTap(entry.key),
                                     borderRadius: BorderRadius.circular(6),
-                                    child: Row(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        SizedBox(
-                                          width: 95,
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.end,
-                                            children: [
-                                              Text(
-                                                entry.key,
-                                                textAlign: TextAlign.right,
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.end,
+                                        Row(
+                                          children: [
+                                            SizedBox(
+                                              width: 105,
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.end,
                                                 children: [
-                                                  Text(
-                                                    '${percentageShare.toStringAsFixed(1)}%',
-                                                    style: TextStyle(
-                                                      fontSize: 10,
-                                                      color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                                                      fontWeight: FontWeight.w500,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 4),
-                                                  Text(
-                                                    '(${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%)',
-                                                    style: TextStyle(
-                                                      fontSize: 9,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: delta <= 0 ? (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)) : (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: LayoutBuilder(
-                                            builder: (context, constraints) {
-                                              const priceTextWidth = 75.0;
-                                              final availableBarArea = constraints.maxWidth - priceTextWidth;
-                                              final computedBarWidth = (availableBarArea * widthFactor).clamp(4.0, availableBarArea);
-
-                                              return Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  SizedBox(
-                                                    width: computedBarWidth,
-                                                    child: Container(
-                                                      height: 18,
-                                                      decoration: BoxDecoration(
-                                                        color: barColor,
-                                                        borderRadius: const BorderRadius.only(
-                                                          topRight: Radius.circular(6),
-                                                          bottomRight: Radius.circular(6),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      if (isFlagged)
+                                                        const Padding(
+                                                          padding: EdgeInsets.only(right: 4.0),
+                                                          child: Icon(Icons.warning_amber_rounded, size: 12, color: Color(0xFFF59E0B)),
+                                                        ),
+                                                      Expanded(
+                                                        child: Text(
+                                                          entry.key,
+                                                          textAlign: TextAlign.right,
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            fontWeight: FontWeight.bold,
+                                                            color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                                          ),
+                                                          overflow: TextOverflow.ellipsis,
                                                         ),
                                                       ),
-                                                    ),
+                                                    ],
                                                   ),
-                                                  SizedBox(
-                                                    width: priceTextWidth,
-                                                    child: FittedBox(
-                                                      fit: BoxFit.scaleDown,
-                                                      alignment: Alignment.centerRight,
-                                                      child: Text(
-                                                        '\$${entry.value.toStringAsFixed(2)}',
-                                                        textAlign: TextAlign.right,
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      Tooltip(
+                                                        message: shareOfIncomeText,
+                                                        child: Text(
+                                                          '${percentageShare.toStringAsFixed(1)}%',
+                                                          style: TextStyle(
+                                                            fontSize: 10,
+                                                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                                                            fontWeight: FontWeight.w500,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        '(${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%)',
                                                         style: TextStyle(
-                                                          fontSize: 12,
+                                                          fontSize: 9,
                                                           fontWeight: FontWeight.bold,
-                                                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                                          color: delta <= 0 ? (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)) : (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
                                                         ),
                                                       ),
-                                                    ),
+                                                    ],
                                                   ),
                                                 ],
-                                              );
-                                            },
-                                          ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: LayoutBuilder(
+                                                builder: (context, constraints) {
+                                                  const priceTextWidth = 75.0;
+                                                  final availableBarArea = constraints.maxWidth - priceTextWidth;
+                                                  final computedBarWidth = (availableBarArea * widthFactor).clamp(4.0, availableBarArea);
+
+                                                  return Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Stack(
+                                                        clipBehavior: Clip.none,
+                                                        children: [
+                                                          SizedBox(
+                                                            width: computedBarWidth,
+                                                            child: Container(
+                                                              height: 18,
+                                                              decoration: BoxDecoration(
+                                                                color: barColor,
+                                                                borderRadius: const BorderRadius.only(
+                                                                  topRight: Radius.circular(6),
+                                                                  bottomRight: Radius.circular(6),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          if (budget != null && budget > 0 && _cachedMaxChartAmount > 0) ...[
+                                                            Positioned(
+                                                              left: ((budget / _cachedMaxChartAmount) * availableBarArea).clamp(0.0, availableBarArea),
+                                                              top: -2,
+                                                              bottom: -2,
+                                                              child: Container(
+                                                                width: 2,
+                                                                color: entry.value > budget ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ],
+                                                      ),
+                                                      SizedBox(
+                                                        width: priceTextWidth,
+                                                        child: FittedBox(
+                                                          fit: BoxFit.scaleDown,
+                                                          alignment: Alignment.centerRight,
+                                                          child: Text(
+                                                            _formatCurrency(entry.value),
+                                                            textAlign: TextAlign.right,
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                          ],
                                         ),
+                                        if (budget != null && budget > 0)
+                                          Padding(
+                                            padding: const EdgeInsets.only(left: 117.0, top: 2.0),
+                                            child: Text(
+                                              'Budget: ${_formatCurrency(entry.value)} / ${_formatCurrency(budget)}',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w600,
+                                                color: entry.value > budget ? const Color(0xFFF87171) : const Color(0xFF34D399),
+                                              ),
+                                            ),
+                                          ),
                                       ],
                                     ),
                                   ),
@@ -1153,7 +1393,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                               }),
                               const SizedBox(height: 8),
                               Container(
-                                margin: const EdgeInsets.only(left: 97),
+                                margin: const EdgeInsets.only(left: 117),
                                 child: Column(
                                   children: [
                                     Container(height: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
@@ -1161,9 +1401,9 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text('\$0', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                        Text('\$${(_cachedMaxChartAmount * 0.5).toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                        Text('\$${_cachedMaxChartAmount.toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                        Text(_formatCurrency(0), style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                        Text(_formatCurrency(_cachedMaxChartAmount * 0.5), style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                        Text(_formatCurrency(_cachedMaxChartAmount), style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                                       ],
                                     ),
                                   ],
@@ -1183,7 +1423,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     ),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(12),
-                                      child: _buildProportionalTreemap(_cachedSortedEntries, paletteColors, currencyFormat),
+                                      child: _buildProportionalTreemap(_cachedSortedEntries, paletteColors),
                                     ),
                                   ),
                                   const SizedBox(height: 20),
@@ -1198,7 +1438,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                       final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
 
                                       return InkWell(
-                                        onTap: () => _handleLabelDrillDown(entry.key),
+                                        onTap: () => _handleLabelTap(entry.key),
                                         borderRadius: BorderRadius.circular(8),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1224,7 +1464,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
                                               ),
                                               Text(
-                                                '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
+                                                '${_formatCurrency(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
                                                 style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                               ),
                                               Text(
@@ -1250,16 +1490,30 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     child: PieChart(
                                       PieChartData(
                                         pieTouchData: PieTouchData(
-                                          touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                                            setState(() {
-                                              if (!event.isInterestedForInteractions ||
-                                                  pieTouchResponse == null ||
-                                                  pieTouchResponse.touchedSection == null) {
-                                                touchedPieIndex = null;
-                                                return;
+                                          touchCallback: (FlTouchEvent event, PieTouchResponse? pieTouchResponse) {
+                                            if (!event.isInterestedForInteractions) return;
+
+                                            if (pieTouchResponse?.touchedSection != null) {
+                                              final index = pieTouchResponse!.touchedSection!.touchedSectionIndex;
+                                              if (index >= 0 && index < _cachedSortedEntries.length) {
+                                                if (touchedPieIndex != index) {
+                                                  setState(() {
+                                                    touchedPieIndex = index;
+                                                  });
+                                                }
                                               }
-                                              touchedPieIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
-                                            });
+                                            }
+
+                                            // Trigger navigation on tap release
+                                            if (event is FlTapUpEvent) {
+                                              if (touchedPieIndex != null && touchedPieIndex! >= 0 && touchedPieIndex! < _cachedSortedEntries.length) {
+                                                final entryName = _cachedSortedEntries[touchedPieIndex!].key;
+                                                setState(() {
+                                                  touchedPieIndex = null;
+                                                });
+                                                _handleLabelTap(entryName);
+                                              }
+                                            }
                                           },
                                         ),
                                         borderData: FlBorderData(show: false),
@@ -1268,7 +1522,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                         sections: List.generate(_cachedSortedEntries.length, (index) {
                                           final entry = _cachedSortedEntries[index];
                                           final isTouched = index == touchedPieIndex;
-                                          final radius = isTouched ? 60.0 : 50.0;
+                                          const radius = 50.0; // Fixed radius so slices never pop out
                                           final color = paletteColors[index % paletteColors.length];
                                           final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
 
@@ -1300,7 +1554,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                       final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
 
                                       return InkWell(
-                                        onTap: () => _handleLabelDrillDown(entry.key),
+                                        onTap: () => _handleLabelTap(entry.key),
                                         borderRadius: BorderRadius.circular(8),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1326,7 +1580,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
                                               ),
                                               Text(
-                                                '${currencyFormat.format(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
+                                                '${_formatCurrency(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
                                                 style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                               ),
                                               Text(
@@ -1356,7 +1610,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   Widget _buildProportionalTreemap(
     List<MapEntry<String, double>> entries,
     List<Color> paletteColors,
-    NumberFormat currencyFormat,
   ) {
     if (entries.isEmpty || _cachedActiveModeTotalSum <= 0) return const SizedBox.shrink();
 
@@ -1373,7 +1626,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
             return Positioned.fromRect(
               rect: node.rect,
               child: InkWell(
-                onTap: () => _handleLabelDrillDown(node.label),
+                onTap: () => _handleLabelTap(node.label),
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(

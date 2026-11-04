@@ -614,7 +614,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
     switch (cardConfig.id) {
       case 'metrics':
         iconData = Icons.dashboard_outlined;
-        tooltip = 'Metrics Overview';
+        tooltip = 'Metrics';
         break;
       case 'future_metrics':
         iconData = Icons.trending_up_outlined;
@@ -622,11 +622,11 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
         break;
       case 'budget':
         iconData = Icons.pie_chart_outline;
-        tooltip = 'Budget Progress';
+        tooltip = 'Budgets';
         break;
       case 'history':
         iconData = Icons.receipt_long_outlined;
-        tooltip = 'Transaction History';
+        tooltip = 'All Zaznams';
         break;
       case 'calendar':
         iconData = Icons.calendar_month_outlined;
@@ -634,11 +634,11 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
         break;
       case 'liabilities_card':
         iconData = Icons.account_balance_wallet_outlined;
-        tooltip = 'Liabilities & Loans';
+        tooltip = 'Liabilities';
         break;
       case 'income_expenses_labels':
         iconData = Icons.bar_chart_outlined;
-        tooltip = 'Label Analytics';
+        tooltip = 'Label Focus';
         break;
       case 'trend_chart':
         iconData = Icons.show_chart_outlined;

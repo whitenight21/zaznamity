@@ -21,22 +21,24 @@ class SelectedLabelFocusCard extends StatefulWidget {
   final VoidCallback onClearDateFilter;
   
   final Function(int? labelId, String? owner, DateTime? start, DateTime? end)? onJumpToHistory;
+  final VoidCallback? onNavigateToWhatIf;
 
   const SelectedLabelFocusCard({
     super.key,
     required this.transactions,
     required this.labels,
     required this.owners,
-    this.startDate,
-    this.endDate,
-    this.selectedOwner,
-    this.selectedLabelId,
+    required this.startDate,
+    required this.endDate,
+    required this.selectedOwner,
+    required this.selectedLabelId,
     required this.onLabelChanged,
     required this.onOwnerChanged,
     required this.onSelectStartDate,
     required this.onSelectEndDate,
     required this.onClearDateFilter,
     this.onJumpToHistory,
+    this.onNavigateToWhatIf,
   });
 
   @override
@@ -50,6 +52,16 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
   String _primaryCurrency = 'USD';
   final NumberFormat _currencyFormatter = NumberFormat('#,##0.00', 'en_US');
   final Map<String, bool> _multiLabelFixedCategories = {};
+  
+  String _lastFingerprint = '';
+  List<TransactionModel> _cachedFilteredTxs = [];
+  double _cachedInflow = 0;
+  double _cachedOutflow = 0;
+  double _cachedPreviousPeriodValue = 0;
+  double _cachedMomPercentage = 0;
+  Map<int, double> _cachedMonthlyTrend12M = {};
+  
+  final Map<String, double> _labelBudgetsByName = {};
 
   @override
   void initState() {
@@ -61,10 +73,14 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
     final prefs = await SharedPreferences.getInstance();
     
     final fixedMap = <String, bool>{};
+    final budgetMap = <String, double>{};
     for (var label in widget.labels) {
       fixedMap[label.name] = prefs.getBool('set_multilabel_fixed_${label.name}') ?? false;
+      final bVal = prefs.getDouble('budget_label_${label.name}');
+      if (bVal != null) budgetMap[label.name] = bVal;
     }
 
+    if (!mounted) return;
     setState(() {
       _singleLabelDefaultRange = prefs.getString('set_singleLabel_range') ?? '';
       final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
@@ -72,11 +88,25 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
       _isCollapsed = prefs.getBool('set_selectedLabelFocus_collapsed') ?? false;
       _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
       _multiLabelFixedCategories.addAll(fixedMap);
+      _labelBudgetsByName.addAll(budgetMap);
     });
+  }
+
+  Future<void> _saveBudget(String labelName, double amount) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('budget_label_$labelName', amount);
+    if (!mounted) return;
+    setState(() {
+      _labelBudgetsByName[labelName] = amount;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Budget for "$labelName" set to ${_formatAmount(amount)}')),
+    );
   }
 
   Future<void> _toggleCollapse() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _isCollapsed = !_isCollapsed;
     });
@@ -137,7 +167,147 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
     return DateTime.now();
   }
 
-  void _showLabelAnalysisInfoModal(BuildContext context) {
+  String _buildFingerprint() {
+    final sb = StringBuffer();
+    sb.write('${widget.transactions.length}_');
+    sb.write('${widget.selectedLabelId}_');
+    sb.write('${widget.selectedOwner}_');
+    sb.write('${widget.startDate}_${widget.endDate}_');
+    return sb.toString();
+  }
+
+  void _computeMetricsIfNeeded() {
+    final fp = _buildFingerprint();
+    if (_lastFingerprint == fp) return;
+
+    final effectiveStartDate = _getComputedStartDate();
+    final effectiveEndDate = _getComputedEndDate();
+
+    final filtered = widget.transactions.where((tx) {
+      final txDate = DateTime.tryParse(tx.createdAt);
+      if (txDate == null) return false;
+      
+      if (effectiveStartDate != null) {
+        final startClean = DateTime(effectiveStartDate.year, effectiveStartDate.month, effectiveStartDate.day);
+        if (txDate.isBefore(startClean)) return false;
+      }
+
+      if (effectiveEndDate != null) {
+        final endClean = DateTime(effectiveEndDate.year, effectiveEndDate.month, effectiveEndDate.day, 23, 59, 59);
+        if (txDate.isAfter(endClean)) return false;
+      }
+
+      if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) return false;
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) return false;
+      return true;
+    }).toList();
+
+    double inf = 0;
+    double out = 0;
+    for (var tx in filtered) {
+      if (tx.isConfirmed == 1) {
+        if (tx.type == 'income') {
+          inf += tx.amount;
+        } else {
+          out += tx.amount;
+        }
+      }
+    }
+
+    bool isIncomeFocus = inf >= out;
+
+    int durationDays = effectiveStartDate != null && effectiveEndDate != null 
+        ? effectiveEndDate.difference(effectiveStartDate).inDays + 1 
+        : 30;
+    if (durationDays < 1) durationDays = 1;
+
+    double prevPeriodValue = 0.0;
+    if (effectiveStartDate != null && effectiveEndDate != null) {
+      final prevStart = effectiveStartDate.subtract(Duration(days: durationDays));
+      final prevEnd = effectiveStartDate.subtract(const Duration(seconds: 1));
+      
+      for (var tx in widget.transactions) {
+        final txDate = DateTime.tryParse(tx.createdAt);
+        if (txDate == null || tx.isConfirmed != 1) continue;
+        if (txDate.isAfter(prevStart.subtract(const Duration(seconds: 1))) && txDate.isBefore(prevEnd.add(const Duration(seconds: 1)))) {
+          if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) continue;
+          if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) continue;
+          
+          if (isIncomeFocus && tx.type == 'income') {
+            prevPeriodValue += tx.amount;
+          } else if (!isIncomeFocus && tx.type == 'expense') {
+            prevPeriodValue += tx.amount;
+          }
+        }
+      }
+    }
+
+    double activeCurrentVal = isIncomeFocus ? inf : out;
+    double momPct = 0.0;
+    if (prevPeriodValue > 0) {
+      momPct = ((activeCurrentVal - prevPeriodValue) / prevPeriodValue.abs()) * 100;
+    } else if (activeCurrentVal > 0) {
+      momPct = 100.0;
+    }
+
+    final now = DateTime.now();
+    Map<int, double> monthly12M = {};
+    for (int i = 1; i <= 12; i++) monthly12M[i] = 0.0;
+
+    for (var tx in widget.transactions) {
+      final txDate = DateTime.tryParse(tx.createdAt);
+      if (txDate == null || tx.isConfirmed != 1) continue;
+      if (isIncomeFocus && tx.type != 'income') continue;
+      if (!isIncomeFocus && tx.type != 'expense') continue;
+      
+      if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) continue;
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) continue;
+      
+      final diffMonths = (now.year - txDate.year) * 12 + (now.month - txDate.month);
+      if (diffMonths >= 0 && diffMonths < 12) {
+        monthly12M[txDate.month] = (monthly12M[txDate.month] ?? 0.0) + tx.amount;
+      }
+    }
+
+    _cachedFilteredTxs = filtered;
+    _cachedInflow = inf;
+    _cachedOutflow = out;
+    _cachedPreviousPeriodValue = prevPeriodValue;
+    _cachedMomPercentage = momPct;
+    _cachedMonthlyTrend12M = monthly12M;
+    _lastFingerprint = fp;
+  }
+
+  void _showSetBudgetDialog(String labelName) {
+    final controller = TextEditingController(text: (_labelBudgetsByName[labelName] ?? 0.0).toStringAsFixed(2));
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+        title: Text('Set Budget for $labelName', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
+        content: TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+          decoration: const InputDecoration(labelText: 'Monthly Target Amount', border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),
+            onPressed: () {
+              final val = double.tryParse(controller.text) ?? 0.0;
+              _saveBudget(labelName, val);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Save Budget'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLabelFocusInfoModal(BuildContext context) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -150,40 +320,25 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Label Analysis',
-                  style: TextStyle(
-                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                    fontWeight: FontWeight.bold,
-                  ),
+                  'Label Focus',
+                  style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold),
                 ),
               ),
             ],
           ),
           content: SingleChildScrollView(
             child: Text(
-              'Label Analysis provides insights into your spending patterns and helps you make informed financial decisions.\n\n'
-              '• View detailed information about past Zaznams for each label.\n'
-              '• Analyze trends and identify areas where you can optimize your finances.\n'
-              '• Use the date range filter to focus on specific periods and understand your spending behavior.\n'
-              '• The analysis includes inflow, outflow, net amounts, and projected spending based on current trends.\n'
-              '• You can also see the contribution share of each label to your overall spending, helping you prioritize your financial goals.\n'
-              '• Use the "Display below all [#] Zaznams" feature to view detailed records for the selected label and date range in "All Zaznams".\n'
-              '• The system automatically detects fixed and discretionary labels, providing a clearer picture of your essential vs. non-essential spending.\n'
-              '• The analyis only takes into account past Zaznams and spending data. To visualize future spending, view the "Future Analytics" card.\n\n',
-              style: TextStyle(
-                fontSize: 13,
-                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
-                height: 1.4,
-              ),
+              '“What is going on with this one label?” - Label Focus provides deep analytical insights into your category patterns[cite: 16].\n\n'
+              '• Type-Aware Metrics: Dynamically adapts metrics for both Income and Expense categories[cite: 17].\n'
+              '• Granular stats: Transaction counts, averages, frequency intervals, and anomaly detection[cite: 16].\n'
+              '• Seasonality & Pace: Daily cumulative pace charts and 12-month historical heatmaps[cite: 16].\n'
+              '• Recurring & What-If: Next occurrence forecasts and budget optimization simulations[cite: 16].',
+              style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.4),
             ),
           ),
           actions: <Widget>[
             ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), foregroundColor: Colors.white),
               child: const Text('Got it'),
               onPressed: () => Navigator.of(context).pop(),
             ),
@@ -209,11 +364,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
         content: Text(description, style: TextStyle(fontSize: 13, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), height: 1.4)),
         actions: [
           ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFA855F7),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Got it'),
           ),
@@ -224,189 +375,74 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
 
   @override
   Widget build(BuildContext context) {
-    Future.microtask(() async {
-      final prefs = await SharedPreferences.getInstance();
-      final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
-      final zaznamityActive = (themeStr == 'zaznamity');
-      final curr = prefs.getString('primaryCurrency') ?? 'USD';
-      if ((zaznamityActive != _isZaznamityMode || curr != _primaryCurrency) && mounted) {
-        setState(() {
-          _isZaznamityMode = zaznamityActive;
-          _primaryCurrency = curr;
-        });
-      }
-    });
+    _computeMetricsIfNeeded();
 
     final effectiveStartDate = _getComputedStartDate();
     final effectiveEndDate = _getComputedEndDate();
 
-    final filteredTxs = widget.transactions.where((tx) {
-      final txDate = DateTime.tryParse(tx.createdAt);
-      if (txDate == null) return true;
-      
-      if (effectiveStartDate != null) {
-        final startClean = DateTime(effectiveStartDate.year, effectiveStartDate.month, effectiveStartDate.day);
-        if (txDate.isBefore(startClean)) return false;
-      }
-
-      if (effectiveEndDate != null) {
-        final endClean = DateTime(effectiveEndDate.year, effectiveEndDate.month, effectiveEndDate.day, 23, 59, 59);
-        if (txDate.isAfter(endClean)) return false;
-      }
-
-      if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) return false;
-      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) return false;
-      return true;
-    }).toList();
-
-    double inflow = 0;
-    double outflow = 0;
-    for (var tx in filteredTxs) {
-      if (tx.isConfirmed == 1) {
-        if (tx.type == 'income') {
-          inflow += tx.amount;
-        } else {
-          outflow += tx.amount;
-        }
-      }
-    }
-    double net = inflow - outflow;
-
-    final allCardFilteredTxs = widget.transactions.where((tx) {
-      final txDate = DateTime.tryParse(tx.createdAt);
-      if (txDate == null) return true;
-      
-      if (effectiveStartDate != null) {
-        final startClean = DateTime(effectiveStartDate.year, effectiveStartDate.month, effectiveStartDate.day);
-        if (txDate.isBefore(startClean)) return false;
-      }
-
-      if (effectiveEndDate != null) {
-        final endClean = DateTime(effectiveEndDate.year, effectiveEndDate.month, effectiveEndDate.day, 23, 59, 59);
-        if (txDate.isAfter(endClean)) return false;
-      }
-
-      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) return false;
-      return true;
-    }).toList();
-
-    double totalGlobalInflow = 0;
-    double totalGlobalOutflow = 0;
-    for (var tx in allCardFilteredTxs) {
-      if (tx.isConfirmed == 1) {
-        if (tx.type == 'income') {
-          totalGlobalInflow += tx.amount;
-        } else {
-          totalGlobalOutflow += tx.amount;
-        }
-      }
-    }
-
-    double outflowPercentage = totalGlobalOutflow > 0 ? (outflow / totalGlobalOutflow) * 100 : 0.0;
-    double inflowPercentage = totalGlobalInflow > 0 ? (inflow / totalGlobalInflow) * 100 : 0.0;
-
-    // Projected Label Burn & Recurring Projection Calculation
-    final now = DateTime.now();
-    final currentMonthTxs = widget.transactions.where((tx) {
-      final txDate = DateTime.tryParse(tx.createdAt);
-      if (txDate == null || tx.isConfirmed != 1) return false;
-      if (txDate.year == now.year && txDate.month == now.month) {
-        if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) return false;
-        if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) return false;
-        return true;
-      }
-      return false;
-    }).toList();
-
-    double currentMonthLabelOutflow = 0;
-    for (var tx in currentMonthTxs) {
-      if (tx.type == 'expense') currentMonthLabelOutflow += tx.amount;
-    }
-
-    // Global monthly total outflow for contribution share
-    double globalCurrentMonthOutflow = 0;
-    for (var tx in widget.transactions) {
-      final txDate = DateTime.tryParse(tx.createdAt);
-      if (txDate == null || tx.isConfirmed != 1 || tx.type != 'expense') continue;
-      if (txDate.year == now.year && txDate.month == now.month) {
-        if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) continue;
-        globalCurrentMonthOutflow += tx.amount;
-      }
-    }
-
-    double labelBurnContributionShare = globalCurrentMonthOutflow > 0 ? (currentMonthLabelOutflow / globalCurrentMonthOutflow) * 100 : 0.0;
-
-    int currentDay = now.day;
-    int daysInMonth = DateTime(now.year, now.month + 1, 0).day;
-    double projectedMonthEndSpend = currentDay > 0 ? (currentMonthLabelOutflow / currentDay) * daysInMonth : currentMonthLabelOutflow;
-
-    // Label name resolution & Fixed/Discretionary tag determination
-    String selectedLabelName = 'Selected Label';
+    String selectedLabelName = 'All Labels';
     if (widget.selectedLabelId != null) {
       final matchLbl = widget.labels.where((l) => l.id == widget.selectedLabelId).firstOrNull;
-      if (matchLbl != null) selectedLabelName = matchLbl.name;
+      if (matchLbl != null) {
+        selectedLabelName = matchLbl.name;
+      } else {
+        selectedLabelName = 'General';
+      }
     }
     bool isFixedLabel = _isFixedExpenseLabelByName(selectedLabelName);
 
-    int durationDays = effectiveStartDate != null && effectiveEndDate != null 
-        ? effectiveEndDate.difference(effectiveStartDate).inDays + 1 
-        : 30;
-    if (durationDays < 1) durationDays = 1;
+    bool isIncomeFocus = _cachedInflow >= _cachedOutflow;
+    double primaryFocusAmount = isIncomeFocus ? _cachedInflow : _cachedOutflow;
 
-    // Seasonality Heatmap Data Calculation (Last 12 Months)
-    Map<int, double> monthlySpend12M = {};
-    for (int i = 1; i <= 12; i++) {
-      monthlySpend12M[i] = 0.0;
-    }
-    for (var tx in widget.transactions) {
-      final txDate = DateTime.tryParse(tx.createdAt);
-      if (txDate == null || tx.isConfirmed != 1 || tx.type != 'expense') continue;
-      if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) continue;
-      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) continue;
-      
-      // Check if within the last 12 months from now
-      final differenceInMonths = (now.year - txDate.year) * 12 + (now.month - txDate.month);
-      if (differenceInMonths >= 0 && differenceInMonths < 12) {
-        monthlySpend12M[txDate.month] = (monthlySpend12M[txDate.month] ?? 0.0) + tx.amount;
+    int txCount = _cachedFilteredTxs.where((tx) => isIncomeFocus ? tx.type == 'income' : tx.type == 'expense').length;
+    double avgPerTx = txCount > 0 ? primaryFocusAmount / txCount : 0.0;
+    
+    double largestTx = 0.0;
+    for (var tx in _cachedFilteredTxs) {
+      if ((isIncomeFocus && tx.type == 'income') || (!isIncomeFocus && tx.type == 'expense')) {
+        if (tx.amount > largestTx) largestTx = tx.amount;
       }
     }
-    double maxMonthlySpend = monthlySpend12M.values.fold(1.0, (prev, val) => val > prev ? val : prev);
 
-    // Analytics: Top Spending/Income Contributors (Breakdown by Description)
-    Map<String, double> descriptionTotals = {};
-    for (var tx in filteredTxs) {
-      if (tx.isConfirmed == 1 && tx.description.isNotEmpty) {
-        descriptionTotals[tx.description] = (descriptionTotals[tx.description] ?? 0.0) + tx.amount;
+    String frequencyStr = 'N/A';
+    if (txCount > 1) {
+      final typeFilteredTxs = _cachedFilteredTxs.where((tx) => isIncomeFocus ? tx.type == 'income' : tx.type == 'expense').toList();
+      final sortedDates = typeFilteredTxs.map((t) => DateTime.tryParse(t.createdAt) ?? DateTime.now()).toList()..sort();
+      if (sortedDates.length >= 2) {
+        final totalSpanDays = sortedDates.last.difference(sortedDates.first).inDays;
+        final avgInterval = totalSpanDays / (sortedDates.length - 1);
+        frequencyStr = 'every ~${avgInterval.round()} days';
       }
     }
-    var topContributors = descriptionTotals.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    var top3Contributors = topContributors.take(3).toList();
 
-    // Analytics: Period-over-Period (MoM) Trend Indicator
-    double previousPeriodNet = 0.0;
-    DateTime? prevStart;
-    DateTime? prevEnd;
-    if (effectiveStartDate != null && effectiveEndDate != null) {
-      prevStart = effectiveStartDate.subtract(Duration(days: durationDays));
-      prevEnd = effectiveStartDate.subtract(const Duration(days: 1));
-      
-      for (var tx in widget.transactions) {
-        final txDate = DateTime.tryParse(tx.createdAt);
-        if (txDate == null) continue;
-        if (txDate.isAfter(prevStart.subtract(const Duration(seconds: 1))) && txDate.isBefore(prevEnd.add(const Duration(days: 1)))) {
-          if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) continue;
-          if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) continue;
-          if (tx.isConfirmed == 1) {
-            previousPeriodNet += (tx.type == 'income' ? tx.amount : -tx.amount);
-          }
-        }
+    String nextOccurrenceStr = 'None predicted';
+    if (txCount > 0) {
+      final typeFilteredTxs = _cachedFilteredTxs.where((tx) => isIncomeFocus ? tx.type == 'income' : tx.type == 'expense').toList();
+      final sortedDates = typeFilteredTxs.map((t) => DateTime.tryParse(t.createdAt) ?? DateTime.now()).toList()..sort();
+      if (sortedDates.length >= 2) {
+        final lastInterval = sortedDates.last.difference(sortedDates[sortedDates.length - 2]).inDays;
+        final nextDate = sortedDates.last.add(Duration(days: lastInterval > 0 ? lastInterval : 30));
+        nextOccurrenceStr = DateFormat('MMM dd, yyyy').format(nextDate);
       }
     }
-    double momDifference = net != 0 ? ((previousPeriodNet - net) / net.abs()) * 100 : 0.0;
+
+    List<TransactionModel> anomalies = _cachedFilteredTxs.where((tx) => 
+      ((isIncomeFocus && tx.type == 'income') || (!isIncomeFocus && tx.type == 'expense')) && 
+      avgPerTx > 0 && tx.amount > (avgPerTx * 1.5)
+    ).toList();
+
+    double labelBudget = _labelBudgetsByName[selectedLabelName] ?? 0.0;
+    double budgetProgressRatio = labelBudget > 0 ? (primaryFocusAmount / labelBudget).clamp(0.0, 1.0) : 0.0;
+
+    double potentialImpactYearly = primaryFocusAmount * 0.20 * 12;
+
+    final last5Txs = List<TransactionModel>.from(_cachedFilteredTxs)
+      ..sort((a, b) => (DateTime.tryParse(b.createdAt) ?? DateTime.now()).compareTo(DateTime.tryParse(a.createdAt) ?? DateTime.now()));
+    final top5Recent = last5Txs.take(5).toList();
 
     final bool hasDateFilter = effectiveStartDate != null || effectiveEndDate != null;
     final displayOwner = (widget.selectedOwner == null || widget.selectedOwner!.isEmpty) ? 'All Owners' : widget.selectedOwner!;
+    double maxMonthlyAmount = _cachedMonthlyTrend12M.values.fold(1.0, (prev, val) => val > prev ? val : prev);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -420,28 +456,13 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
               ? BoxDecoration(
                   color: Colors.black,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
+                  border: Border.all(color: const Color(0xFF582F95).withValues(alpha: 0.5), width: 1.2),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 6))],
                 )
               : BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
                 ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -458,28 +479,22 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerLeft,
                             child: Text(
-                              'LABEL ANALYSIS ',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                                letterSpacing: 0.8,
-                              ),
+                              'LABEL FOCUS',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95), letterSpacing: 0.8),
                             ),
                           ),
                         ),
                         const SizedBox(width: 4),
                         IconButton(
                           icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
-                          onPressed: () => _showLabelAnalysisInfoModal(context),
-                          tooltip: 'Label Analysis',
+                          onPressed: () => _showLabelFocusInfoModal(context),
+                          tooltip: 'Label Focus Info',
                           constraints: const BoxConstraints(),
                           padding: EdgeInsets.zero,
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -496,14 +511,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                           children: [
                             Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                             const SizedBox(width: 4),
-                            Text(
-                              displayOwner,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
-                              ),
-                            ),
+                            Text(displayOwner, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155))),
                           ],
                         ),
                       ),
@@ -520,7 +528,6 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                           ),
                           onPressed: _toggleCollapse,
                           icon: Icon(_isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded, size: 16),
-                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
                         ),
                       ),
                     ],
@@ -541,69 +548,45 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                               height: 44,
                               decoration: BoxDecoration(
                                 color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.horizontal(
-                                  left: const Radius.circular(10),
-                                  right: hasDateFilter ? Radius.zero : const Radius.circular(10),
-                                ),
+                                borderRadius: BorderRadius.horizontal(left: const Radius.circular(10), right: hasDateFilter ? Radius.zero : const Radius.circular(10)),
                                 border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                               ),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: widget.onSelectStartDate,
-                                  borderRadius: BorderRadius.horizontal(
-                                    left: const Radius.circular(10),
-                                    right: hasDateFilter ? Radius.zero : const Radius.circular(10),
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            hasDateFilter
-                                                ? '${effectiveStartDate != null ? DateFormat('MM/dd').format(effectiveStartDate) : '...'} - ${effectiveEndDate != null ? DateFormat('MM/dd').format(effectiveEndDate) : '...'}'
-                                                : 'Select Date Range',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155)) : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)),
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
+                              child: InkWell(
+                                onTap: widget.onSelectStartDate,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          hasDateFilter
+                                              ? '${effectiveStartDate != null ? DateFormat('MM/dd').format(effectiveStartDate) : '...'} - ${effectiveEndDate != null ? DateFormat('MM/dd').format(effectiveEndDate) : '...'}'
+                                              : 'Select Date Range',
+                                          style: TextStyle(fontSize: 11, color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155)) : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)), fontWeight: FontWeight.bold),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? Colors.white38 : const Color(0xFF94A3B8)),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                          if (hasDateFilter) ...[
-                            const SizedBox(width: 1),
+                          if (hasDateFilter)
                             Container(
                               height: 44,
                               width: 36,
                               decoration: BoxDecoration(
                                 color: _isZaznamityMode ? const Color(0xFF3D256B) : const Color(0xFFE2E8F0),
                                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                               ),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: widget.onClearDateFilter,
-                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                                  child: const Center(
-                                    child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171)),
-                                  ),
-                                ),
+                              child: InkWell(
+                                onTap: widget.onClearDateFilter,
+                                child: const Center(child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171))),
                               ),
                             ),
-                          ],
                         ],
                       ),
                     ),
@@ -629,10 +612,10 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                                   isDense: true,
                                   isExpanded: true,
                                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                  hint: Text('All Labels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8))),
+                                  hint: Text('All Labels', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8))),
                                   items: [
-                                    DropdownMenuItem<int?>(value: null, child: Text('All Labels', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87))),
-                                    ...widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))),
+                                    const DropdownMenuItem<int?>(value: null, child: Text('All Labels')),
+                                    ...widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))),
                                   ],
                                   onChanged: widget.onLabelChanged,
                                 ),
@@ -653,15 +636,9 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                       child: InkWell(
                         onTap: () {
                           if (widget.onJumpToHistory != null) {
-                            widget.onJumpToHistory!(
-                              widget.selectedLabelId, 
-                              (widget.selectedOwner == 'All Owners' ? null : widget.selectedOwner), 
-                              effectiveStartDate, 
-                              effectiveEndDate,
-                            );
+                            widget.onJumpToHistory!(widget.selectedLabelId, (widget.selectedOwner == 'All Owners' ? null : widget.selectedOwner), effectiveStartDate, effectiveEndDate);
                           }
                         },
-                        borderRadius: BorderRadius.circular(10),
                         child: Container(
                           height: 44,
                           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -672,29 +649,13 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                           ),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              Text(
-                                'Display below all',
-                                style: TextStyle(
-                                  color: _isZaznamityMode ? const Color(0xFFC084FC) : const Color(0xFF582F95),
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              Text('Display all records', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC084FC) : const Color(0xFF582F95), fontSize: 9.5, fontWeight: FontWeight.w600)),
                               const SizedBox(height: 1),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
-                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(
-                                    '${filteredTxs.length} Zaznams',
-                                    style: TextStyle(
-                                      color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
+                                  Text('${_cachedFilteredTxs.length} Zaznams', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 13, fontWeight: FontWeight.bold)),
                                   const SizedBox(width: 3),
                                   Icon(Icons.arrow_forward_ios, size: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                 ],
@@ -707,123 +668,173 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                   ],
                 ),
                 const SizedBox(height: 16),
+
+                // Type-Aware Main Display (Earnings vs. Spending)
                 Center(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            'NET BALANCE',
-                            style: TextStyle(
-                              color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
+                          Text('TOTAL ${isIncomeFocus ? 'EARNINGS' : 'SPENDING'} FOR $selectedLabelName'.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                           const SizedBox(width: 4),
                           InkWell(
-                            onTap: () => _showInfoModal(
-                              context,
-                              'Net Balance Mechanics',
-                              'The net cash flow resulting from total inflows minus total outflows filtered for the selected single label and date range.',
-                            ),
+                            onTap: () => _showInfoModal(context, isIncomeFocus ? 'Total Earnings' : 'Total Spending', 'Total amount for this specific label over the selected timeframe[cite: 16].'),
                             child: Icon(Icons.info_outline, size: 13, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
+                      Text(_formatAmount(primaryFocusAmount), style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                      const SizedBox(height: 4),
                       Text(
-                        _formatAmount(net),
+                        'vs. Prev Period: ${_formatAmount(_cachedPreviousPeriodValue)} (${_cachedMomPercentage >= 0 ? '+' : ''}${_cachedMomPercentage.toStringAsFixed(1)}%)',
                         style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                          fontSize: 11, 
+                          fontWeight: FontWeight.bold, 
+                          color: isIncomeFocus 
+                              ? (_cachedMomPercentage >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171))
+                              : (_cachedMomPercentage <= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171)),
                         ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // Granular Stats Grid
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('INFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
-                            const SizedBox(width: 3),
-                            InkWell(
-                              onTap: () => _showInfoModal(
-                                context,
-                                'Inflows & Share',
-                                'Total incoming transaction amounts associated with this label, accompanied by its percentage share of global inflows.',
-                              ),
-                              child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text('+${_formatAmount(inflow)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
-                        const SizedBox(height: 2),
-                        Text('${inflowPercentage.toStringAsFixed(1)}% of total', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B))),
-                      ],
-                    ),
-                    Container(height: 35, width: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                    Column(
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('OUTFLOWS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
-                            const SizedBox(width: 3),
-                            InkWell(
-                              onTap: () => _showInfoModal(
-                                context,
-                                'Outflows & Share',
-                                'Total outgoing spending associated with this label, alongside its percentage share of global portfolio outflows.',
-                              ),
-                              child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text('-${_formatAmount(outflow)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFFF87171))),
-                        const SizedBox(height: 2),
-                        Text('${outflowPercentage.toStringAsFixed(1)}% of total', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B))),
-                      ],
-                    ),
+                    Text('GRANULAR METRICS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
                   ],
                 ),
-                
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          Column(
+                            children: [
+                              Text('Count', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
+                              Text('$txCount', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                            ],
+                          ),
+                          Column(
+                            children: [
+                              Text('Avg / Tx', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
+                              Text(_formatAmount(avgPerTx), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                            ],
+                          ),
+                          Column(
+                            children: [
+                              Text(isIncomeFocus ? 'Largest Inflow' : 'Largest Tx', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
+                              Text(_formatAmount(largestTx), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171))),
+                            ],
+                          ),
+                          Column(
+                            children: [
+                              Text('Frequency', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
+                              Text(frequencyStr, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 16),
 
-                // NEW SECTION: Seasonality Heatmap (12-Month Grid)
+                // Budget / Target Progress
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
-                        Text(
-                          'SEASONALITY HEATMAP (12M)',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
-                        ),
-                        const SizedBox(width: 4),
-                        InkWell(
-                          onTap: () => _showInfoModal(
-                            context,
-                            'Seasonality Heatmap',
-                            'A mini 12-month historical spending grid for this specific label to pinpoint annual spending spikes (e.g., insurance renewals or holiday shopping).',
-                          ),
-                          child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                        ),
+                        Text(isIncomeFocus ? 'TARGET PROGRESS' : 'BUDGET PROGRESS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
                       ],
                     ),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                      onPressed: () => _showSetBudgetDialog(selectedLabelName),
+                      icon: Icon(Icons.edit, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                      label: Text(isIncomeFocus ? 'Set Target' : 'Set Budget', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(labelBudget > 0 ? '${isIncomeFocus ? 'Earned' : 'Spent'}: ${_formatAmount(primaryFocusAmount)} / ${_formatAmount(labelBudget)}' : 'No target set for this label', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                          Text(labelBudget > 0 ? '${(budgetProgressRatio * 100).toStringAsFixed(0)}%' : '', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : (budgetProgressRatio > 0.9 ? const Color(0xFFF87171) : const Color(0xFF34D399)))),
+                        ],
+                      ),
+                      if (labelBudget > 0) ...[
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: budgetProgressRatio,
+                            backgroundColor: _isZaznamityMode ? Colors.white12 : Colors.grey.shade200,
+                            color: isIncomeFocus ? const Color(0xFF34D399) : (budgetProgressRatio > 0.9 ? const Color(0xFFF87171) : const Color(0xFFA855F7)),
+                            minHeight: 8,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Recurring Forecast
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('RECURRING FORECAST', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Next Expected Occurrence', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
+                      Text(nextOccurrenceStr, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 12-Month Seasonality Heatmap
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('12-MONTH SEASONALITY DISTRIBUTION', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -838,82 +849,41 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: List.generate(12, (index) {
                       final monthNum = index + 1;
-                      final monthSpend = monthlySpend12M[monthNum] ?? 0.0;
-                      final intensity = (monthSpend / maxMonthlySpend).clamp(0.1, 1.0);
-                      final monthAbbr = DateFormat('MMM').format(DateTime(2026, monthNum, 1))[0]; // first letter of month
+                      final monthAmount = _cachedMonthlyTrend12M[monthNum] ?? 0.0;
+                      final intensity = (monthAmount / maxMonthlyAmount).clamp(0.1, 1.0);
+                      final monthAbbr = DateFormat('MMM').format(DateTime(2026, monthNum, 1))[0];
 
                       return Tooltip(
-                        message: '${DateFormat('MMM').format(DateTime(2026, monthNum, 1))}: ${_formatAmount(monthSpend)}',
+                        message: '${DateFormat('MMM').format(DateTime(2026, monthNum, 1))}: ${_formatAmount(monthAmount)}',
                         child: Column(
                           children: [
                             Container(
                               width: 22,
                               height: 36,
                               decoration: BoxDecoration(
-                                color: monthSpend > 0
-                                    ? (_isZaznamityMode 
-                                        ? const Color(0xFFA855F7).withValues(alpha: intensity)
-                                        : const Color(0xFF582F95).withValues(alpha: intensity))
+                                color: monthAmount > 0
+                                    ? (isIncomeFocus 
+                                        ? const Color(0xFF34D399).withValues(alpha: intensity)
+                                        : (_isZaznamityMode ? const Color(0xFFA855F7).withValues(alpha: intensity) : const Color(0xFF582F95).withValues(alpha: intensity)))
                                     : (_isZaznamityMode ? Colors.white10 : Colors.grey.shade200),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              monthAbbr,
-                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
-                            ),
+                            Text(monthAbbr, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
                           ],
                         ),
                       );
                     }),
                   ),
                 ),
+                const SizedBox(height: 16),
 
-                const SizedBox(height: 12),
-
-                // NEW SECTION: Forecasted Label Burn & Recurring Projection
+                // Cumulative Pace Chart
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          'LABEL BURN & FORECAST',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
-                        ),
-                        const SizedBox(width: 4),
-                        InkWell(
-                          onTap: () => _showInfoModal(
-                            context,
-                            'Label Burn & Forecast',
-                            'Projects expected total spend for the remainder of the month based on current day-to-day run-rate velocity.\n\n'
-                            'Tag: Displays whether the label is classified as Fixed (mandatory overhead) or Discretionary (flexible spending).\n\n'
-                            'Contribution: Shows what percentage this label contributes to your overall monthly outflow.',
-                          ),
-                          child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: isFixedLabel 
-                            ? (_isZaznamityMode ? const Color(0xFF3B1E63) : const Color(0xFFE2E8F0))
-                            : (_isZaznamityMode ? const Color(0xFF1E3A8A).withValues(alpha: 0.4) : const Color(0xFFDBEAFE)),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        isFixedLabel ? 'FIXED' : 'DISCRETIONARY',
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                          color: isFixedLabel
-                              ? (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))
-                              : (_isZaznamityMode ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8)),
-                        ),
-                      ),
-                    ),
+                    Text('CUMULATIVE PACE CHART', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -924,160 +894,127 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Column(
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Projected Month-End', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
-                          const SizedBox(height: 2),
-                          Text(_formatAmount(projectedMonthEndSpend), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                          Text('Current Run Rate vs Target', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
+                          Text(_formatAmount(primaryFocusAmount), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                         ],
                       ),
-                      Container(height: 25, width: 1, color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                      Column(
-                        children: [
-                          Text('Burn Contribution', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
-                          const SizedBox(height: 2),
-                          Text('${labelBurnContributionShare.toStringAsFixed(1)}% of burn', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                        ],
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: labelBudget > 0 ? (primaryFocusAmount / labelBudget).clamp(0.0, 1.0) : 0.5,
+                          backgroundColor: _isZaznamityMode ? Colors.white12 : Colors.grey.shade200,
+                          color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFF38BDF8),
+                          minHeight: 6,
+                        ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 16),
 
-                const SizedBox(height: 12),
-
-                // SECTION 2: Top Spending/Income Contributors Card
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'TOP CONTRIBUTORS',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
-                        ),
-                        const SizedBox(width: 4),
-                        InkWell(
-                          onTap: () => _showInfoModal(
-                            context,
-                            'Top Contributors',
-                            'Aggregates and highlights the top 3 description drivers ranked by total amount within this label.',
-                          ),
-                          child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                        ),
-                      ],
+                // Outlier / Anomaly Detection
+                if (anomalies.isNotEmpty) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(isIncomeFocus ? 'INCOME SURGE ANOMALIES (${anomalies.length})' : 'OUTLIER ANOMALIES DETECTED (${anomalies.length})', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171), letterSpacing: 0.5)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: (isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171)).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: (isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171)).withValues(alpha: 0.4)),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
+                    child: Column(
+                      children: anomalies.take(2).map((tx) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(tx.description, style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                            Text(_formatAmount(tx.amount), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171))),
+                          ],
+                        ),
+                      )).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // What-If Link / Optimization Banner
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    color: _isZaznamityMode ? const Color(0xFF3B1E63) : const Color(0xFFEDE9FE),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                  ),
-                  child: top3Contributors.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Center(
-                            child: Text('No transactions recorded', style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: _isZaznamityMode ? Colors.white38 : const Color(0xFF94A3B8))),
-                          ),
-                        )
-                      : Column(
-                          children: top3Contributors.map((entry) {
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 6.0),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      entry.key,
-                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    _formatAmount(entry.value),
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // SECTION 3: Period-over-Period (MoM) Trend Indicator Card
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'PERIOD OVER PERIOD TREND (PoP)',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5),
-                        ),
-                        const SizedBox(width: 4),
-                        InkWell(
-                          onTap: () => _showInfoModal(
-                            context,
-                            'Period-over-Period Trend',
-                            'Compares net cash flow of the current selected period (date range) against the exact preceding period (date range).',
-                          ),
-                          child: Icon(Icons.info_outline, size: 12, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                    border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.4)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'PoP Net :  ${_formatAmount(previousPeriodNet)}',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(isIncomeFocus ? 'What if income increases 20%?' : 'What if I cut this 20%?', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                            const SizedBox(height: 2),
+                            Text('${isIncomeFocus ? 'Adds' : 'Saves'} ${_formatAmount(potentialImpactYearly)} / year', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669))),
+                          ],
+                        ),
                       ),
-                      Row(
-                        children: [
-                          Text(
-                            'Current Net :  ',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                      if (widget.onNavigateToWhatIf != null)
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFA855F7),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            minimumSize: Size.zero,
                           ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: momDifference >= 0 ? const Color(0xFF34D399).withValues(alpha: 0.2) : const Color(0xFFF87171).withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              '${momDifference >= 0 ? '+' : ''}${momDifference.toStringAsFixed(1)}%',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: momDifference >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                          onPressed: widget.onNavigateToWhatIf,
+                          child: const Text('What-If Lab', style: TextStyle(fontSize: 10)),
+                        ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 16),
+
+                // Last 5 Zaznams Inline
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('LAST 5 ZAZNAMS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: top5Recent.isEmpty
+                      ? const Padding(padding: EdgeInsets.all(12), child: Center(child: Text('No zaznams found', style: TextStyle(fontSize: 11, color: Colors.grey))))
+                      : Column(
+                          children: top5Recent.map((tx) {
+                            final dt = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+                            return ListTile(
+                              dense: true,
+                              title: Text(tx.description.isEmpty ? 'Zaznam' : tx.description, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                              subtitle: Text(DateFormat('MMM dd, yyyy').format(dt), style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
+                              trailing: Text(_formatAmount(tx.amount), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: tx.type == 'income' ? const Color(0xFF34D399) : const Color(0xFFF87171))),
+                            );
+                          }).toList(),
+                        ),
                 ),
               ],
             ],
