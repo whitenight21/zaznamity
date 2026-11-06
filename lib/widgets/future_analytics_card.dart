@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
+import '../widgets/masked_amount.dart';
 
 class FutureAnalyticsCard extends StatefulWidget {
   final List<String> owners;
@@ -857,7 +858,10 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                       children: [
                         Text('EXPECTED INFLOW', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey)),
                         const SizedBox(height: 4),
-                        Text(_formatCurrency(totalFutureIncome), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
+                        MaskedAmount(
+                          formattedAmount: _formatCurrency(totalFutureIncome),
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF34D399)),
+                        ),
                       ],
                     ),
                   ),
@@ -878,7 +882,10 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                       children: [
                         Text('EXPECTED OUTFLOW', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey)),
                         const SizedBox(height: 4),
-                        Text(_formatCurrency(totalFutureExpense, isExpense: true), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFF87171))),
+                        MaskedAmount(
+                          formattedAmount: _formatCurrency(totalFutureExpense, isExpense: true),
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFF87171)),
+                        ),
                       ],
                     ),
                   ),
@@ -1007,7 +1014,8 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                                                 ),
                                               ],
                                             ),
-                                            Text(
+                                            MaskedAmount(
+                                              formattedAmount:
                                               _formatCurrency(amount),
                                               style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155)),
                                             ),
@@ -1112,7 +1120,8 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                                                 ],
                                               ),
                                             ),
-                                            Text(
+                                            MaskedAmount(
+                                              formattedAmount:
                                               _formatCurrency(amount, isExpense: true),
                                               style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155)),
                                             ),

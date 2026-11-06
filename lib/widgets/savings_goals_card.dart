@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/savings_goal_model.dart';
 import '../models/label.dart';
 import '../services/snackbar_notification.dart';
+import '../widgets/masked_amount.dart';
 
 class SavingsGoalsCard extends StatefulWidget {
   final List<SavingsGoalModel> goals;
@@ -237,11 +238,17 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
             ),
           ],
         ),
-        content: Text(
-          isReady 
-              ? 'Marking this goal as complete will finalize it and disburse or remove the savings funds from your active pool balance.'
-              : 'You have not reached your target amount yet (${_formatCurrency(goal.currentAmount, primaryCurr)} / ${_formatCurrency(goal.targetAmount, primaryCurr)}). You can still complete it if desired.',
-          style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
+        content: Row(
+          children: [
+            Expanded(
+              child: Text(
+                isReady 
+                    ? 'Marking this goal as complete will finalize it and disburse or remove the savings funds from your active pool balance.'
+                    : 'You have not reached your target amount yet (',
+                style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -479,7 +486,16 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Available to remove: ${_formatCurrency(goal.currentAmount, selectedCurrency)}', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white60 : Colors.grey)),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Available to remove: ', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white60 : Colors.grey)),
+                  MaskedAmount(
+                    formattedAmount: _formatCurrency(goal.currentAmount, selectedCurrency),
+                    style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white60 : Colors.grey),
+                  ),
+                ],
+              ),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -1076,7 +1092,20 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text('${_getCurrencyFlag(entry.key)} ${entry.key}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                                Text('${_formatCurrency(saved, entry.key)} / ${_formatCurrency(target, entry.key)}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669))),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    MaskedAmount(
+                                      formattedAmount: _formatCurrency(saved, entry.key),
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                                    ),
+                                    Text(' / ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669))),
+                                    MaskedAmount(
+                                      formattedAmount: _formatCurrency(target, entry.key),
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
                           );
@@ -1177,13 +1206,26 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                         ],
                                       ),
                                     ),
-                                    Text(
-                                      'Target: ${_formatCurrency(goal.targetAmount, activeCurr)}',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12,
-                                        color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                                      ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          'Target: ',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
+                                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                                          ),
+                                        ),
+                                        MaskedAmount(
+                                          formattedAmount: _formatCurrency(goal.targetAmount, activeCurr),
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
+                                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -1219,9 +1261,22 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                         ],
                                       ),
                                     ),
-                                    Text(
-                                      'Needed: ${_formatCurrency(neededPerMonth, activeCurr)}/mo • ${isAheadOrOnTrack ? '🟢 On Track' : '🔴 Behind'}',
-                                      style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white60 : Colors.grey.shade600),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          'Needed: ',
+                                          style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white60 : Colors.grey.shade600),
+                                        ),
+                                        MaskedAmount(
+                                          formattedAmount: _formatCurrency(neededPerMonth, activeCurr),
+                                          style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white60 : Colors.grey.shade600),
+                                        ),
+                                        Text(
+                                          '/mo • ${isAheadOrOnTrack ? '🟢 On Track' : '🔴 Behind'}',
+                                          style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white60 : Colors.grey.shade600),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -1242,7 +1297,15 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                     Row(
                                       children: [
                                         Text(
-                                          'Saved: ${_formatCurrency(goal.currentAmount, activeCurr)}',
+                                          'Saved: ',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: Color(0xFF34D399),
+                                          ),
+                                        ),
+                                        MaskedAmount(
+                                          formattedAmount: _formatCurrency(goal.currentAmount, activeCurr),
                                           style: const TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 12,

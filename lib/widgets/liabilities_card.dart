@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import 'package:zaznamity/services/snackbar_notification.dart';
+import '../services/privacy_service.dart';
 
 class LiabilityItem {
   final String id;
@@ -121,14 +122,17 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
     }
   }
 
-  /// Formats numbers with thousands separator and places currency symbol correctly
-  /// (Trailing for € or Ft, Leading for $, £, ¥, etc.)
+  /// Formats numbers with thousands separator and places currency symbol correctly,
+  /// while respecting global Privacy Mode[cite: 11].
   String _formatCurrency(double amount) {
+    if (PrivacyService.instance.isPrivacyModeEnabled.value) {
+      return widget.currencySymbol == '€' ? '•••••• €' : '${widget.currencySymbol}••••••';
+    }
+
     final formatter = NumberFormat('#,##0.00', 'en_US');
     final formattedNumber = formatter.format(amount);
     final symbol = widget.currencySymbol.trim();
 
-    // List of common symbols that typically go trailing
     const trailingSymbols = ['€', 'Ft', ' Kč', 'zł', 'CHF'];
     bool isTrailing = trailingSymbols.any((s) => symbol.toLowerCase() == s.toLowerCase());
 
@@ -211,8 +215,8 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
       ),
       trailing: Icon(Icons.arrow_forward_ios_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
       onTap: () {
-        Navigator.pop(context); // Close selector
-        _showLiabilityDialog(context, liabilityType: typeKey); // Open add modal with type
+        Navigator.pop(context);
+        _showLiabilityDialog(context, liabilityType: typeKey);
       },
     );
   }
@@ -257,14 +261,14 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
             child: ListBody(
               children: <Widget>[
                 Text(
-                  'Liabilities Card tracks your loans, mortgages, and other debts clearly and effectively:\n\n'
-                  '• Real Progress Tracking: Monitors real progress comparing original balance vs. current remaining balance.\n'
-                  '• Amortization & Splits: Calculates precise interest-versus-principal payment splits, remaining months, and exact payoff dates.\n'
-                  '• Start Date Tracking: Pins down your loan origination timeline for accurate structural logging.\n'
-                  '• Avalanche vs. Snowball: Sort debts by highest interest rate first (Avalanche) or lowest balance first (Snowball).\n'
-                  '• Overdue Indicators: Flags payments past their scheduled due day (1–31).\n'
-                  '• Split Guardian: Protects against negative amortization by verifying monthly installments cover interest.\n\n'
-                  'Tap any liability item to edit its parameters in place.',
+                  'Liabilities Card tracks your loans, mortgages, and other debts clearly and effectively[cite: 11]:\n\n'
+                  '• Real Progress Tracking: Monitors real progress comparing original balance vs. current remaining balance[cite: 11].\n'
+                  '• Amortization & Splits: Calculates precise interest-versus-principal payment splits, remaining months, and exact payoff dates[cite: 11].\n'
+                  '• Start Date Tracking: Pins down your loan origination timeline for accurate structural logging[cite: 11].\n'
+                  '• Avalanche vs. Snowball: Sort debts by highest interest rate first (Avalanche) or lowest balance first (Snowball)[cite: 11].\n'
+                  '• Overdue Indicators: Flags payments past their scheduled due day (1–31)[cite: 11].\n'
+                  '• Split Guardian: Protects against negative amortization by verifying monthly installments cover interest[cite: 11].\n\n'
+                  'Tap any liability item to edit its parameters in place[cite: 11].',
                   style: TextStyle(
                     fontSize: 13,
                     color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
@@ -590,7 +594,6 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                   return;
                 }
                 
-                // Split Guardian check (skipped if simple recurring payment with 0 interest)
                 if (selectedType != 'Simple Recurring Payment' && interest > 0) {
                   final monthlyRate = (interest / 100.0) / 12.0;
                   final monthlyInterest = balance * monthlyRate;
@@ -755,418 +758,423 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
         final double fullWidth = availableWidth - 32;
         final double boxWidth = (fullWidth - 12) / 2;
 
-        return Container(
-          padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
-          decoration: _isZaznamityMode
-              ? BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFF582F95).withValues(alpha: 0.5),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                )
-              : BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'LIABILITIES',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                              letterSpacing: 0.8,
-                            ),
-                          ),
+        return ValueListenableBuilder<bool>(
+          valueListenable: PrivacyService.instance.isPrivacyModeEnabled,
+          builder: (context, isPrivate, child) {
+            return Container(
+              padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
+              decoration: _isZaznamityMode
+                  ? BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFF582F95).withValues(alpha: 0.5),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
                         ),
-                        const SizedBox(width: 4),
-                        IconButton(
-                          icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
-                          onPressed: () => _showLiabilityInfoModal(context),
-                          tooltip: 'Setup Guide',
-                          constraints: const BoxConstraints(),
-                          padding: EdgeInsets.zero,
+                      ],
+                    )
+                  : BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                  ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Row(
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Container(
-                        height: 28,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
+                      Expanded(
                         child: Row(
-                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'LIABILITIES',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ),
                             const SizedBox(width: 4),
-                            Text(
-                              activeOwner,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
-                              ),
+                            IconButton(
+                              icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                              onPressed: () => _showLiabilityInfoModal(context),
+                              tooltip: 'Setup Guide',
+                              constraints: const BoxConstraints(),
+                              padding: EdgeInsets.zero,
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      SizedBox(
-                        height: 28,
-                        width: 28,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                            foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                          ),
-                          onPressed: _toggleCollapse,
-                          icon: Icon(_isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded, size: 16),
-                          tooltip: _isCollapsed ? 'Expand' : 'Collapse',
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              if (!_isCollapsed) ...[
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    SizedBox(
-                      width: boxWidth,
-                      child: Container(
-                        height: 40,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.sort, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: _sortingMode,
-                                  isDense: true,
-                                  isExpanded: true,
-                                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                  items: const [
-                                    DropdownMenuItem(value: 'Avalanche', child: Text('Avalanche (Highest Rate)')),
-                                    DropdownMenuItem(value: 'Snowball', child: Text('Snowball (Lowest Balance)')),
-                                  ],
-                                  onChanged: (val) {
-                                    if (val != null) setState(() => _sortingMode = val);
-                                  },
-                                ),
-                              ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            height: 28,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: boxWidth,
-                      child: SizedBox(
-                        height: 40,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
-                            foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          onPressed: () => _showLiabilityTypeSelector(context),
-                          icon: const Icon(Icons.add, size: 14),
-                          label: const Text('Add Liability', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFEDE9FE),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.3)),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Total Debt', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
-                              Text(_formatCurrency(totalDebt), style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                            ],
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text('Payment Total', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
-                              Text(_formatCurrency(totalMonthlyPayments), style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669))),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 16, color: Colors.white12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Wtd. Avg Rate: ${weightedAverageRate.toStringAsFixed(1)}%', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
-                          Text('Debt-Free: ${filteredLiabilities.isEmpty ? 'N/A' : DateFormat('MMM yyyy').format(latestPayoffDate)}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Simulator: +${_formatCurrency(_extraPaymentSimulation)}/extra', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                          Text('Saves Interest & Time', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                        ],
-                      ),
-                      Slider(
-                        value: _extraPaymentSimulation,
-                        min: 0,
-                        max: 500,
-                        divisions: 20,
-                        activeColor: const Color(0xFFA855F7),
-                        inactiveColor: _isZaznamityMode ? Colors.white24 : Colors.grey.shade300,
-                        onChanged: (val) => setState(() => _extraPaymentSimulation = val),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                filteredLiabilities.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        child: Center(
-                          child: Text(
-                            'No active liabilities tracked for this selection.',
-                            style: TextStyle(
-                              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8),
-                              fontSize: 12,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      )
-                    : ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: filteredLiabilities.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final item = filteredLiabilities[index];
-                          
-                          double original = item.originalAmount > 0 ? item.originalAmount : item.remainingBalance;
-                          double progressRatio = original > 0 ? (1.0 - (item.remainingBalance / original)).clamp(0.0, 1.0) : 0.0;
-
-                          final r = (item.interestRate / 100.0) / 12.0;
-                          final effectiveInstallment = item.monthlyInstallment + _extraPaymentSimulation;
-                          double interestPart = item.remainingBalance * r;
-                          double principalPart = math.max(0.0, effectiveInstallment - interestPart);
-
-                          int monthsLeft = 0;
-                          DateTime payoffDate = DateTime.now();
-                          if (r > 0 && effectiveInstallment > interestPart) {
-                            final m = -math.log(1 - (r * item.remainingBalance) / effectiveInstallment) / math.log(1 + r);
-                            monthsLeft = m.ceil();
-                            payoffDate = DateTime.now().add(Duration(days: (monthsLeft * 30).round()));
-                          }
-
-                          final now = DateTime.now();
-                          bool isOverdue = now.day > item.dueDay;
-
-                          return InkWell(
-                            onTap: () => _showLiabilityDialog(context, existingItem: item),
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: isOverdue ? Colors.red.shade400 : (_isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
-                                  width: isOverdue ? 1.5 : 1.0,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  activeOwner,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                                  ),
                                 ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            height: 28,
+                            width: 28,
+                            child: IconButton(
+                              style: IconButton.styleFrom(
+                                backgroundColor: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                               ),
-                              child: Column(
+                              onPressed: _toggleCollapse,
+                              icon: Icon(_isCollapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded, size: 16),
+                              tooltip: _isCollapsed ? 'Expand' : 'Collapse',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  if (!_isCollapsed) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        SizedBox(
+                          width: boxWidth,
+                          child: Container(
+                            height: 40,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.sort, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _sortingMode,
+                                      isDense: true,
+                                      isExpanded: true,
+                                      dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                      items: const [
+                                        DropdownMenuItem(value: 'Avalanche', child: Text('Avalanche (Highest Rate)')),
+                                        DropdownMenuItem(value: 'Snowball', child: Text('Snowball (Lowest Balance)')),
+                                      ],
+                                      onChanged: (val) {
+                                        if (val != null) setState(() => _sortingMode = val);
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: boxWidth,
+                          child: SizedBox(
+                            height: 40,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
+                                foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: () => _showLiabilityTypeSelector(context),
+                              icon: const Icon(Icons.add, size: 14),
+                              label: const Text('Add Liability', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFEDE9FE),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.3)),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  Text('Total Debt', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
+                                  Text(_formatCurrency(totalDebt), style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                ],
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text('Payment Total', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
+                                  Text(_formatCurrency(totalMonthlyPayments), style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669))),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 16, color: Colors.white12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Wtd. Avg Rate: ${weightedAverageRate.toStringAsFixed(1)}%', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
+                              Text('Debt-Free: ${filteredLiabilities.isEmpty ? 'N/A' : DateFormat('MMM yyyy').format(latestPayoffDate)}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Simulator: +${_formatCurrency(_extraPaymentSimulation)}/extra', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                              Text('Saves Interest & Time', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                            ],
+                          ),
+                          Slider(
+                            value: _extraPaymentSimulation,
+                            min: 0,
+                            max: 500,
+                            divisions: 20,
+                            activeColor: const Color(0xFFA855F7),
+                            inactiveColor: _isZaznamityMode ? Colors.white24 : Colors.grey.shade300,
+                            onChanged: (val) => setState(() => _extraPaymentSimulation = val),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    filteredLiabilities.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                            child: Center(
+                              child: Text(
+                                'No active liabilities tracked for this selection.',
+                                style: TextStyle(
+                                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8),
+                                  fontSize: 12,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: filteredLiabilities.length,
+                            separatorBuilder: (context, index) => const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final item = filteredLiabilities[index];
+                              
+                              double original = item.originalAmount > 0 ? item.originalAmount : item.remainingBalance;
+                              double progressRatio = original > 0 ? (1.0 - (item.remainingBalance / original)).clamp(0.0, 1.0) : 0.0;
+
+                              final r = (item.interestRate / 100.0) / 12.0;
+                              final effectiveInstallment = item.monthlyInstallment + _extraPaymentSimulation;
+                              double interestPart = item.remainingBalance * r;
+                              double principalPart = math.max(0.0, effectiveInstallment - interestPart);
+
+                              int monthsLeft = 0;
+                              DateTime payoffDate = DateTime.now();
+                              if (r > 0 && effectiveInstallment > interestPart) {
+                                final m = -math.log(1 - (r * item.remainingBalance) / effectiveInstallment) / math.log(1 + r);
+                                monthsLeft = m.ceil();
+                                payoffDate = DateTime.now().add(Duration(days: (monthsLeft * 30).round()));
+                              }
+
+                              final now = DateTime.now();
+                              bool isOverdue = now.day > item.dueDay;
+
+                              return InkWell(
+                                onTap: () => _showLiabilityDialog(context, existingItem: item),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isOverdue ? Colors.red.shade400 : (_isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
+                                      width: isOverdue ? 1.5 : 1.0,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Expanded(
-                                        child: Row(
-                                          children: [
-                                            Text(
-                                              item.name,
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14,
-                                                color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            if (isOverdue) ...[
-                                              const SizedBox(width: 6),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                                decoration: BoxDecoration(color: Colors.red.shade900, borderRadius: BorderRadius.circular(4)),
-                                                child: const Text('OVERDUE', style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Colors.white)),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
                                       Row(
-                                        mainAxisSize: MainAxisSize.min,
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          InkWell(
-                                            onTap: () => _showWindfallDialog(context, item),
-                                            child: Padding(
-                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  const Icon(Icons.bolt, size: 12, color: Color(0xFFA855F7)),
-                                                  const SizedBox(width: 2),
-                                                  const Text('Windfall', style: TextStyle(fontSize: 9, color: Color(0xFFA855F7), fontWeight: FontWeight.bold)),
+                                          Expanded(
+                                            child: Row(
+                                              children: [
+                                                Text(
+                                                  item.name,
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                                if (isOverdue) ...[
+                                                  const SizedBox(width: 6),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                                    decoration: BoxDecoration(color: Colors.red.shade900, borderRadius: BorderRadius.circular(4)),
+                                                    child: const Text('OVERDUE', style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Colors.white)),
+                                                  ),
                                                 ],
-                                              ),
+                                              ],
                                             ),
                                           ),
-                                          InkWell(
-                                            onTap: () => _showRecastDialog(context, item),
-                                            child: Padding(
-                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  const Icon(Icons.refresh, size: 12, color: Color(0xFFA855F7)),
-                                                  const SizedBox(width: 2),
-                                                  const Text('Recast', style: TextStyle(fontSize: 9, color: Color(0xFFA855F7), fontWeight: FontWeight.bold)),
-                                                ],
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              InkWell(
+                                                onTap: () => _showWindfallDialog(context, item),
+                                                child: Padding(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(Icons.bolt, size: 12, color: Color(0xFFA855F7)),
+                                                      const SizedBox(width: 2),
+                                                      const Text('Windfall', style: TextStyle(fontSize: 9, color: Color(0xFFA855F7), fontWeight: FontWeight.bold)),
+                                                    ],
+                                                  ),
+                                                ),
                                               ),
+                                              InkWell(
+                                                onTap: () => _showRecastDialog(context, item),
+                                                child: Padding(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(Icons.refresh, size: 12, color: Color(0xFFA855F7)),
+                                                      const SizedBox(width: 2),
+                                                      const Text('Recast', style: TextStyle(fontSize: 9, color: Color(0xFFA855F7), fontWeight: FontWeight.bold)),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: LinearProgressIndicator(
+                                          value: progressRatio,
+                                          minHeight: 8,
+                                          backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                            _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            'Bal: ${_formatCurrency(item.remainingBalance)} / Orig: ${_formatCurrency(original)}',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
                                             ),
+                                          ),
+                                          Text(
+                                            'Rate: ${item.interestRate}% • Due: ${item.dueDay}',
+                                            style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            'Rem: $monthsLeft periods (${DateFormat('MMM yyyy').format(payoffDate)})',
+                                            style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                                          ),
+                                          Text(
+                                            'Split: Prin ${_formatCurrency(principalPart)} / Int ${_formatCurrency(interestPart)}',
+                                            style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
                                           ),
                                         ],
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 8),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: LinearProgressIndicator(
-                                      value: progressRatio,
-                                      minHeight: 8,
-                                      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        'Bal: ${_formatCurrency(item.remainingBalance)} / Orig: ${_formatCurrency(original)}',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
-                                        ),
-                                      ),
-                                      Text(
-                                        'Rate: ${item.interestRate}% • Due: ${item.dueDay}',
-                                        style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        'Rem: $monthsLeft periods (${DateFormat('MMM yyyy').format(payoffDate)})',
-                                        style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
-                                      ),
-                                      Text(
-                                        'Split: Prin ${_formatCurrency(principalPart)} / Int ${_formatCurrency(interestPart)}',
-                                        style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ],
-            ],
-          ),
+                                ),
+                              );
+                            },
+                          ),
+                  ],
+                ],
+              ),
+            );
+          },
         );
       },
     );

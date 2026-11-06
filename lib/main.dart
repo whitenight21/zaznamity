@@ -6,10 +6,15 @@ import 'package:local_auth/local_auth.dart';
 import 'screens/dashboard_screen.dart';
 import 'services/database_helper.dart';
 import 'services/notification_service.dart';
+import 'services/privacy_service.dart';
 import 'package:zaznamity/services/snackbar_notification.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize PrivacyService to persist privacy toggle state across app restarts
+  await PrivacyService.instance.init();
+  
   await NotificationService.init();
   runApp(const ZaznamityApp());
 }

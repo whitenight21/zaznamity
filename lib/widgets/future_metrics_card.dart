@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
+import '../widgets/masked_amount.dart';
 
 class FutureMetricsCard extends StatefulWidget {
   final List<String> owners;
@@ -1014,16 +1015,36 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                           ),
                         ],
                       ),
-                      Text(
-                        nextIncome != null
-                            ? 'in ${nextIncome.days} days (${DateFormat('MMM dd').format(nextIncome.date!)}) • ${_formatCurrency(nextIncome.amount)}'
-                            : 'No scheduled income',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: nextIncome != null ? const Color(0xFF34D399) : (_isZaznamityMode ? Colors.white54 : Colors.grey),
-                        ),
-                      ),
+                      nextIncome != null
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'in ${nextIncome.days} days (${DateFormat('MMM dd').format(nextIncome.date!)}) • ',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isZaznamityMode ? Colors.white70 : Colors.grey.shade700,
+                                  ),
+                                ),
+                                MaskedAmount(
+                                  formattedAmount: _formatCurrency(nextIncome.amount),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF34D399),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Text(
+                              'No scheduled income',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? Colors.white54 : Colors.grey,
+                              ),
+                            ),
                     ],
                   ),
                 ),
@@ -1106,8 +1127,8 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                                 ),
                               ],
                             ),
-                            Text(
-                              '${net30Shift >= 0 ? '+' : ''}${_formatCurrency(net30Shift)}',
+                            MaskedAmount(
+                              formattedAmount: '${net30Shift >= 0 ? '+' : ''}${_formatCurrency(net30Shift)}',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -1220,8 +1241,8 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(
-              _formatCurrency(amount),
+            child: MaskedAmount(
+              formattedAmount: _formatCurrency(amount),
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,

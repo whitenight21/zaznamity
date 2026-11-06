@@ -11,6 +11,7 @@ import 'package:zaznamity/models/liability_model.dart';
 import 'package:zaznamity/services/database_helper.dart';
 import 'package:intl/intl.dart';
 import 'package:zaznamity/services/snackbar_notification.dart';
+import '../services/privacy_service.dart';
 
 import '../widgets/summary_metrics_card.dart';
 import '../widgets/future_metrics_card.dart';
@@ -797,14 +798,42 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
+                      ValueListenableBuilder<bool>(
+                        valueListenable: PrivacyService.instance.isPrivacyModeEnabled,
+                        builder: (context, isPrivate, child) {
+                          return InkWell(
+                            onTap: () async {
+                              await PrivacyService.instance.togglePrivacyMode();
+                              setModalState(() {});
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 9.2, vertical: 4.6),
+                              decoration: BoxDecoration(
+                                color: isPrivate ? const Color(0xFFA855F7) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFA855F7)),
+                              ),
+                              child: Text(
+                                'Privacy',
+                                style: TextStyle(
+                                  fontSize: 12.65,
+                                  fontWeight: FontWeight.bold,
+                                  color: isPrivate ? Colors.white : const Color(0xFFA855F7),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 6.9),
+                      /* Text(
                         'Theme :  ',
                         style: TextStyle(
                           fontSize: 13.8,
                           fontWeight: FontWeight.bold,
                           color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B),
                         ),
-                      ),
+                      ), */
                       InkWell(
                         onTap: () async {
                           setState(() {

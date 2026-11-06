@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zaznamity/models/transaction_model.dart';
+import '../services/privacy_service.dart';
 
 enum MovingAverageFilter { days30, days90, all }
 
@@ -942,78 +943,87 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                 const SizedBox(height: 16),
                 SizedBox(
                   height: 220,
-                  child: LineChart(
-                    LineChartData(
-                      minY: _cachedMinY,
-                      maxY: _cachedMaxY,
-                      gridData: FlGridData(
-                        show: true,
-                        drawVerticalLine: false,
-                        getDrawingHorizontalLine: (value) => FlLine(
-                          color: _isZaznamityMode ? Colors.white10 : const Color(0xFFF1F5F9),
-                          strokeWidth: 1,
-                        ),
-                      ),
-                      titlesData: FlTitlesData(
-                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 28,
-                            getTitlesWidget: (value, meta) {
-                              int index = value.toInt();
-                              if (index >= 0 && index < _cachedSortedTx.length) {
-                                final date = DateTime.tryParse(_cachedSortedTx[index].createdAt);
-                                if (date != null) {
-                                  return Padding(
-                                    padding: const EdgeInsets.only(top: 8.0),
-                                    child: Text(
-                                      DateFormat('MMM d').format(date),
-                                      style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                    ),
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: PrivacyService.instance.isPrivacyModeEnabled,
+                    builder: (context, isPrivate, child) {
+                      return LineChart(
+                        LineChartData(
+                          minY: _cachedMinY,
+                          maxY: _cachedMaxY,
+                          gridData: FlGridData(
+                            show: true,
+                            drawVerticalLine: false,
+                            getDrawingHorizontalLine: (value) => FlLine(
+                              color: _isZaznamityMode ? Colors.white10 : const Color(0xFFF1F5F9),
+                              strokeWidth: 1,
+                            ),
+                          ),
+                          titlesData: FlTitlesData(
+                            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            bottomTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                reservedSize: 28,
+                                getTitlesWidget: (value, meta) {
+                                  int index = value.toInt();
+                                  if (index >= 0 && index < _cachedSortedTx.length) {
+                                    final date = DateTime.tryParse(_cachedSortedTx[index].createdAt);
+                                    if (date != null) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(top: 8.0),
+                                        child: Text(
+                                          DateFormat('MMM d').format(date),
+                                          style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                  return const SizedBox.shrink();
+                                },
+                              ),
+                            ),
+                            leftTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                reservedSize: 48,
+                                getTitlesWidget: (value, meta) {
+                                  // Mask Y-axis numbers when Privacy mode is active
+                                  final labelText = isPrivate ? '•••' : _formatCurrency(value.toDouble(), includeDecimals: false);
+                                  return Text(
+                                    labelText,
+                                    style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                   );
-                                }
-                              }
-                              return const SizedBox.shrink();
-                            },
+                                },
+                              ),
+                            ),
                           ),
-                        ),
-                        leftTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 48,
-                            getTitlesWidget: (value, meta) {
-                              return Text(
-                                _formatCurrency(value.toDouble(), includeDecimals: false),
-                                style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                              );
-                            },
+                          borderData: FlBorderData(show: false),
+                          lineTouchData: LineTouchData(
+                            enabled: true,
+                            handleBuiltInTouches: true,
+                            touchTooltipData: LineTouchTooltipData(
+                              getTooltipItems: (touchedSpots) {
+                                return touchedSpots.map((spot) {
+                                  final spotIndex = spot.x.toInt();
+                                  String dateStr = '';
+                                  if (spotIndex >= 0 && spotIndex < _cachedSpotDates.length) {
+                                    dateStr = '${DateFormat('MMM d, yyyy').format(_cachedSpotDates[spotIndex])}\n';
+                                  }
+                                  // Mask tooltips when Privacy mode is active
+                                  final tooltipVal = isPrivate ? '••••••' : _formatCurrency(spot.y);
+                                  return LineTooltipItem(
+                                    '$dateStr$tooltipVal',
+                                    const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                  );
+                                }).toList();
+                              },
+                            ),
                           ),
+                          lineBarsData: _cachedLineBars,
                         ),
-                      ),
-                      borderData: FlBorderData(show: false),
-                      lineTouchData: LineTouchData(
-                        enabled: true,
-                        handleBuiltInTouches: true,
-                        touchTooltipData: LineTouchTooltipData(
-                          getTooltipItems: (touchedSpots) {
-                            return touchedSpots.map((spot) {
-                              final spotIndex = spot.x.toInt();
-                              String dateStr = '';
-                              if (spotIndex >= 0 && spotIndex < _cachedSpotDates.length) {
-                                dateStr = '${DateFormat('MMM d, yyyy').format(_cachedSpotDates[spotIndex])}\n';
-                              }
-                              return LineTooltipItem(
-                                '$dateStr${_formatCurrency(spot.y)}',
-                                const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
-                              );
-                            }).toList();
-                          },
-                        ),
-                      ),
-                      lineBarsData: _cachedLineBars,
-                    ),
+                      );
+                    },
                   ),
                 ),
               ],

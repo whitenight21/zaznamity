@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/liability_model.dart';
 import '../services/database_helper.dart';
+import '../widgets/masked_amount.dart';
 
 class SummaryMetricsCard extends StatefulWidget {
   final List<String> owners;
@@ -468,7 +469,8 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
+                MaskedAmount(
+                  formattedAmount:
                   _formatCurrency(totalNetWorthInclLiabilities, currencyCode),
                   style: TextStyle(
                     fontSize: 18,
@@ -488,42 +490,16 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
                 ),
               ),
               const SizedBox(height: 3),
-              Text(
-                _formatCurrency(totalLiquidNet, currencyCode),
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
-                ),
+              MaskedAmount(
+                  formattedAmount:
+                  _formatCurrency(totalLiquidNet, currencyCode),
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95),
+                  ),
               ),
               const SizedBox(height: 4),
-/*               Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Trend: ${absoluteDiff >= 0 ? '+' : ''}${_formatCurrency(absoluteDiff, currencyCode)} (${percentageDiff >= 0 ? '+' : ''}${percentageDiff.toStringAsFixed(1)}%) vs. start of month',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: absoluteDiff >= 0
-                          ? (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669))
-                          : const Color(0xFFF87171),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  InkWell(
-                    onTap: () => _showMetricInfo(
-                      context,
-                      'Net Worth Trend',
-                      'Compares your current total net balance against your baseline net balance recorded on the 1st day of the current month.',
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(2.0),
-                      child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
-                    ),
-                  ),
-                ],
-              ), */
             ],
           ),
         ),
@@ -797,13 +773,14 @@ class _SummaryMetricsCardState extends State<SummaryMetricsCard> {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(
-              _formatCurrency(amount, currencyCode),
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                color: amountColor,
-              ),
+            child: 
+              MaskedAmount(
+                formattedAmount: _formatCurrency(amount, currencyCode),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: amountColor,
+                ),
             ),
           ),
         ],

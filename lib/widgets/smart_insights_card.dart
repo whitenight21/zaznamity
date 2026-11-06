@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
 import '../models/savings_goal_model.dart';
+import '../widgets/masked_amount.dart';
+import '../services/privacy_service.dart';
 
 class SmartInsightsCard extends StatefulWidget {
   final List<TransactionModel> transactions;
@@ -417,7 +419,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     }
 
     // --- COMMITTED THIS MONTH CALCULATION ---
-    // 1. Total Budgets Limits set for current owner/selection
     double totalBudgetsCommitted = 0;
     for (var b in widget.budgets) {
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners') {
@@ -427,7 +428,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       totalBudgetsCommitted += ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
     }
 
-    // 2. Total Liability Monthly Installments
     double totalLiabilitiesCommitted = 0;
     for (var l in widget.liabilities) {
       String ownerVal = '';
@@ -436,7 +436,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
         ownerVal = l['owner']?.toString() ?? 'Shared';
         installmentVal = ((l['monthly_installment'] ?? l['monthlyInstallment'] ?? 0) as num).toDouble();
       } else {
-        // LiabilityItem object
         ownerVal = l.owner;
         installmentVal = l.monthlyInstallment;
       }
@@ -447,7 +446,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       totalLiabilitiesCommitted += installmentVal;
     }
 
-    // 3. Total Savings Goals Monthly Contributions
     double totalSavingsCommitted = 0;
     for (var g in widget.savingsGoals) {
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners') {
@@ -765,7 +763,16 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
             const Divider(height: 20),
             Text('• Biggest Drag: $biggestDrag', style: TextStyle(color: const Color(0xFFF87171), fontWeight: FontWeight.bold, fontSize: 12)),
             const SizedBox(height: 4),
-            Text('• Fastest Win: $fastestWin', style: TextStyle(color: const Color(0xFF34D399), fontWeight: FontWeight.bold, fontSize: 12)),
+            Row(
+              children: [
+                Text('• Fastest Win: ', style: TextStyle(color: const Color(0xFF34D399), fontWeight: FontWeight.bold, fontSize: 12)),
+                MaskedAmount(
+                  formattedAmount: _formatCurrency(150),
+                  style: const TextStyle(color: Color(0xFF34D399), fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                const Text(' to emergency fund (+8 pts)', style: TextStyle(color: Color(0xFF34D399), fontWeight: FontWeight.bold, fontSize: 12)),
+              ],
+            ),
             const Divider(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1011,8 +1018,8 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                           ),
                         ],
                       ),
-                      Text(
-                        _formatCurrency(totalCommitted),
+                      MaskedAmount(
+                        formattedAmount: _formatCurrency(totalCommitted),
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: theme.textPrimary),
                       ),
                     ],
@@ -1020,18 +1027,38 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '• Budgets: ${_formatCurrency(budgetsCommitted)}\n• Liabilities: ${_formatCurrency(liabilitiesCommitted)}\n• Goals: ${_formatCurrency(savingsCommitted)}',
-                        style: TextStyle(fontSize: 10, color: theme.textSecondary, height: 1.3),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text('• Budgets: ', style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                              MaskedAmount(formattedAmount: _formatCurrency(budgetsCommitted), style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              Text('• Liabilities: ', style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                              MaskedAmount(formattedAmount: _formatCurrency(liabilitiesCommitted), style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              Text('• Goals: ', style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                              MaskedAmount(formattedAmount: _formatCurrency(savingsCommitted), style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                            ],
+                          ),
+                        ],
                       ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text('Free to Spend', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: theme.textSecondary)),
                           const SizedBox(height: 2),
-                          Text(
-                            _formatCurrency(freeToSpend),
+                          MaskedAmount(
+                            formattedAmount: _formatCurrency(freeToSpend),
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w900,
@@ -1071,16 +1098,24 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                                 style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: theme.textSecondary, letterSpacing: 0.6),
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                '${_formatCurrency(targetBufferAllowance)} / day',
-                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: theme.textPrimary),
+                              Row(
+                                children: [
+                                  MaskedAmount(
+                                    formattedAmount: _formatCurrency(targetBufferAllowance),
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: theme.textPrimary),
+                                  ),
+                                  Text(
+                                    ' / day',
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: theme.textPrimary),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         ],
                       ),
                       Tooltip(
-                        message: 'Based on total liquid reserves (${_formatCurrency(totalLiquidChecking)}) ÷ average daily burn rate.',
+                        message: 'Based on total liquid reserves ÷ average daily burn rate.',
                         child: Text(
                           'Runway: ${moneyRunwayDays.toStringAsFixed(0)} days left',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: moneyRunwayDays > 15 ? const Color(0xFF34D399) : Colors.orangeAccent),
@@ -1096,13 +1131,34 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                         'Spent Today / Allowed:',
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.textSecondary),
                       ),
-                      Text(
-                        '${_formatCurrency(spentToday)} / ${_formatCurrency(targetBufferAllowance)}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          color: spentToday <= targetBufferAllowance ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          MaskedAmount(
+                            formattedAmount: _formatCurrency(spentToday),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: spentToday <= targetBufferAllowance ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                            ),
+                          ),
+                          Text(
+                            ' / ',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: spentToday <= targetBufferAllowance ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                            ),
+                          ),
+                          MaskedAmount(
+                            formattedAmount: _formatCurrency(targetBufferAllowance),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: spentToday <= targetBufferAllowance ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1275,7 +1331,10 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                           children: [
                             Text('Fixed Overhead', style: TextStyle(fontSize: 10, color: theme.textSecondary)),
                             const SizedBox(height: 2),
-                            Text(_formatCurrency(fixed), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.textPrimary)),
+                            MaskedAmount(
+                              formattedAmount: _formatCurrency(fixed),
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.textPrimary),
+                            ),
                           ],
                         ),
                         Container(height: 24, width: 1, color: theme.containerBorder),
@@ -1284,7 +1343,10 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                           children: [
                             Text('Flexible Discretionary', style: TextStyle(fontSize: 10, color: theme.textSecondary)),
                             const SizedBox(height: 2),
-                            Text(_formatCurrency(variable), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.textPrimary)),
+                            MaskedAmount(
+                              formattedAmount: _formatCurrency(variable),
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.textPrimary),
+                            ),
                           ],
                         ),
                       ],
@@ -1430,7 +1492,19 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.textSecondary)),
-            Text('${_formatCurrency(amount)} (${((amount / incomeBase) * 100).toStringAsFixed(0)}% of income)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                MaskedAmount(
+                  formattedAmount: _formatCurrency(amount),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
+                ),
+                Text(
+                  ' (${((amount / incomeBase) * 100).toStringAsFixed(0)}% of income)',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
+                ),
+              ],
+            ),
           ],
         ),
         const SizedBox(height: 6),
