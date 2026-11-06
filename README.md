@@ -1,8 +1,8 @@
 # 🟣 ZAZNAMITY — RECORD • TRACK • FOCUS
 
-> **Secure Financial Tracker & Predictive Outlook Engine**
+> **Secure Financial Tracker & Outlook Engine - ANDROID APP**
 
-**Zaznamity** is an advanced, privacy-first personal finance application built with Flutter and Dart. Engineered around local data persistence, predictive runway analytics, and dynamic cashflow forecasting, Zaznamity helps users answer critical forward-looking financial questions: *"Will I be okay?"*, *"How long is my runway?"*, and *"What will my liquid position be next month?"*
+**Zaznamity** is an advanced, privacy-first personal finance application built with Flutter and Dart. Engineered around local data persistence, predictive runway analytics, and dynamic cashflow forecasting, Zaznamity helps users see their current financial state and answer critical forward-looking financial questions: *"Will I be okay?"*, *"Where is my money going?"*, and *"What will my liquid position be next month? in 3 months?"*
 
 ---
 
