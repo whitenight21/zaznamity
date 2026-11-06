@@ -46,6 +46,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
   bool _isZaznamityMode = true;
   bool _isCollapsed = false;
   bool _showYearOverYear = false;
+  String _primaryCurrency = 'USD';
 
   final ScrollController _chartScrollController = ScrollController();
 
@@ -83,7 +84,19 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
     final collapsed = prefs.getBool('set_monthlyCashflow_collapsed') ?? false;
     final timeframe = prefs.getString('set_cashFlow_range') ?? 'All time';
     final excludeTr = prefs.getBool('exclude_transfers_insights') ?? true;
+    final primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
     final newZaznamityMode = (savedTheme == 'zaznamity');
+
+    final savedLabelIdsList = prefs.getStringList('monthly_cashflow_selected_labels');
+    Set<int> loadedLabelIds = {};
+    if (savedLabelIdsList != null) {
+      final validIds = widget.labels.map((l) => l.id).toSet();
+      loadedLabelIds = savedLabelIdsList
+          .map((idStr) => int.tryParse(idStr))
+          .where((id) => id != null && validIds.contains(id))
+          .cast<int>()
+          .toSet();
+    }
 
     if (mounted) {
       setState(() {
@@ -91,6 +104,10 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
         _excludeTransfers = excludeTr;
         _isZaznamityMode = newZaznamityMode;
         _isCollapsed = collapsed;
+        _primaryCurrency = primaryCurrency;
+        if (savedLabelIdsList != null) {
+          _selectedLabelIds = loadedLabelIds;
+        }
       });
     }
   }
@@ -101,6 +118,54 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
     setState(() {
       _selectedTimeframe = timeframe;
     });
+  }
+
+  Future<void> _saveLabelPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final listToSave = _selectedLabelIds.map((id) => id.toString()).toList();
+    await prefs.setStringList('monthly_cashflow_selected_labels', listToSave);
+  }
+
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': 
+      case 'CNY': return '¥';
+      case 'CAD': return 'C\$';
+      case 'AUD': return 'A\$';
+      case 'HKD': return 'HK\$';
+      case 'SGD': return 'S\$';
+      case 'CZK': return 'Kč';
+      case 'HUF': return 'Ft';
+      case 'PLN': return 'zł';
+      case 'CHF': return 'CHF';
+      case 'RUB': return '₽';
+      case 'BRL': return 'R\$';
+      case 'MXN': 
+      case 'CLP': 
+      case 'COP': return '\$';
+      default: return '\$';
+    }
+  }
+
+  String _formatCurrency(double amount, {bool compact = false}) {
+    final symbol = _getCurrencySymbol(_primaryCurrency).trim();
+    const trailingSymbols = ['€', 'Ft', 'Kč', 'zł', 'CHF'];
+    bool isTrailing = trailingSymbols.any((s) => symbol.toLowerCase() == s.toLowerCase());
+
+    String formattedNumber;
+    if (compact) {
+      formattedNumber = NumberFormat.compact(locale: 'en_US').format(amount);
+    } else {
+      formattedNumber = NumberFormat('#,##0.00', 'en_US').format(amount);
+    }
+
+    if (isTrailing) {
+      return '$formattedNumber $symbol';
+    } else {
+      return '$symbol$formattedNumber';
+    }
   }
 
   void _scrollToLatest() {
@@ -215,6 +280,10 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
   }
 
   void _showLabelsCheckmarkModal(BuildContext context) {
+    Set<int> tempSelectedIds = _selectedLabelIds.isEmpty 
+        ? widget.labels.map((l) => l.id).toSet() 
+        : Set.from(_selectedLabelIds);
+
     showModalBottomSheet(
       context: context,
       backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
@@ -224,7 +293,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
-            bool allSelected = _selectedLabelIds.isEmpty;
+            bool allSelected = tempSelectedIds.length == widget.labels.length;
 
             return Container(
               padding: const EdgeInsets.all(20),
@@ -243,14 +312,25 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                           color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                         ),
                       ),
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _selectedLabelIds.clear();
-                          });
-                          setModalState(() {});
-                        },
-                        child: const Text('Clear All', style: TextStyle(color: Color(0xFFF87171))),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              setModalState(() {
+                                tempSelectedIds = widget.labels.map((l) => l.id).toSet();
+                              });
+                            },
+                            child: const Text('Select All', style: TextStyle(color: Color(0xFFA855F7))),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setModalState(() {
+                                tempSelectedIds.clear();
+                              });
+                            },
+                            child: const Text('Clear All', style: TextStyle(color: Color(0xFFF87171))),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -266,12 +346,13 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                     value: allSelected,
                     activeColor: const Color(0xFFA855F7),
                     onChanged: (bool? value) {
-                      setState(() {
+                      setModalState(() {
                         if (value == true) {
-                          _selectedLabelIds.clear();
+                          tempSelectedIds = widget.labels.map((l) => l.id).toSet();
+                        } else {
+                          tempSelectedIds.clear();
                         }
                       });
-                      setModalState(() {});
                     },
                   ),
                   const Divider(color: Colors.white12, height: 1),
@@ -281,7 +362,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                       itemCount: widget.labels.length,
                       itemBuilder: (context, index) {
                         final label = widget.labels[index];
-                        final isChecked = _selectedLabelIds.contains(label.id);
+                        final isChecked = tempSelectedIds.contains(label.id);
 
                         return CheckboxListTile(
                           title: Text(
@@ -293,14 +374,13 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                           value: isChecked,
                           activeColor: const Color(0xFFA855F7),
                           onChanged: (bool? value) {
-                            setState(() {
+                            setModalState(() {
                               if (value == true) {
-                                _selectedLabelIds.add(label.id);
+                                tempSelectedIds.add(label.id);
                               } else {
-                                _selectedLabelIds.remove(label.id);
+                                tempSelectedIds.remove(label.id);
                               }
                             });
-                            setModalState(() {});
                           },
                         );
                       },
@@ -317,7 +397,17 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () {
+                        setState(() {
+                          if (tempSelectedIds.isEmpty || tempSelectedIds.length == widget.labels.length) {
+                            _selectedLabelIds.clear();
+                          } else {
+                            _selectedLabelIds = tempSelectedIds;
+                          }
+                        });
+                        _saveLabelPrefs();
+                        Navigator.pop(context);
+                      },
                     ),
                   ),
                 ],
@@ -334,7 +424,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
     final txSig = widget.transactions
         .map((t) => '${t.id}:${t.amount}:${t.createdAt}:${t.isConfirmed}:${t.type}:${t.labelId}:${t.pool}')
         .join('|');
-    return '$txSig|${widget.selectedOwner}|${widget.selectedPool}|$_selectedTimeframe|$_excludeTransfers|$_customStartDate|$_customEndDate|${sortedLabels.join(",")}|$_showYearOverYear';
+    return '$txSig|${widget.selectedOwner}|${widget.selectedPool}|$_selectedTimeframe|$_excludeTransfers|$_customStartDate|$_customEndDate|${sortedLabels.join(",")}|$_showYearOverYear|$_primaryCurrency';
   }
 
   bool _isTransferTransaction(TransactionModel tx) {
@@ -786,7 +876,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
               if (!_isCollapsed) ...[
                 const SizedBox(height: 12),
 
-                // Filters row 1: Pool & Date Selector (replacing All Labels spot)[cite: 16]
+                // Filters row 1: Pool & Date Selector
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -873,7 +963,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                 ),
                 const SizedBox(height: 12),
 
-                // Filters row 2: List all labels in label dropdown, Net Trend Line toggle
+                // Filters row 2: Labels selector modal & Net Trend Line toggle
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -965,7 +1055,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                 ),
                 const SizedBox(height: 12),
 
-                // Current Month Pacing Banner
+                // Current Month Pacing Banner (Two-row format as requested)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(10),
@@ -979,13 +1069,27 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                       Icon(Icons.speed_rounded, size: 18, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          'Pacing (Month ${now.day}/$daysInMonth): ${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(currentMonthExpenseSoFar)} spent. Projected: ${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(pacingProjectedExpense)} (Usual ~${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(usualExpenseMedian)})',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Pacing (Month ${now.day}/$daysInMonth) : ${_formatCurrency(currentMonthExpenseSoFar, compact: true)} spent.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Projected: ${_formatCurrency(pacingProjectedExpense, compact: true)} (Usual ${_formatCurrency(usualExpenseMedian, compact: true)})',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -1134,11 +1238,11 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                                                     child: Column(
                                                       crossAxisAlignment: CrossAxisAlignment.start,
                                                       children: [
-                                                        Text('Income: ${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(inc)}', style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                        Text('Income: ${_formatCurrency(inc, compact: true)}', style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 13)),
                                                         const SizedBox(height: 4),
-                                                        Text('Expenses: ${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(exp)}', style: const TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                        Text('Expenses: ${_formatCurrency(exp, compact: true)}', style: const TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 13)),
                                                         const SizedBox(height: 4),
-                                                        Text('Net: ${NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(net)}', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                        Text('Net: ${_formatCurrency(net, compact: true)}', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold, fontSize: 13)),
                                                         const SizedBox(height: 4),
                                                         Text('Savings Rate: ${savingsRate.toStringAsFixed(1)}%', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 13)),
                                                       ],
@@ -1205,7 +1309,6 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                                             bool isForecast = index == _cachedSortedKeys.length - 1 && _cachedSortedKeys.last == 'Forecast';
                                             String mKey = _cachedSortedKeys[index];
                                             
-                                            // Show year only when it changes or for the first item
                                             String labelText = _cachedMonthLabels[index];
                                             if (!isForecast) {
                                               try {
@@ -1244,7 +1347,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                                         reservedSize: 50,
                                         getTitlesWidget: (value, meta) {
                                           return Text(
-                                            NumberFormat.compactCurrency(locale: 'en_US', symbol: '€').format(value),
+                                            _formatCurrency(value, compact: true),
                                             style: TextStyle(fontSize: 9, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                                           );
                                         },
@@ -1258,7 +1361,6 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                                     drawVerticalLine: false,
                                     horizontalInterval: _niceStep(_cachedMaxY - _cachedMinY),
                                     getDrawingHorizontalLine: (value) {
-                                      // Emphasize zero baseline
                                       if (value == 0) {
                                         return FlLine(
                                           color: _isZaznamityMode ? Colors.white : Colors.black87,
@@ -1275,7 +1377,6 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                                   barGroups: _cachedBarGroups,
                                 ),
                               ),
-                              // Average Expense and Net Reference Lines & Rolling average / Net Trend Line
                               IgnorePointer(
                                 child: LineChart(
                                   LineChartData(
@@ -1312,7 +1413,6 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                                           dotData: const FlDotData(show: false),
                                         ),
                                       ],
-                                      // Average Expense Line (negative representation)
                                       LineChartBarData(
                                         spots: [
                                           FlSpot(-0.5, -_cachedAvgExpense),
@@ -1324,7 +1424,6 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                                         dashArray: [5, 5],
                                         dotData: const FlDotData(show: false),
                                       ),
-                                      // Average Net Line
                                       LineChartBarData(
                                         spots: [
                                           FlSpot(-0.5, _cachedAvgNet),

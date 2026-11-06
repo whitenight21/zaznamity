@@ -13,9 +13,14 @@ class FutureAnalyticsCard extends StatefulWidget {
   final String? selectedPool;
   final List<TransactionModel> transactions;
   final List<LabelModel> labels;
-  final List budgets; // Added budgets to look up monthly caps
+  final List budgets;
   final Function(int labelId, String labelName, DateTime start, DateTime end)? onJumpToHistoryForLabel;
-  final VoidCallback? onJumpToMetrics; // Quick-jump bridge to Future Metrics card
+  final VoidCallback? onJumpToMetrics;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final Function(DateTime?, DateTime?)? onDateRangeChanged;
+  final VoidCallback? onClearDateFilter;
+  final Function(String?)? onPoolChanged; // Added parameter
 
   const FutureAnalyticsCard({
     super.key,
@@ -28,6 +33,11 @@ class FutureAnalyticsCard extends StatefulWidget {
     this.budgets = const [],
     this.onJumpToHistoryForLabel,
     this.onJumpToMetrics,
+    this.startDate,
+    this.endDate,
+    this.onDateRangeChanged,
+    this.onClearDateFilter,
+    this.onPoolChanged, // Added to constructor
   });
 
   @override
@@ -37,8 +47,8 @@ class FutureAnalyticsCard extends StatefulWidget {
 class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
   late String _selectedOwner;
   late String _selectedPool;
-  Set<int> _selectedLabelIds = {}; // Empty means all labels selected
-  String _timeframe = 'Month'; // Default timeframe synced to preset pills
+  Set<int> _selectedLabelIds = {};
+  String _timeframe = 'Month';
   DateTime? _customStartDate;
   DateTime? _customEndDate;
   bool _isZaznamityMode = true;
@@ -53,6 +63,11 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
     _rebuildLabelNames();
     _selectedOwner = widget.selectedOwner ?? 'All Owners';
     _selectedPool = widget.selectedPool ?? 'All Pools';
+    if (widget.startDate != null && widget.endDate != null) {
+      _timeframe = 'Custom';
+      _customStartDate = widget.startDate;
+      _customEndDate = widget.endDate;
+    }
     _loadPrefs();
   }
 
@@ -98,9 +113,7 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
     if (colorStr == null || colorStr.isEmpty) return fallback;
     try {
       String hex = colorStr.replaceAll('#', '').trim();
-      if (hex.length == 6) {
-        hex = 'FF$hex';
-      }
+      if (hex.length == 6) hex = 'FF$hex';
       if (hex.length == 8) {
         final val = int.tryParse(hex, radix: 16);
         if (val != null) return Color(val);
@@ -119,30 +132,20 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
 
   bool _isTransferLike(TransactionModel tx) {
     if (!_excludeTransfers) return false;
-
     final savingsFlag = '${tx.isSavings}';
     if (savingsFlag == '1' || savingsFlag == 'true') return true;
-
     final labelName = _labelNames[tx.labelId];
-    if (labelName != null &&
-        _nonSpendingLabels.contains(labelName.toLowerCase().replaceAll(' ', ''))) {
+    if (labelName != null && _nonSpendingLabels.contains(labelName.toLowerCase().replaceAll(' ', ''))) {
       return true;
     }
-
     final desc = '${tx.description}'.toLowerCase().trim();
     return _transferDescriptionPrefixes.any(desc.startsWith);
   }
 
-  bool _matchesOwner(TransactionModel tx) =>
-      _selectedOwner == 'All Owners' || tx.owner == _selectedOwner;
-
-  bool _matchesPool(TransactionModel tx) =>
-      _selectedPool == 'All Pools' || tx.pool.toLowerCase() == _selectedPool.toLowerCase();
-
+  bool _matchesOwner(TransactionModel tx) => _selectedOwner == 'All Owners' || tx.owner == _selectedOwner;
+  bool _matchesPool(TransactionModel tx) => _selectedPool == 'All Pools' || tx.pool.toLowerCase() == _selectedPool.toLowerCase();
   bool _matchesFilters(TransactionModel tx) => _matchesOwner(tx) && _matchesPool(tx);
-
-  bool _includeInForecast(TransactionModel tx) =>
-      _matchesFilters(tx) && !_isTransferLike(tx);
+  bool _includeInForecast(TransactionModel tx) => _matchesFilters(tx) && !_isTransferLike(tx);
 
   void _showFutureBreakdownInfoModal(BuildContext context) {
     showDialog(
@@ -168,12 +171,12 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
           ),
           content: SingleChildScrollView(
             child: Text(
-              ' “Where is my money going?” - This card provides forward-looking analytical insights into your projected financial standing by labels.\n\n'
-              '• It breaks down upcoming scheduled income and expenses by category label over your selected future window, starting strictly from today onwards[cite: 12].\n'
-              '• Strictly excludes past zaznams and transfers/goal contributions[cite: 12].\n'
-              '• Includes a fixed vs. one-off expense split.\n'
+              ' “Where is my money going?”\n\n' 
+              '• This card provides forward-looking analytical insights into your projected financial standing by labels.\n\n'
+              '• It breaks down upcoming scheduled income and expenses by category label over your selected future window, starting strictly from today onwards.\n'
+              '• Strictly excludes past zaznams and transfers/goal contributions.\n'
               '• Budget Exceeded Warnings: Visual warning badges indicate if an upcoming category expense exceeds its monthly budget limit.\n'
-              '• Label Filter Persistence: Saved selections automatically persist when leaving or collapsing the card[cite: 12].',
+              '• Label Filter Persistence: Saved selections automatically persist when leaving or collapsing the card.',
               style: TextStyle(
                 fontSize: 13,
                 color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
@@ -205,16 +208,19 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
 
   Future<void> _pickDateRange(BuildContext context) async {
     final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
     final picked = await showDateRangePicker(
       context: context,
-      firstDate: now,
-      lastDate: DateTime(2040), // Extended past 2030 requirement
+      firstDate: todayMidnight,
+      lastDate: DateTime(2040),
       initialDateRange: (_customStartDate != null && _customEndDate != null)
           ? DateTimeRange(
-              start: _customStartDate!.isBefore(now) ? now : _customStartDate!,
+              start: _customStartDate!.isBefore(todayMidnight) ? todayMidnight : _customStartDate!,
               end: _customEndDate!,
             )
-          : DateTimeRange(start: now, end: now.add(const Duration(days: 90))),
+          : (widget.startDate != null && widget.endDate != null)
+              ? DateTimeRange(start: widget.startDate!, end: widget.endDate!)
+              : null,
       builder: (context, child) {
         return Align(
           alignment: Alignment.bottomCenter,
@@ -237,10 +243,13 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
 
     if (picked != null) {
       setState(() {
-        _customStartDate = picked.start.isBefore(now) ? now : picked.start;
+        _customStartDate = picked.start.isBefore(todayMidnight) ? todayMidnight : picked.start;
         _customEndDate = picked.end;
         _timeframe = 'Custom';
       });
+      if (widget.onDateRangeChanged != null) {
+        widget.onDateRangeChanged!(_customStartDate, _customEndDate);
+      }
     }
   }
 
@@ -364,7 +373,6 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                       child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
                       onPressed: () {
                         setState(() {
-                          // Fixed: Handling empty clear-all state properly by storing sentinel or all items
                           if (tempSelectedIds.isEmpty || tempSelectedIds.length == widget.labels.length) {
                             _selectedLabelIds.clear();
                           } else {
@@ -444,23 +452,19 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final startDate = _getEffectiveStartDate(now);
-    final endDate = _getEffectiveEndDate(now);
+    final startDate = widget.startDate ?? _getEffectiveStartDate(now);
+    final endDate = widget.endDate ?? _getEffectiveEndDate(now);
 
     final Map<int, double> expenseByCategory = {};
     final Map<int, double> incomeByCategory = {};
     double totalFutureExpense = 0;
     double totalFutureIncome = 0;
-    double fixedExpensesTotal = 0;
-    double oneOffExpensesTotal = 0;
 
     for (var tx in widget.transactions) {
       if (!_includeInForecast(tx)) continue;
 
       final dt = DateTime.tryParse(tx.createdAt);
       if (dt == null || dt.isBefore(startDate) || dt.isAfter(endDate)) continue;
-      
-      // Strict future check: starting from today onwards
       if (dt.isBefore(now)) continue;
 
       if (_selectedLabelIds.isNotEmpty && !_selectedLabelIds.contains(tx.labelId)) continue;
@@ -468,14 +472,6 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
       if (tx.type == 'expense') {
         expenseByCategory[tx.labelId] = (expenseByCategory[tx.labelId] ?? 0.0) + tx.amount;
         totalFutureExpense += tx.amount;
-
-        // Fixed vs One-off categorization check
-        final isRecurring = tx.isRecurring == true || '${tx.isRecurring}' == '1' || '${tx.isRecurring}' == 'true';
-        if (isRecurring) {
-          fixedExpensesTotal += tx.amount;
-        } else {
-          oneOffExpensesTotal += tx.amount;
-        }
       } else if (tx.type == 'income') {
         incomeByCategory[tx.labelId] = (incomeByCategory[tx.labelId] ?? 0.0) + tx.amount;
         totalFutureIncome += tx.amount;
@@ -492,7 +488,7 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
 
     final double availableWidth = MediaQuery.of(context).size.width - 32;
     final double boxWidth = (availableWidth - 12) / 2;
-    final bool hasDateFilter = _timeframe == 'Custom' && _customStartDate != null;
+    final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
 
     final windowDateStr = '${DateFormat('MMM dd, yyyy').format(startDate)} – ${DateFormat('MMM dd, yyyy').format(endDate)}';
 
@@ -503,9 +499,6 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
     } else if (_selectedLabelIds.length > 1) {
       labelButtonText = '${_selectedLabelIds.length} Selected';
     }
-
-    final double fixedPercent = totalFutureExpense > 0 ? (fixedExpensesTotal / totalFutureExpense).clamp(0.0, 1.0) : 0.0;
-    final double oneOffPercent = totalFutureExpense > 0 ? (oneOffExpensesTotal / totalFutureExpense).clamp(0.0, 1.0) : 0.0;
 
     return Container(
       padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
@@ -648,7 +641,12 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                                 ...widget.pools.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))),
                               ],
                               onChanged: (val) {
-                                if (val != null) setState(() => _selectedPool = val);
+                                if (val != null) {
+                                  setState(() => _selectedPool = val);
+                                  if (widget.onPoolChanged != null) {
+                                    widget.onPoolChanged!(val);
+                                  }
+                                }
                               },
                             ),
                           ),
@@ -683,7 +681,7 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
-                                    color: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
+                                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -708,12 +706,23 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                   width: boxWidth,
                   child: Row(
                     children: ['Month', '90D', '6M', '1Y'].map((tf) {
-                      final isSelected = _timeframe == tf;
+                      final isSelected = _timeframe == tf && !hasDateFilter;
                       return Expanded(
                         child: Padding(
                           padding: EdgeInsets.only(right: tf != '1Y' ? 4 : 0),
                           child: InkWell(
-                            onTap: () => setState(() => _timeframe = tf),
+                            onTap: () {
+                              setState(() {
+                                _timeframe = tf;
+                                _customStartDate = null;
+                                _customEndDate = null;
+                              });
+                              final start = _getEffectiveStartDate(now);
+                              final end = _getEffectiveEndDate(now);
+                              if (widget.onDateRangeChanged != null) {
+                                widget.onDateRangeChanged!(start, end);
+                              }
+                            },
                             child: Container(
                               height: 44,
                               decoration: BoxDecoration(
@@ -776,11 +785,11 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                                     Expanded(
                                       child: Text(
                                         hasDateFilter
-                                            ? '${DateFormat('MM/dd').format(_customStartDate!)} - ${DateFormat('MM/dd').format(_customEndDate!)}'
+                                            ? '${DateFormat('MM/dd').format(startDate)} - ${DateFormat('MM/dd').format(endDate)}'
                                             : 'Date Range',
                                         style: TextStyle(
                                           fontSize: 11,
-                                          color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155)) : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)),
+                                          color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B)) : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)),
                                           fontWeight: FontWeight.bold,
                                         ),
                                         overflow: TextOverflow.ellipsis,
@@ -805,11 +814,16 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                           child: Material(
                             color: Colors.transparent,
                             child: InkWell(
-                              onTap: () => setState(() {
-                                _timeframe = 'Month';
-                                _customStartDate = null;
-                                _customEndDate = null;
-                              }),
+                              onTap: () {
+                                setState(() {
+                                  _timeframe = 'Month';
+                                  _customStartDate = null;
+                                  _customEndDate = null;
+                                });
+                                if (widget.onClearDateFilter != null) {
+                                  widget.onClearDateFilter!();
+                                }
+                              },
                               borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
                               child: const Center(
                                 child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171)),
@@ -825,7 +839,7 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
             ),
             const SizedBox(height: 16),
 
-            // Requirement 1: Income on left, Outflow on right (Net Shift removed)
+            // Inflow / Outflow Row
             Row(
               children: [
                 Expanded(
@@ -873,41 +887,43 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
             ),
             const SizedBox(height: 12),
 
-            // Requirement 4: Fixed vs. One-off Split Section
+            // Jump to Future Outlook button
             Container(
-              padding: const EdgeInsets.all(10),
+              width: double.infinity,
               decoration: BoxDecoration(
                 color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'FIXED VS. ONE-OFF SPLIT',
-                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700, letterSpacing: 0.6),
-                      ),
-                      Text(
-                        'Fixed: ${_formatCurrency(fixedExpensesTotal)} | One-off: ${_formatCurrency(oneOffExpensesTotal)}',
-                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : Colors.grey.shade700),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: fixedPercent,
-                      backgroundColor: const Color(0xFFF87171),
-                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFA855F7)),
-                      minHeight: 6,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: widget.onJumpToMetrics,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.insights_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 8),
+                            Text(
+                              'View Prognosis in "Future Outlook"',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                                color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Icon(Icons.arrow_forward_ios_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
             const SizedBox(height: 16),

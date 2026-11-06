@@ -27,7 +27,7 @@ class FutureMetricsCard extends StatefulWidget {
   final DateTime? endDate;
   final Function(DateTime?, DateTime?)? onDateRangeChanged;
   final VoidCallback onClearDateFilter;
-  final Function(DateTime start, DateTime end)? onShowPendingZaznams; // Updated to pass 7-day window
+  final Function(DateTime start, DateTime end)? onShowPendingZaznams;
   final VoidCallback? onShow30DayShiftZaznams;
   final Function(String?)? onPoolChanged;
   final VoidCallback? onJumpToAnalytics; // Quick-jump bridge to Future Analytics card
@@ -64,6 +64,9 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
   late String _selectedOwner;
   late String _selectedPool;
   String _burnRateBaseline = 'Last 90 Days';
+  String _timeframe = 'Month'; // Default timeframe synced to preset pills
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
   bool _isZaznamityMode = true;
   bool _excludeTransfers = true;
   String _primaryCurrency = 'USD';
@@ -76,6 +79,11 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     _rebuildLabelNames();
     _selectedOwner = widget.selectedOwner ?? 'All Owners';
     _selectedPool = widget.selectedPool ?? 'All Pools';
+    if (widget.startDate != null && widget.endDate != null) {
+      _timeframe = 'Custom';
+      _customStartDate = widget.startDate;
+      _customEndDate = widget.endDate;
+    }
     _loadPrefs();
   }
 
@@ -115,6 +123,15 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         _selectedPool = widget.selectedPool ?? 'All Pools';
       });
     }
+    if (widget.startDate != oldWidget.startDate || widget.endDate != oldWidget.endDate) {
+      if (widget.startDate != null && widget.endDate != null) {
+        setState(() {
+          _timeframe = 'Custom';
+          _customStartDate = widget.startDate;
+          _customEndDate = widget.endDate;
+        });
+      }
+    }
     _loadPrefs();
   }
 
@@ -134,9 +151,18 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
   }
 
   String _formatCurrency(double amount) {
-    final symbol = _getCurrencySymbol();
-    final format = NumberFormat.currency(symbol: symbol, decimalDigits: 2);
-    return format.format(amount);
+    final formatter = NumberFormat('#,##0.00', 'en_US');
+    final formattedNumber = formatter.format(amount);
+    final symbol = _getCurrencySymbol().trim();
+
+    const trailingSymbols = ['€', 'Ft', ' Kč', 'zł', 'CHF'];
+    bool isTrailing = trailingSymbols.any((s) => symbol.toLowerCase() == s.toLowerCase());
+
+    if (isTrailing) {
+      return '$formattedNumber $symbol';
+    } else {
+      return '$symbol$formattedNumber';
+    }
   }
 
   String _getLastZaznamDateString() {
@@ -275,7 +301,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     for (final tx in widget.transactions) {
       if (!_matchesFilters(tx)) continue;
       final dt = DateTime.tryParse(tx.createdAt);
-      // Strictly check: future date within 7 days AND explicitly unconfirmed (isConfirmed != 1)
       if (dt != null && dt.isAfter(now) && dt.isBefore(next7Days) && tx.isConfirmed != 1) {
         count++;
       }
@@ -303,30 +328,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     if (nextDate == null) return null;
     final days = nextDate.difference(now).inDays;
     return (days: days < 0 ? 0 : days, date: nextDate, amount: nextAmount);
-  }
-
-  List<({DateTime date, double amount, String description})> _getTopThreeUpcomingBills() {
-    final now = DateTime.now();
-    final bills = <({DateTime date, double amount, String description})>[];
-
-    for (final tx in widget.transactions) {
-      if (!_includeInForecast(tx)) continue;
-      if (tx.type != 'expense') continue;
-      final dt = DateTime.tryParse(tx.createdAt);
-      if (dt == null || !dt.isAfter(now)) continue;
-
-      bills.add((date: dt, amount: tx.amount, description: tx.description ?? 'Expense'));
-    }
-
-    bills.sort((a, b) {
-      int amountComparison = b.amount.compareTo(a.amount);
-      if (amountComparison != 0) {
-        return amountComparison;
-      }
-      return a.date.compareTo(b.date);
-    });
-
-    return bills.take(3).toList();
   }
 
   Map<String, dynamic> _calculateRunwayDepletionInfo(double monthlyBurn) {
@@ -412,6 +413,24 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
     );
   }
 
+  DateTime _getEffectiveEndDate(DateTime now) {
+    if (_timeframe == 'Custom' && _customEndDate != null) return _customEndDate!;
+    if (_timeframe == 'Month') {
+      return DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+    }
+    if (_timeframe == '90D') return now.add(const Duration(days: 90));
+    if (_timeframe == '6M') return now.add(const Duration(days: 180));
+    if (_timeframe == '1Y') return now.add(const Duration(days: 365));
+    return DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+  }
+
+  DateTime _getEffectiveStartDate(DateTime now) {
+    if (_timeframe == 'Custom' && _customStartDate != null) {
+      return _customStartDate!.isBefore(now) ? now : _customStartDate!;
+    }
+    return now;
+  }
+
   Future<void> _pickDateRange(BuildContext context) async {
     final now = DateTime.now();
     final todayMidnight = DateTime(now.year, now.month, now.day);
@@ -420,9 +439,11 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
       context: context,
       firstDate: todayMidnight,
       lastDate: DateTime(2030),
-      initialDateRange: (widget.startDate != null && widget.endDate != null)
-          ? DateTimeRange(start: widget.startDate!, end: widget.endDate!)
-          : null,
+      initialDateRange: (_customStartDate != null && _customEndDate != null)
+          ? DateTimeRange(start: _customStartDate!, end: _customEndDate!)
+          : (widget.startDate != null && widget.endDate != null)
+              ? DateTimeRange(start: widget.startDate!, end: widget.endDate!)
+              : null,
       builder: (context, child) {
         return Align(
           alignment: Alignment.bottomCenter,
@@ -443,13 +464,40 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
       },
     );
 
-    if (picked != null && widget.onDateRangeChanged != null) {
-      widget.onDateRangeChanged!(picked.start, picked.end);
+    if (picked != null) {
+      setState(() {
+        _customStartDate = picked.start.isBefore(todayMidnight) ? todayMidnight : picked.start;
+        _customEndDate = picked.end;
+        _timeframe = 'Custom';
+      });
+      if (widget.onDateRangeChanged != null) {
+        widget.onDateRangeChanged!(_customStartDate, _customEndDate);
+      }
+    }
+  }
+
+  void _applyPresetTimeframe(String tf) {
+    setState(() {
+      _timeframe = tf;
+      _customStartDate = null;
+      _customEndDate = null;
+    });
+    final now = DateTime.now();
+    final start = _getEffectiveStartDate(now);
+    final end = _getEffectiveEndDate(now);
+    if (widget.onDateRangeChanged != null) {
+      widget.onDateRangeChanged!(start, end);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final effectiveStart = widget.startDate ?? _getEffectiveStartDate(now);
+    final effectiveEnd = widget.endDate ?? _getEffectiveEndDate(now);
+
+    final activeOwner = widget.selectedOwner ?? 'All Owners';
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
@@ -457,9 +505,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         final double boxWidth = (fullWidth - 12) / 2;
 
         double calculatedFutureFlow = 0.0;
-        final now = DateTime.now();
-        final effectiveStart = widget.startDate ?? now;
-        final effectiveEnd = widget.endDate;
 
         for (final tx in widget.transactions) {
           if (!_includeInForecast(tx)) continue;
@@ -468,11 +513,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
 
           if (dt.isBefore(now)) continue;
 
-          if (effectiveEnd != null) {
-            if (dt.isAfter(effectiveStart.subtract(const Duration(days: 1))) && dt.isBefore(effectiveEnd.add(const Duration(days: 1)))) {
-              calculatedFutureFlow += _signedAmount(tx);
-            }
-          } else {
+          if (dt.isAfter(effectiveStart.subtract(const Duration(days: 1))) && dt.isBefore(effectiveEnd.add(const Duration(days: 1)))) {
             calculatedFutureFlow += _signedAmount(tx);
           }
         }
@@ -485,7 +526,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         final net30Shift = _calculate30DayNetShift();
         final upcomingCount = _calculateUpcomingScheduledCount();
         final nextIncome = _calculateNextIncomeInfo();
-        final topBills = _getTopThreeUpcomingBills();
         
         final runwayInfo = _calculateRunwayDepletionInfo(monthlyBurn);
         final DateTime? deficitDate = runwayInfo['deficitDate'];
@@ -500,7 +540,8 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
           runwayColor = const Color(0xFF34D399); // Green
         }
 
-        final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
+        final bool hasDateFilter = _timeframe == 'Custom' || widget.startDate != null || widget.endDate != null;
+        final windowDateStr = '${DateFormat('MMM dd, yyyy').format(effectiveStart)} – ${DateFormat('MMM dd, yyyy').format(effectiveEnd)}';
 
         return Container(
           padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
@@ -584,40 +625,31 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (widget.onJumpToAnalytics != null) ...[
-                          Tooltip(
-                            message: 'Jump to Future Analytics',
-                            child: InkWell(
-                              onTap: widget.onJumpToAnalytics,
-                              borderRadius: BorderRadius.circular(6),
-                              child: Container(
-                                height: 28,
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                decoration: BoxDecoration(
-                                  color: _isZaznamityMode ? const Color(0xFF3D256B) : const Color(0xFFEDE9FE),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: _isZaznamityMode ? const Color(0xFFA855F7).withValues(alpha: 0.4) : const Color(0xFFDDD6FE)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.pie_chart_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Analytics',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95),
-                                      ),
-                                    ),
-                                  ],
+                        Container(
+                          height: 28,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                              const SizedBox(width: 4),
+                              Text(
+                                activeOwner,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                          const SizedBox(width: 6),
-                        ],
+                        ),
+                        const SizedBox(width: 6),
                         SizedBox(
                           height: 28,
                           width: 28,
@@ -644,6 +676,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
               if (!_isCollapsed) ...[
                 const SizedBox(height: 12),
 
+                // Row 1: Pool (left) & Burn Rate Basis (right)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -690,6 +723,91 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                     ),
                     SizedBox(
                       width: boxWidth,
+                      child: Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.local_fire_department_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _burnRateBaseline,
+                                  isDense: true,
+                                  isExpanded: true,
+                                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                                  items: ['Last 30 Days', 'Last 90 Days', 'Fixed Baseline'].map((b) => DropdownMenuItem(value: b, child: Text(b, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
+                                  onChanged: (val) async {
+                                    if (val != null) {
+                                      setState(() => _burnRateBaseline = val);
+                                      final prefs = await SharedPreferences.getInstance();
+                                      await prefs.setString('set_burn_rate_baseline', val);
+                                    }
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Row 2: Timeframe Preset Pills (Month, 90D, 6M, 1Y) & Date Range Picker Button
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: Row(
+                        children: ['Month', '90D', '6M', '1Y'].map((tf) {
+                          final isSelected = _timeframe == tf && !hasDateFilter;
+                          return Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(right: tf != '1Y' ? 4 : 0),
+                              child: InkWell(
+                                onTap: () => _applyPresetTimeframe(tf),
+                                child: Container(
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: isSelected 
+                                        ? const Color(0xFF582F95) 
+                                        : (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC)),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                                    child: Text(
+                                      tf,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected ? Colors.white : (_isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    SizedBox(
+                      width: boxWidth,
                       child: Row(
                         children: [
                           Expanded(
@@ -720,22 +838,18 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                                         Expanded(
                                           child: Text(
                                             hasDateFilter
-                                                ? '${DateFormat('MM/dd').format(widget.startDate!)} - ${DateFormat('MM/dd').format(widget.endDate!)}'
-                                                : 'Select Date Range',
+                                                ? '${DateFormat('MM/dd').format(effectiveStart)} - ${DateFormat('MM/dd').format(effectiveEnd)}'
+                                                : 'Date Range',
                                             style: TextStyle(
                                               fontSize: 11,
                                               color: hasDateFilter
-                                                  ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
-                                                  : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                              fontWeight: hasDateFilter
-                                                  ? FontWeight.bold
-                                                  : FontWeight.normal,
+                                                  ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155))
+                                                  : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)),
+                                              fontWeight: FontWeight.bold,
                                             ),
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
-                                        if (!hasDateFilter)
-                                          Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                                       ],
                                     ),
                                   ),
@@ -744,22 +858,28 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                             ),
                           ),
                           if (hasDateFilter) ...[
-                            const SizedBox(width: 1),
                             Container(
                               height: 44,
-                              width: 36,
+                              width: 32,
                               decoration: BoxDecoration(
-                                color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
+                                color: _isZaznamityMode ? const Color(0xFF3D256B) : const Color(0xFFE2E8F0),
                                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
                                 border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                               ),
                               child: Material(
                                 color: Colors.transparent,
                                 child: InkWell(
-                                  onTap: widget.onClearDateFilter,
+                                  onTap: () {
+                                    setState(() {
+                                      _timeframe = 'Month';
+                                      _customStartDate = null;
+                                      _customEndDate = null;
+                                    });
+                                    widget.onClearDateFilter();
+                                  },
                                   borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
                                   child: const Center(
-                                    child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
+                                    child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171)),
                                   ),
                                 ),
                               ),
@@ -770,42 +890,16 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
 
-                Container(
-                  height: 40,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.local_fire_department_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                      const SizedBox(width: 6),
-                      Text('Burn Rate Basis:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _burnRateBaseline,
-                            isDense: true,
-                            isExpanded: true,
-                            dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                            items: ['Last 30 Days', 'Last 90 Days', 'Fixed Baseline'].map((b) => DropdownMenuItem(value: b, child: Text(b, style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
-                            onChanged: (val) async {
-                              if (val != null) {
-                                setState(() => _burnRateBaseline = val);
-                                final prefs = await SharedPreferences.getInstance();
-                                await prefs.setString('set_burn_rate_baseline', val);
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
+                // Row 3: Projection Window
+                Text(
+                  'PROJECTION WINDOW: $windowDateStr',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
+                    letterSpacing: 0.5,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -827,11 +921,11 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                     Expanded(
                       child: Center(
                         child: _buildMetricBox(
-                          title: 'PROGNOSIS',
+                          title: 'PROGNOSIS ON ${DateFormat('MMM dd, yyyy').format(effectiveEnd)}',
                           amount: currentPrognosis,
                           amountColor: _isZaznamityMode ? Colors.white : const Color(0xFF000000),
                           width: boxWidth,
-                          infoExplanation: 'Prognosis calculates your projected remaining balance for the selected pool at the end of the timeframe by combining current liquid funds with upcoming future cashflows from today forward.',
+                          infoExplanation: 'Prognosis calculates your projected remaining balance for geothermal/liquid pools at the end of the timeframe by combining current liquid funds with upcoming future cashflows from today forward.',
                         ),
                       ),
                     ),
@@ -935,59 +1029,43 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                 ),
                 const SizedBox(height: 8),
 
+                // Replaced "Next 3 Biggest Bills" with button jumping to Future Analytics
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.receipt_long_rounded, size: 16, color: Color(0xFFF87171)),
-                          const SizedBox(width: 8),
-                          Text(
-                            'NEXT 3 BIGGEST BILLS:',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700,
-                              letterSpacing: 0.6,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      topBills.isEmpty
-                          ? Text('No upcoming scheduled bills', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white38 : Colors.grey))
-                          : Column(
-                              children: topBills.map((bill) {
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 3),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          '• ${bill.description} (${DateFormat('MMM dd').format(bill.date)})',
-                                          style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155)),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      Text(
-                                        _formatCurrency(bill.amount),
-                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFF87171)),
-                                      ),
-                                    ],
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: widget.onJumpToAnalytics,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.pie_chart_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'View details in "Future Breakdown"',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                                   ),
-                                );
-                              }).toList(),
+                                ),
+                              ],
                             ),
-                    ],
+                            Icon(Icons.arrow_forward_ios_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1044,7 +1122,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                 ),
                 const SizedBox(height: 8),
 
-                // Updated Pending Zaznams tap action to pass the next 7 days window (excluding past zaznams)
                 Container(
                   width: double.infinity,
                   decoration: BoxDecoration(

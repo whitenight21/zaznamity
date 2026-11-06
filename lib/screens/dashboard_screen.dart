@@ -10,6 +10,7 @@ import 'package:zaznamity/models/savings_goal_model.dart';
 import 'package:zaznamity/models/liability_model.dart'; 
 import 'package:zaznamity/services/database_helper.dart';
 import 'package:intl/intl.dart';
+import 'package:zaznamity/services/snackbar_notification.dart';
 
 import '../widgets/summary_metrics_card.dart';
 import '../widgets/future_metrics_card.dart';
@@ -36,11 +37,13 @@ import '../widgets/future_analytics_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
+  final Function(String?)? onPoolChanged;
   final Function(bool, String)? onPinSettingsChanged;
 
   const DashboardScreen({
     super.key,
     this.onThemeChanged,
+    this.onPoolChanged,
     this.onPinSettingsChanged,
   });
 
@@ -298,14 +301,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       await Future.delayed(const Duration(milliseconds: 150));
       await loadData();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Savings goal created successfully!')),
-      );
+      showSnackbarNotification(context, 'Savings goal created successfully!');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving goal: $e')),
-      );
+      showSnackbarNotification(context, 'Error saving goal: $e', isError: true);
     }
   }
 
@@ -938,15 +937,17 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       targetLabelId = newlyCreated.id;
     }
 
+    // Inserts or updates the liability in the database
     await DatabaseHelper.instance.insertLiability(liability);
+    
+    // Automatically schedules due date entries into transactions/calendar
     await DatabaseHelper.instance.checkAndApplyAutomaticLiabilityPayments();
 
-    await Future.delayed(const Duration(milliseconds: 150));
-    await loadData();
+    // Reloads all transactions, liabilities, and recalculates metrics for the UI
+    await loadData(showLoading: false);
+    
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Liability added, label created & future payments scheduled!')),
-    );
+    showSnackbarNotification(context, 'Liability saved & payments scheduled successfully!');
   }
 
   Future<void> _handleAddFundsToGoal(int goalId, double amountToAdd, String owner, String fromPool, String goalName, String currency) async {
@@ -1000,7 +1001,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await Future.delayed(const Duration(milliseconds: 150));
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Funds transferred to goal pool successfully!')));
+    showSnackbarNotification(context, 'Funds transferred to goal pool successfully!');
   }
 
   Future<void> _handleRemoveFundsFromGoal(int goalId, double amountToRemove, String owner, String toPool, String goalName, String currency) async {
@@ -1054,7 +1055,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await Future.delayed(const Duration(milliseconds: 150));
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Funds removed from goal and returned to pool successfully!')));
+    showSnackbarNotification(context, 'Funds removed from goal and returned to pool successfully!');
   }
 
   Future<void> _deleteSavingsGoal(int id) async {
@@ -1071,7 +1072,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await Future.delayed(const Duration(milliseconds: 150));
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Savings goal and all related records completely removed!')));
+    showSnackbarNotification(context, 'Savings goal and all related Zaznams completely removed!');
   }
 
   Future<void> _completeSavingsGoal(int id) async {
@@ -1088,7 +1089,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await Future.delayed(const Duration(milliseconds: 150));
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🎉 Goal completed and completely cleared!')));
+    
+    showSnackbarNotification(context, '🎉 Goal completed and cleared!');
   }
 
   void calculateMetrics() {
@@ -1237,18 +1239,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     await loadData(showLoading: false);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Successfully deleted $deletedCount zaznams!')),
-    );
+    showSnackbarNotification(context, 'Successfully deleted $deletedCount Zaznams!');
   }
 
   Future<void> _bulkUpdateTransactionsLabel(String oldLabel, String newLabel) async {
     int count = await DatabaseHelper.instance.bulkUpdateTransactionsLabel(oldLabel, newLabel);
     await loadData(showLoading: false);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Successfully updated $count zaznams from "$oldLabel" to "$newLabel"!')),
-    );
+    showSnackbarNotification(context, 'Successfully updated $count Zaznams from "$oldLabel" to "$newLabel"!');
   }
 
   Future<void> _importCsvFile(BuildContext context) async {
@@ -1329,14 +1327,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
       await loadData(showLoading: false);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Successfully imported $importedCount zaznams!')),
-      );
+      showSnackbarNotification(context, 'Successfully imported $importedCount Zaznams!');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error importing file: $e')),
-      );
+      showSnackbarNotification(context, 'Error importing file: $e', isError: true);
     }
   }
 
@@ -1364,14 +1358,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await DatabaseHelper.instance.insertBudget(labelId, limitAmount, owner);
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Budget created!')));
+    showSnackbarNotification(context, 'Budget created!');
   }
 
   Future<void> _deleteBudget(int budgetId) async {
     await DatabaseHelper.instance.deleteBudget(budgetId);
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Budget removed!')));
+    showSnackbarNotification(context, 'Budget removed!');
   }
 
   Future<void> _deleteTransaction(int id) async {
@@ -1399,7 +1393,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await DatabaseHelper.instance.deleteTransaction(id);
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zaznam deleted & funds restored!')));
+    showSnackbarNotification(context, 'Zaznam deleted & funds restored!');
   }
 
   Future<void> _confirmTransaction(TransactionModel tx) async {
@@ -1419,7 +1413,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await DatabaseHelper.instance.updateTransaction(confirmedTx);
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zaznam confirmed!')));
+    showSnackbarNotification(context, 'Zaznam confirmed!');
   }
 
   Future<void> _handleNewZaznamSubmit({
@@ -1502,9 +1496,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(datesToGenerate.length > 1 ? '${datesToGenerate.length} recurring entries added!' : 'Zaznam saved successfully!')),
-    );
+    showSnackbarNotification(context, datesToGenerate.length > 1 ? '${datesToGenerate.length} recurring entries added!' : 'Zaznam saved successfully!');
   }
 
   bool _isExcluded(DateTime date, List<int> excludedWeekdays, List<int> excludedMonths) {
@@ -1571,9 +1563,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Transfer recorded with pool details!')),
-    );
+    showSnackbarNotification(context, 'Transfer recorded with pool details!');
   }
 
   Future<void> _addLabel(String name) async {
@@ -1587,14 +1577,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await DatabaseHelper.instance.updateLabel(id, newName, newColor);
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Label updated!')));
+    showSnackbarNotification(context, 'Label updated!');
   }
 
   Future<void> _deleteLabel(int id) async {
     await DatabaseHelper.instance.deleteLabel(id);
     await loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Label removed!')));
+    showSnackbarNotification(context, 'Label removed!');
   }
 
   Future<void> showEditTransactionDialog(TransactionModel tx) async {
@@ -1861,7 +1851,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 Navigator.pop(dialogContext);
                 await loadData();
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zaznam updated!')));
+                showSnackbarNotification(context, 'Zaznam updated successfully!');
               },
               child: const Text('Save'),
             ),
@@ -1897,27 +1887,35 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         return SmartInsightsCard(
           transactions: _transactions,
           labels: _labels,
+          budgets: _budgets,
+          liabilities: _liabilities,
+          savingsGoals: _goals,
           futureFlowByOwner: _futureFlowByOwner,
           prognosisByOwner: _prognosisByOwner,
           selectedOwner: _globalSelectedOwner,
+          onJumpToHistory: (labelId, owner, start, end) {
+            // Jump to history handler
+          },
+          onJumpToBudgets: () {
+            // Jump to budgets tab handler
+          },
         );
-        case 'savings_goals':
-          return SavingsGoalsCard(
-            goals: _goals,
-            labels: _labels,
-            owners: _owners,
-            pools: _pools.keys.toList(),
-            selectedOwner: _globalSelectedOwner,
-            onSaveGoal: _handleSaveGoal,
-            onAddFundsToGoal: (goalId, amountToAdd, owner, fromPool, goalName, currency) {
-              _handleAddFundsToGoal(goalId, amountToAdd, owner, fromPool, goalName, currency);
-            },
-            onRemoveFundsFromGoal: (goalId, amountToRemove, owner, toPool, goalName, currency) {
-              _handleRemoveFundsFromGoal(goalId, amountToRemove, owner, toPool, goalName, currency);
-            },
-            onDeleteGoal: _deleteSavingsGoal,
-            onCompleteGoal: _completeSavingsGoal,
-          );
+      case 'savings_goals':
+        return SavingsGoalsCard(
+          goals: _goals,
+          labels: _labels,
+          owners: _owners,
+          pools: _pools.keys.toList(),
+          selectedOwner: _globalSelectedOwner,
+          onSaveGoal: _handleSaveGoal,
+          onAddFundsToGoal: (goalId, amountToAdd, owner, fromPool, goalName, currency) {
+            _handleAddFundsToGoal(goalId, amountToAdd, owner, fromPool, goalName, currency);
+          },
+          onRemoveFundsFromGoal: (goalId, amountToRemove, owner, toPool, goalName, currency) {
+            _handleRemoveFundsFromGoal(goalId, amountToRemove, owner, toPool, goalName, currency);
+          },
+          onCompleteGoal: _completeSavingsGoal,
+        );
       case 'settings':
         return AppSettingsCard(
           initialPools: _pools,
@@ -1979,9 +1977,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             int count = await DatabaseHelper.instance.deleteTransactionsByLabelId(labelId);
             await loadData(showLoading: false);
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Successfully deleted Zaznams associated with label "${targetLabel.name}"!')),
-            );
+            showSnackbarNotification(context, 'Successfully deleted $count Zaznams associated with label "${targetLabel.name}"!');
           },
           onBulkUpdateTransactionsLabel: _bulkUpdateTransactionsLabel,
           onBulkUpdateTransactionsPool: (owner, labelName, targetPool) async {
@@ -1998,9 +1994,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
             await loadData(showLoading: false);
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Successfully moved $count zaznams for "$owner" labeled "$labelName" to pool "$targetPool"!')),
-            );
+            showSnackbarNotification(context, 'Successfully moved $count Zaznams for "$owner" labeled "$labelName" to pool "$targetPool"!');
           },
           onLiabilityUpdated: () async {
             await loadData(showLoading: false);
@@ -2040,6 +2034,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           endDate: _labelFocusEndDate,
           selectedOwner: _labelFocusSelectedOwner ?? _globalSelectedOwner,
           selectedLabelId: _labelFocusSelectedLabelId,
+          budgets: _budgets,
           onLabelChanged: (val) => setState(() => _labelFocusSelectedLabelId = val),
           onOwnerChanged: (val) => setState(() => _labelFocusSelectedOwner = val),
           onSelectStartDate: () => _pickDateRange(context, _labelFocusStartDate, _labelFocusEndDate, (start, end) => setState(() {
@@ -2063,13 +2058,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               type: null,
             );
           },
+          onNavigateCard: (cardId) => _navigateToCard(cardId),
         );
       case 'future_metrics':
         return FutureMetricsCard(
           owners: _owners,
           selectedOwner: _globalSelectedOwner,
           pools: _pools.keys.toList(),
-          selectedPool: _sankeySelectedPool, // or your local pool state variable
+          selectedPool: _sankeySelectedPool, // Connected to shared pool state
           futureFlowByOwner: _futureFlowByOwner,
           totalFutureFlow: _totalFutureFlow,
           prognosisByOwner: _prognosisByOwner,
@@ -2092,6 +2088,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               calculateMetrics();
             });
           },
+          // Connect pool changes across both cards:
           onPoolChanged: (pool) {
             setState(() {
               _sankeySelectedPool = pool;
@@ -2103,8 +2100,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _jumpToHistoryWithClearedFilters(startDate: now, endDate: next30Days, type: null);
           },
           onShowPendingZaznams: (start, end) {
-                _jumpToHistoryWithClearedFilters(startDate: start, endDate: end, type: null);
+            _jumpToHistoryWithClearedFilters(startDate: start, endDate: end, type: null);
           },
+          onJumpToAnalytics: () => _navigateToCard('future_analytics'),
         );
       case 'budget':
         return BudgetProgressCard(
@@ -2202,7 +2200,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           owners: _owners,
           selectedOwner: _globalSelectedOwner,
           pools: _pools.keys.toList(),
-          selectedPool: _sankeySelectedPool,
+          selectedPool: _sankeySelectedPool, // Connected to shared pool state
           transactions: _transactions,
           labels: _labels,
           onJumpToHistoryForLabel: (labelId, labelName, start, end) {
@@ -2213,6 +2211,27 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               owner: _globalSelectedOwner, 
               type: null,
             );
+          },
+          onJumpToMetrics: () => _navigateToCard('future_metrics'),
+          startDate: _futureMetricsStartDate,
+          endDate: _futureMetricsEndDate,
+          onDateRangeChanged: (start, end) {
+            setState(() {
+              _futureMetricsStartDate = start;
+              _futureMetricsEndDate = end;
+            });
+          },
+          onClearDateFilter: () {
+            setState(() {
+              _futureMetricsStartDate = null;
+              _futureMetricsEndDate = null;
+            });
+          },
+          // Connect pool changes across both cards:
+          onPoolChanged: (pool) {
+            setState(() {
+              _sankeySelectedPool = pool;
+            });
           },
         );
       case 'monthly_trend':
@@ -2327,48 +2346,57 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         );
       case 'liabilities_card':
         final filteredLiabilities = _liabilities.where((item) {
-          if (_globalSelectedOwner == null || _globalSelectedOwner == 'All' || _globalSelectedOwner == 'Shared') {
+          if (_globalSelectedOwner == null || _globalSelectedOwner == 'All' || _globalSelectedOwner == 'All Owners' || _globalSelectedOwner == 'Shared') {
             return true;
           }
           return item.owner == _globalSelectedOwner || item.owner == 'Shared';
-        }).toList();
+        });
 
         return LiabilitiesCard(
           liabilities: filteredLiabilities.map((item) => LiabilityItem(
             id: item.id.toString(),
             name: item.name,
+            originalAmount: item.originalAmount,
             remainingBalance: item.remainingBalance,
             monthlyInstallment: item.monthlyInstallment,
             interestRate: item.interestRate,
             dueDay: item.dueDay,
             owner: item.owner,
+            startDate: item.startDate,
+            projectionEndDate: item.projectionEndDate,
+            isBiWeekly: item.isBiWeekly,
           )).toList(),
           owners: _owners,
           selectedOwner: _globalSelectedOwner,
-          currencySymbol: '€',
+          currencySymbol: NumberFormat.simpleCurrency(
+            name: _availableCurrencies.isNotEmpty ? _availableCurrencies.first : 'USD',
+          ).currencySymbol,
           onAddLiability: () {},
-          onSaveLiability: (item) {
+          onSaveLiability: (item) async {
+            // Prevent 13-digit timestamp overflow by validating ID bounds for SQLite
+            final parsedId = int.tryParse(item.id);
+            final validId = (parsedId != null && parsedId < 2147483647) ? parsedId : null;
+
             final model = LiabilityModel(
+              id: validId, // null for new items so SQLite autoincrements, existing ID for edits
               name: item.name,
+              originalAmount: item.originalAmount,
               remainingBalance: item.remainingBalance,
               monthlyInstallment: item.monthlyInstallment,
               interestRate: item.interestRate,
               dueDay: item.dueDay,
               owner: item.owner,
+              startDate: item.startDate,
+              projectionEndDate: item.projectionEndDate,
+              isBiWeekly: item.isBiWeekly,
               lastProcessedDate: DateTime.now().toIso8601String(),
             );
-            _handleSaveLiability(model);
+            
+            await _handleSaveLiability(model);
           },
           onDeleteLiability: (liabilityId, liabilityName) async {
             await DatabaseHelper.instance.deleteLiability(int.parse(liabilityId), liabilityName);
-
-            setState(() {
-              _liabilities.removeWhere((l) => l.id.toString() == liabilityId.toString());
-              _transactions.removeWhere((tx) => 
-                (tx.labelName ?? '').toLowerCase().contains(liabilityName.toLowerCase()) ||
-                tx.description.toLowerCase().contains(liabilityName.toLowerCase())
-              );
-            });
+            await loadData();
           },
         );
       case 'sankey_flow':
@@ -2398,6 +2426,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           transactions: _transactions,
           labels: _labels,
           owners: _owners,
+          budgets: _budgets,
           startDate: _labelsCardStartDate,
           endDate: _labelsCardEndDate,
           selectedOwner: _labelsCardSelectedOwner ?? _globalSelectedOwner,

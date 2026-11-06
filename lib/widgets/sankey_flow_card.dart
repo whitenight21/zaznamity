@@ -48,18 +48,19 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
   bool _isZaznamityMode = true;
   bool _isCollapsed = false;
   String? _isolatedNode; // Interactive Node Isolation state
+  String _primaryCurrency = 'USD';
 
   // Cache for 2-tier
   List<MapEntry<String, double>> _cachedSortedSources = [];
   List<MapEntry<String, double>> _cachedSortedTargets = [];
-  List<Map<String, dynamic>> _cachedFlows = [];
+  List _cachedFlows = [];
 
   // Cache for 3-tier
   List<MapEntry<String, double>> _cachedTier1 = [];
   List<MapEntry<String, double>> _cachedTier2 = [];
   List<MapEntry<String, double>> _cachedTier3 = [];
-  List<Map<String, dynamic>> _cachedFlowsA = []; // Tier 1 -> Tier 2
-  List<Map<String, dynamic>> _cachedFlowsB = []; // Tier 2 -> Tier 3
+  List _cachedFlowsA = []; // Tier 1 -> Tier 2
+  List _cachedFlowsB = []; // Tier 2 -> Tier 3
 
   double _cachedDynamicHeight = 510.0;
 
@@ -70,6 +71,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
   DateTime? _lastEndDate;
   String? _lastFlowMode;
   String? _lastTierMode;
+  String? _lastCurrency;
 
   @override
   void initState() {
@@ -103,18 +105,21 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     final collapsed = prefs.getBool('set_sankeyFlow_collapsed') ?? false;
     final tier = prefs.getString('set_sankey_tier') ?? '2-tier';
+    final primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
     final newZaznamityMode = (savedTheme == 'zaznamity');
 
     if (mounted) {
       if (_isZaznamityMode != newZaznamityMode ||
           _dateRangeSetting != setting ||
           _isCollapsed != collapsed ||
-          _tierMode != tier) {
+          _tierMode != tier ||
+          _primaryCurrency != primaryCurrency) {
         setState(() {
           _dateRangeSetting = setting;
           _isZaznamityMode = newZaznamityMode;
           _isCollapsed = collapsed;
           _tierMode = tier;
+          _primaryCurrency = primaryCurrency;
         });
       }
     }
@@ -137,8 +142,45 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
     await prefs.setString('set_sankey_tier', mode);
   }
 
+  String _getCurrencySymbol(String code) {
+    switch (code.toUpperCase()) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'JPY': 
+      case 'CNY': return '¥';
+      case 'CAD': return 'C\$';
+      case 'AUD': return 'A\$';
+      case 'HKD': return 'HK\$';
+      case 'SGD': return 'S\$';
+      case 'CZK': return 'Kč';
+      case 'HUF': return 'Ft';
+      case 'PLN': return 'zł';
+      case 'CHF': return 'CHF';
+      case 'RUB': return '₽';
+      case 'BRL': return 'R\$';
+      case 'MXN': 
+      case 'CLP': 
+      case 'COP': return '\$';
+      default: return '\$';
+    }
+  }
+
+  String _formatCurrency(double amount) {
+    final symbol = _getCurrencySymbol(_primaryCurrency).trim();
+    const trailingSymbols = ['€', 'Ft', 'Kč', 'zł', 'CHF'];
+    bool isTrailing = trailingSymbols.any((s) => symbol.toLowerCase() == s.toLowerCase());
+
+    final formattedNumber = NumberFormat('#,##0.00', 'en_US').format(amount);
+
+    if (isTrailing) {
+      return '$formattedNumber $symbol';
+    } else {
+      return '$symbol$formattedNumber';
+    }
+  }
+
   void _computeDataIfNeeded() {
-    _loadPrefs(); // Poll prefs dynamically on rebuild to instantly react to global theme switches across all cards
+    _loadPrefs();
 
     if (_lastTxLength == widget.transactions.length &&
         _lastOwner == widget.selectedOwner &&
@@ -146,7 +188,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
         _lastStartDate == widget.startDate &&
         _lastEndDate == widget.endDate &&
         _lastFlowMode == _flowMode &&
-        _lastTierMode == _tierMode) {
+        _lastTierMode == _tierMode &&
+        _lastCurrency == _primaryCurrency) {
       return;
     }
 
@@ -195,7 +238,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
     if (_tierMode == '2-tier') {
       final Map<String, double> sourceTotals = {};
       final Map<String, double> targetTotals = {};
-      final List<Map<String, dynamic>> flows = [];
+      final List flows = [];
 
       for (var tx in filteredTransactions) {
         if (_flowMode == 'Expenses' && tx.type == 'expense') {
@@ -239,8 +282,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
       final Map<String, double> t1Totals = {};
       final Map<String, double> t2Totals = {};
       final Map<String, double> t3Totals = {};
-      final List<Map<String, dynamic>> flowsA = [];
-      final List<Map<String, dynamic>> flowsB = [];
+      final List tempFlowsA = [];
+      final List tempFlowsB = [];
 
       for (var tx in filteredTransactions) {
         if (_flowMode == 'Expenses' && tx.type == 'expense') {
@@ -256,8 +299,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
           t2Totals[t2] = (t2Totals[t2] ?? 0) + tx.amount;
           t3Totals[t3] = (t3Totals[t3] ?? 0) + tx.amount;
 
-          flowsA.add({'source': t1, 'target': t2, 'amount': tx.amount});
-          flowsB.add({'source': t2, 'target': t3, 'amount': tx.amount});
+          tempFlowsA.add({'source': t1, 'target': t2, 'amount': tx.amount});
+          tempFlowsB.add({'source': t2, 'target': t3, 'amount': tx.amount});
         } else if (_flowMode == 'Income' && tx.type == 'income') {
           final labelObj = widget.labels.firstWhere(
             (l) => l.id == tx.labelId,
@@ -271,8 +314,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
           t2Totals[t2] = (t2Totals[t2] ?? 0) + tx.amount;
           t3Totals[t3] = (t3Totals[t3] ?? 0) + tx.amount;
 
-          flowsA.add({'source': t1, 'target': t2, 'amount': tx.amount});
-          flowsB.add({'source': t2, 'target': t3, 'amount': tx.amount});
+          tempFlowsA.add({'source': t1, 'target': t2, 'amount': tx.amount});
+          tempFlowsB.add({'source': t2, 'target': t3, 'amount': tx.amount});
         }
       }
 
@@ -288,8 +331,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
       _cachedTier1 = sortedT1;
       _cachedTier2 = sortedT2;
       _cachedTier3 = sortedT3;
-      _cachedFlowsA = flowsA;
-      _cachedFlowsB = flowsB;
+      _cachedFlowsA = tempFlowsA;
+      _cachedFlowsB = tempFlowsB;
       _cachedDynamicHeight = dynamicHeight;
     }
 
@@ -300,6 +343,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
     _lastEndDate = widget.endDate;
     _lastFlowMode = _flowMode;
     _lastTierMode = _tierMode;
+    _lastCurrency = _primaryCurrency;
   }
 
   Future<void> _pickDateRange(BuildContext context) async {
@@ -336,7 +380,6 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
   }
 
   void _showDrillDownModal(String nodeName) {
-    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
     final now = DateTime.now();
     DateTime? effectiveStart = widget.startDate;
     DateTime? effectiveEnd = widget.endDate;
@@ -425,7 +468,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                             title: Text(tx.description.isNotEmpty ? tx.description : labelObj.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                             subtitle: Text('${tx.owner} • ${tx.pool.toUpperCase()} • ${tx.createdAt.substring(0, 10)}', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600)),
                             trailing: Text(
-                              '${tx.type == 'expense' ? '-' : '+'}${currencyFormat.format(tx.amount)}',
+                              '${tx.type == 'expense' ? '-' : '+'}${_formatCurrency(tx.amount)}',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
@@ -476,7 +519,6 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
   Widget build(BuildContext context) {
     _computeDataIfNeeded();
 
-    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
     final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
 
     return LayoutBuilder(
@@ -611,7 +653,6 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
               ),
               if (!_isCollapsed) ...[
                 const SizedBox(height: 12),
-                // Row 1: Flow Switch [Expense] [Income] & Date Range Picker
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -770,7 +811,6 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                   ],
                 ),
                 const SizedBox(height: 12),
-                // Row 2: Tier Switcher [2-tier] [3-tier] & Pool Dropdown
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -978,7 +1018,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                                   flows: _cachedFlows,
                                   flowsA: _cachedFlowsA,
                                   flowsB: _cachedFlowsB,
-                                  currencyFormat: currencyFormat,
+                                  formatCurrency: _formatCurrency,
                                   isZaznamityMode: _isZaznamityMode,
                                   isolatedNode: _isolatedNode,
                                 ),
@@ -1003,10 +1043,10 @@ class SankeyDiagramPainter extends CustomPainter {
   final List<MapEntry<String, double>> tier1;
   final List<MapEntry<String, double>> tier2;
   final List<MapEntry<String, double>> tier3;
-  final List<Map<String, dynamic>> flows;
-  final List<Map<String, dynamic>> flowsA;
-  final List<Map<String, dynamic>> flowsB;
-  final NumberFormat currencyFormat;
+  final List flows;
+  final List flowsA;
+  final List flowsB;
+  final String Function(double) formatCurrency;
   final bool isZaznamityMode;
   final String? isolatedNode;
 
@@ -1022,7 +1062,7 @@ class SankeyDiagramPainter extends CustomPainter {
     required this.flows,
     required this.flowsA,
     required this.flowsB,
-    required this.currencyFormat,
+    required this.formatCurrency,
     required this.isZaznamityMode,
     this.isolatedNode,
   });
@@ -1035,7 +1075,6 @@ class SankeyDiagramPainter extends CustomPainter {
     return null;
   }
 
-  // Colorful palette for light (non-zaznamity) mode
   static const List<Color> _lightPalette = [
     Color(0xFF2563EB), // Blue
     Color(0xFFDC2626), // Red
@@ -1059,7 +1098,6 @@ class SankeyDiagramPainter extends CustomPainter {
       return isZaznamityMode ? Colors.white10 : Colors.black12;
     }
 
-    // Find index of target node to match its exact color palette
     int targetIdx = targetList.indexWhere((e) => e.key == tgtKey);
     if (targetIdx < 0) targetIdx = defaultIndex;
 
@@ -1068,18 +1106,17 @@ class SankeyDiagramPainter extends CustomPainter {
         return const Color(0xFFA855F7).withValues(alpha: 0.7);
       }
       const List<Color> ribbonColors = [
-        Color(0xFF2563EB), // Blue
-        Color(0xFFDC2626), // Red
-        Color(0xFF16A34A), // Green
-        Color(0xFFD97706), // Amber
-        Color(0xFF9333EA), // Purple
-        Color(0xFF0D9488), // Teal
-        Color(0xFFDB2777), // Pink
-        Color(0xFF4F46E5), // Indigo
+        Color(0xFF2563EB),
+        Color(0xFFDC2626),
+        Color(0xFF16A34A),
+        Color(0xFFD97706),
+        Color(0xFF9333EA),
+        Color(0xFF0D9488),
+        Color(0xFFDB2777),
+        Color(0xFF4F46E5),
       ];
       return ribbonColors[targetIdx % ribbonColors.length].withValues(alpha: 0.3);
     } else {
-      // Use exact color of the target category node with a feint alpha (0.25)
       Color targetNodeColor = _lightPalette[targetIdx % _lightPalette.length];
       return targetNodeColor.withValues(alpha: isolatedNode != null ? 0.6 : 0.25);
     }
@@ -1165,7 +1202,6 @@ class SankeyDiagramPainter extends CustomPainter {
         targetOffsets[tgtKey] = tTop + tgtH;
 
         bool isConnected = isolatedNode == null || isolatedNode == srcKey || isolatedNode == tgtKey;
-        // Path color matches the target category node color
         Color ribbonColor = _getPathColor(tgtKey, targets, colorIdx, isConnected);
 
         Path path = Path();
@@ -1180,7 +1216,6 @@ class SankeyDiagramPainter extends CustomPainter {
         colorIdx++;
       }
 
-      // Pools (sources)
       int srcIdx = 0;
       for (var entry in sourceRects.entries) {
         bool isSelected = isolatedNode == null || isolatedNode == entry.key;
@@ -1192,7 +1227,7 @@ class SankeyDiagramPainter extends CustomPainter {
         double pct = (val / totalSourceVal) * 100;
         TextPainter tp = TextPainter(
           text: TextSpan(
-            text: '${entry.key} - ${currencyFormat.format(val)} (${pct.toStringAsFixed(0)}%)',
+            text: '${entry.key} - ${formatCurrency(val)} (${pct.toStringAsFixed(0)}%)',
             style: TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.bold,
@@ -1207,7 +1242,6 @@ class SankeyDiagramPainter extends CustomPainter {
         srcIdx++;
       }
 
-      // Labels (targets)
       int tgtIdx = 0;
       for (var entry in targetRects.entries) {
         bool isSelected = isolatedNode == null || isolatedNode == entry.key;
@@ -1219,7 +1253,7 @@ class SankeyDiagramPainter extends CustomPainter {
         double pct = (val / totalTargetVal) * 100;
         TextPainter tp = TextPainter(
           text: TextSpan(
-            text: '${entry.key} - ${currencyFormat.format(val)} (${pct.toStringAsFixed(0)}%)',
+            text: '${entry.key} - ${formatCurrency(val)} (${pct.toStringAsFixed(0)}%)',
             style: TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.bold,
@@ -1234,7 +1268,6 @@ class SankeyDiagramPainter extends CustomPainter {
         tgtIdx++;
       }
     } else {
-      // 3-tier view
       double totalT1 = tier1.fold(0.0, (sum, e) => sum + e.value);
       double totalT2 = tier2.fold(0.0, (sum, e) => sum + e.value);
       double totalT3 = tier3.fold(0.0, (sum, e) => sum + e.value);
@@ -1301,7 +1334,6 @@ class SankeyDiagramPainter extends CustomPainter {
         t2OffA[tgt] = tTop + tH;
 
         bool isConnected = isolatedNode == null || isolatedNode == src || isolatedNode == tgt;
-        // Tier 1 -> Tier 2 path color matches Tier 2 node color
         paintRibbon.color = _getPathColor(tgt, tier2, flowIdxA, isConnected);
 
         Path p = Path();
@@ -1331,7 +1363,6 @@ class SankeyDiagramPainter extends CustomPainter {
         t3Off[tgt] = tTop + tH;
 
         bool isConnected = isolatedNode == null || isolatedNode == src || isolatedNode == tgt;
-        // Tier 2 -> Tier 3 path color matches Tier 3 (category) node color
         paintRibbon.color = _getPathColor(tgt, tier3, flowIdxB, isConnected);
 
         Path p = Path();
@@ -1344,7 +1375,6 @@ class SankeyDiagramPainter extends CustomPainter {
         flowIdxB++;
       }
 
-      // Tier 1 nodes (Owners / Sources)
       int t1Idx = 0;
       for (var entry in t1Rects.entries) {
         paintNode.color = isZaznamityMode ? const Color(0xFFA855F7) : _lightPalette[t1Idx % _lightPalette.length];
@@ -1363,7 +1393,6 @@ class SankeyDiagramPainter extends CustomPainter {
         t1Idx++;
       }
 
-      // Tier 2 nodes (Pools) - Label on the left side
       int t2Idx = 0;
       for (var entry in t2Rects.entries) {
         paintNode.color = isZaznamityMode ? const Color(0xFF9333EA) : _lightPalette[(t2Idx + 2) % _lightPalette.length];
@@ -1383,7 +1412,6 @@ class SankeyDiagramPainter extends CustomPainter {
         t2Idx++;
       }
 
-      // Tier 3 nodes (Categories / Targets)
       int t3Idx = 0;
       for (var entry in t3Rects.entries) {
         paintNode.color = isZaznamityMode ? const Color(0xFF7C3AED) : _lightPalette[(t3Idx + 4) % _lightPalette.length];
@@ -1392,7 +1420,7 @@ class SankeyDiagramPainter extends CustomPainter {
         double pct = (val / totalT3) * 100;
         TextPainter tp = TextPainter(
           text: TextSpan(
-            text: '${entry.key} - ${currencyFormat.format(val)} (${pct.toStringAsFixed(0)}%)',
+            text: '${entry.key} - ${formatCurrency(val)} (${pct.toStringAsFixed(0)}%)',
             style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)),
           ),
           textDirection: ui.TextDirection.ltr,

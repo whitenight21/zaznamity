@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 10, // Incremented version to support receipt_path
+      version: 13, // Incremented version to support receipt_path and liability_type
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -76,15 +76,18 @@ class DatabaseHelper {
       CREATE TABLE liabilities(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
+        original_amount REAL,
         remaining_balance REAL,
         monthly_installment REAL,
         interest_rate REAL,
         due_day INTEGER,
         owner TEXT,
+        start_date TEXT,
         last_processed_date TEXT,
-        projection_end_date TEXT
+        projection_end_date TEXT,
+        is_bi_weekly INTEGER DEFAULT 0
       )
-    ''');
+    '''); // <--- Added original_amount, start_date, and is_bi_weekly columns
 
     await db.execute('''
       CREATE TABLE savings_goals (
@@ -182,6 +185,28 @@ class DatabaseHelper {
         await db.execute("ALTER TABLE savings_goals ADD COLUMN owner TEXT;");
       } catch (_) {}
     }
+    if (oldVersion < 11) {
+      try {
+        await db.execute('ALTER TABLE liabilities ADD COLUMN original_amount REAL;');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE liabilities ADD COLUMN start_date TEXT;');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE liabilities ADD COLUMN is_bi_weekly INTEGER DEFAULT 0;');
+      } catch (_) {}
+    }
+      if (oldVersion < 12) {
+        try {
+          await db.execute('ALTER TABLE liabilities ADD COLUMN liability_type TEXT DEFAULT "Long-Term Loan / Mortgage";');
+        } catch (_) {}
+      }
+    if (oldVersion < 13) {
+      try {
+        await db.execute('ALTER TABLE liabilities ADD COLUMN recurrence_unit TEXT DEFAULT "Months";');
+        await db.execute('ALTER TABLE liabilities ADD COLUMN recurrence_interval INTEGER DEFAULT 1;');
+      } catch (_) {}
+    }
   }
 
   // Liabilities Methods
@@ -213,23 +238,22 @@ class DatabaseHelper {
       );
     }
 
-    final existingLiability = await db.query(
-      'liabilities',
-      where: 'name = ? AND owner = ?',
-      whereArgs: [liability.name, liability.owner],
-    );
-
-    if (existingLiability.isNotEmpty) {
-      int existingId = existingLiability.first['id'] as int;
-      await db.update(
-        'liabilities',
-        map,
-        where: 'id = ?',
-        whereArgs: [existingId],
-      );
-      return existingId;
+    // If editing an existing liability with a valid database ID, update it
+    if (liability.id != null) {
+      final existing = await db.query('liabilities', where: 'id = ?', whereArgs: [liability.id]);
+      if (existing.isNotEmpty) {
+        await db.update(
+          'liabilities',
+          map,
+          where: 'id = ?',
+          whereArgs: [liability.id],
+        );
+        return liability.id!;
+      }
     }
 
+    // For new liabilities, remove id so SQLite AUTOINCREMENT generates a valid integer ID
+    map.remove('id');
     return await db.insert(
       'liabilities',
       map,
@@ -311,6 +335,11 @@ class DatabaseHelper {
       int dueDay = (row['due_day'] as int?) ?? 1;
       String owner = row['owner'] as String? ?? 'Shared';
       String name = row['name'] as String? ?? 'Loan';
+      String liabilityType = row['liability_type'] as String? ?? 'Long-Term Loan / Mortgage';
+      
+      String recurrenceUnit = row['recurrence_unit'] as String? ?? 'Months';
+      int recurrenceInterval = (row['recurrence_interval'] as int?) ?? 1;
+      if (recurrenceInterval < 1) recurrenceInterval = 1;
       
       String? projectionEndDateStr = row['projection_end_date'] as String?;
       DateTime projectionEndDate = projectionEndDateStr != null && projectionEndDateStr.isNotEmpty
@@ -328,26 +357,37 @@ class DatabaseHelper {
 
       DateTime nextDue = DateTime(lastProcessed.year, lastProcessed.month, dueDay);
       if (!nextDue.isAfter(lastProcessed)) {
-        nextDue = DateTime(nextDue.year, nextDue.month + 1, dueDay);
+        if (recurrenceUnit == 'Weeks') {
+          nextDue = nextDue.add(Duration(days: 7 * recurrenceInterval));
+        } else {
+          nextDue = DateTime(nextDue.year, nextDue.month + recurrenceInterval, dueDay);
+        }
       }
 
       bool updated = false;
       int iterations = 0;
 
-      while (!nextDue.isAfter(projectionEndDate) && iterations < 24) {
+      while (!nextDue.isAfter(projectionEndDate) && iterations < 50) {
         iterations++;
         bool isPastOrPresent = !nextDue.isAfter(now);
 
         if (isPastOrPresent) {
-          double monthlyRate = (apr / 100.0) / 12.0;
-          double interestAmount = balance * monthlyRate;
-          double principalReduction = installment - interestAmount;
-          if (principalReduction < 0) principalReduction = 0.0;
-          
-          balance -= principalReduction;
-          if (balance < 0) balance = 0.0;
+          if (liabilityType == 'Simple Recurring Payment') {
+            // Simple recurring option: flat payment of the installment reducing balance directly
+            balance -= installment;
+            if (balance < 0) balance = 0.0;
+          } else {
+            double monthlyRate = (apr / 100.0) / 12.0;
+            double interestAmount = balance * monthlyRate;
+            double principalReduction = installment - interestAmount;
+            if (principalReduction < 0) principalReduction = 0.0;
+            
+            balance -= principalReduction;
+            if (balance < 0) balance = 0.0;
+          }
         }
 
+        // Check and generate transaction entry for the calendar / zaznams
         final existingTx = await db.query(
           'transactions',
           where: '(description = ? OR description = ? OR description = ?) AND created_at = ?',
@@ -385,7 +425,12 @@ class DatabaseHelper {
           updated = true;
         }
 
-        nextDue = DateTime(nextDue.year, nextDue.month + 1, dueDay);
+        // Step forward by custom interval (Weeks or Months)
+        if (recurrenceUnit == 'Weeks') {
+          nextDue = nextDue.add(Duration(days: 7 * recurrenceInterval));
+        } else {
+          nextDue = DateTime(nextDue.year, nextDue.month + recurrenceInterval, dueDay);
+        }
       }
 
       if (updated) {
@@ -404,19 +449,24 @@ class DatabaseHelper {
 
   Future<void> updateExistingLiabilityTransactions(int liabilityId, String oldName, LiabilityModel newLiability) async {
     final db = await database;
+    final nowIso = DateTime.now().toIso8601String();
     
+    // Target unconfirmed future liability zaznams
     final existingTxs = await db.query(
       'transactions',
-      where: 'description = ? AND is_confirmed = 0',
-      whereArgs: ['Liability: $oldName'],
+      where: '(description LIKE ? OR description LIKE ?) AND (is_confirmed = 0 OR created_at > ?)',
+      whereArgs: ['%Liability: $oldName%', '%Liability Payment: $oldName%', nowIso],
     );
 
     for (var txMap in existingTxs) {
       int txId = txMap['id'] as int;
+      String currentDesc = txMap['description'] as String? ?? '';
+      String updatedDesc = currentDesc.replaceAll(oldName, newLiability.name);
+      
       await db.update(
         'transactions',
         {
-          'description': 'Liability: ${newLiability.name}',
+          'description': updatedDesc,
           'amount': newLiability.monthlyInstallment,
           'owner': newLiability.owner,
         },
@@ -425,6 +475,7 @@ class DatabaseHelper {
       );
     }
 
+    // Handle label renaming so the calendar maps them correctly
     final oldLabelName = '$oldName (L)';
     final newLabelName = '${newLiability.name} (L)';
 

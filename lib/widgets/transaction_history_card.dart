@@ -325,6 +325,19 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     }
   }
 
+  String _formatAmount(double amount, String currencyCode, bool isIncome) {
+    final formatter = NumberFormat('#,##0.00', 'en_US');
+    final formattedNum = formatter.format(amount);
+    final symbol = _getCurrencySymbol(currencyCode);
+    final sign = isIncome ? '+' : '-';
+
+    if (currencyCode.toUpperCase() == 'EUR') {
+      return '$sign$formattedNum $symbol';
+    } else {
+      return '$sign$symbol$formattedNum';
+    }
+  }
+
   Color _parseColor(String? colorHex) {
     if (colorHex == null || colorHex.isEmpty) {
       return const Color(0xFF4338CA);
@@ -1290,10 +1303,9 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
                           final currencyCode = tx.currencyCode.isNotEmpty ? tx.currencyCode : 'USD';
                           final flag = _currencyFlags[currencyCode] ?? '🇺🇸';
-                          final symbol = _getCurrencySymbol(currencyCode);
 
                           final isIncome = tx.type == 'income';
-                          final amountString = '${isIncome ? '+' : '-'}$symbol${tx.amount.toStringAsFixed(2)}';
+                          final amountString = _formatAmount(tx.amount, currencyCode, isIncome);
 
                           final bool timePassed = txDate.isBefore(DateTime.now());
                           final bool isFuture = txDate.isAfter(DateTime.now());

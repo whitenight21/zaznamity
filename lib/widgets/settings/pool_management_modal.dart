@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:zaznamity/services/snackbar_notification.dart';
 
 class PoolManagementModal extends StatefulWidget {
   final Map<String, bool> initialPools;
@@ -164,9 +165,7 @@ class _PoolManagementModalState extends State<PoolManagementModal> {
 
   void _deletePool(String key) async {
     if (_pools.length <= 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You must keep at least one pool.')),
-      );
+      showSnackbarNotification(context, 'You must keep at least one pool.', isError: true);
       return;
     }
 

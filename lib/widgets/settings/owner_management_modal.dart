@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:zaznamity/services/snackbar_notification.dart';
 
 class OwnerManagementModal extends StatefulWidget {
   final List<String> initialOwners;
@@ -105,9 +106,7 @@ class _OwnerManagementModalState extends State<OwnerManagementModal> {
 
   void _deleteOwner(int index) async {
     if (_owners.length <= 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('At least one owner must remain.')),
-      );
+      showSnackbarNotification(context, 'At least one owner must remain.', isError: true);
       return;
     }
     setState(() {

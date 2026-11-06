@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/label.dart';
 import '../models/transaction_model.dart';
 import '../services/database_helper.dart';
+import '../services/snackbar_notification.dart';
 
 class CsvImportMapperWorkflow {
   static Future<void> runCsvImportWorkflow({
@@ -28,9 +29,7 @@ class CsvImportMapperWorkflow {
       String content = await file.readAsString();
       if (content.isEmpty) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('The selected file is empty.')),
-        );
+        showSnackbarNotification(context, 'The selected file is empty.', isError: true);
         return;
       }
 
@@ -58,9 +57,7 @@ class CsvImportMapperWorkflow {
       );
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error reading file: $e')),
-      );
+      showSnackbarNotification(context, 'Error reading file: $e', isError: true);
     }
   }
 
@@ -152,9 +149,7 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
 
   Future<void> _processImport() async {
     if (_mapDate == null || _mapAmount == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please map at least Date and Amount columns.')),
-      );
+      showSnackbarNotification(context, 'Please map at least Date and Amount columns.', isError: true);
       return;
     }
 
@@ -297,10 +292,7 @@ class _CsvMappingDialogState extends State<_CsvMappingDialog> {
     if (!context.mounted) return;
     Navigator.pop(context);
     widget.onImportCompleted();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Successfully imported $importedCount transactions!')),
-    );
+    showSnackbarNotification(context, 'Successfully imported $importedCount Zaznams!');
   }
 
   @override

@@ -5,10 +5,14 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
+import '../models/savings_goal_model.dart';
 
 class SmartInsightsCard extends StatefulWidget {
   final List<TransactionModel> transactions;
   final List<LabelModel> labels;
+  final List<dynamic> budgets;
+  final List<dynamic> liabilities; // Accepts LiabilityItem or map list
+  final List<SavingsGoalModel> savingsGoals;
   final Map<String, double> futureFlowByOwner;
   final Map<String, double> prognosisByOwner;
   final String? selectedOwner;
@@ -19,6 +23,9 @@ class SmartInsightsCard extends StatefulWidget {
     super.key,
     required this.transactions,
     required this.labels,
+    required this.budgets,
+    required this.liabilities,
+    required this.savingsGoals,
     required this.futureFlowByOwner,
     required this.prognosisByOwner,
     this.selectedOwner,
@@ -70,6 +77,9 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedOwner != widget.selectedOwner ||
         oldWidget.transactions.length != widget.transactions.length ||
+        oldWidget.budgets.length != widget.budgets.length ||
+        oldWidget.liabilities.length != widget.liabilities.length ||
+        oldWidget.savingsGoals.length != widget.savingsGoals.length ||
         oldWidget.labels.length != widget.labels.length) {
       _computeDataIfNeeded(force: true);
     }
@@ -406,6 +416,50 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       }
     }
 
+    // --- COMMITTED THIS MONTH CALCULATION ---
+    // 1. Total Budgets Limits set for current owner/selection
+    double totalBudgetsCommitted = 0;
+    for (var b in widget.budgets) {
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners') {
+        final ownerField = b['owner']?.toString().trim() ?? '';
+        if (ownerField.toLowerCase() != widget.selectedOwner!.trim().toLowerCase()) continue;
+      }
+      totalBudgetsCommitted += ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
+    }
+
+    // 2. Total Liability Monthly Installments
+    double totalLiabilitiesCommitted = 0;
+    for (var l in widget.liabilities) {
+      String ownerVal = '';
+      double installmentVal = 0;
+      if (l is Map) {
+        ownerVal = l['owner']?.toString() ?? 'Shared';
+        installmentVal = ((l['monthly_installment'] ?? l['monthlyInstallment'] ?? 0) as num).toDouble();
+      } else {
+        // LiabilityItem object
+        ownerVal = l.owner;
+        installmentVal = l.monthlyInstallment;
+      }
+
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners') {
+        if (ownerVal.trim().toLowerCase() != widget.selectedOwner!.trim().toLowerCase()) continue;
+      }
+      totalLiabilitiesCommitted += installmentVal;
+    }
+
+    // 3. Total Savings Goals Monthly Contributions
+    double totalSavingsCommitted = 0;
+    for (var g in widget.savingsGoals) {
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners') {
+        if (g.owner.trim().toLowerCase() != widget.selectedOwner!.trim().toLowerCase()) continue;
+      }
+      totalSavingsCommitted += g.monthlyContribution;
+    }
+
+    double totalCommittedThisMonth = totalBudgetsCommitted + totalLiabilitiesCommitted + totalSavingsCommitted;
+    double effectiveIncomeForCommitment = currentMonthIncome > 0 ? currentMonthIncome : (trailing3MIncome > 0 ? (trailing3MIncome / 3.0) : totalCommittedThisMonth);
+    double freeToSpend = effectiveIncomeForCommitment - totalCommittedThisMonth;
+
     if (!hasFixedCategoriesConfigured && currentMonthExpense > 0) {
       needsExpense = 0;
       wantsExpense = currentMonthExpense;
@@ -425,12 +479,10 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     double monthlyBurnBaseline = prevMonthExpense > 0 ? prevMonthExpense : (currentMonthExpense > 0 ? currentMonthExpense : 1.0);
     double emergencyRunwayMonths = totalLiquidChecking > 0 ? (totalLiquidChecking / monthlyBurnBaseline) : 0.0;
 
-    double dailySpendRate = currentDay > 0 ? (currentMonthExpense / currentDay) : 0;
     final double daysLeft = (daysInMonth - currentDay + 1).clamp(1, 31).toDouble();
     final double spendable = (totalLiquidChecking + scheduledNetRestOfMonth) * 0.8;
-    final double targetBufferAllowance = spendable.clamp(0.0, double.infinity) / daysLeft;
+    double targetBufferAllowance = spendable.clamp(0.0, double.infinity) / daysLeft;
 
-    // Corrected survival runway days based on monthly burn baseline converted to daily burn (monthly burn / 30)
     double dailyAverageBurn = monthlyBurnBaseline / 30.0;
     double moneyRunwayDays = dailyAverageBurn > 0 ? (totalLiquidChecking / dailyAverageBurn) : (totalLiquidChecking > 0 ? 999.0 : 0.0);
 
@@ -596,7 +648,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       'emergencyRunway': emergencyRunwayMonths,
       'targetBufferAllowance': targetBufferAllowance,
       'moneyRunwayDays': moneyRunwayDays,
-      'dailySpendRate': dailySpendRate,
       'netCashflowVelocityDelta': netCashflowVelocityDelta,
       'needsExpense': needsExpense,
       'wantsExpense': wantsExpense,
@@ -610,6 +661,11 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       'fastestWin': fastestWin,
       'spentToday': spentToday,
       'totalLiquidChecking': totalLiquidChecking,
+      'totalCommittedThisMonth': totalCommittedThisMonth,
+      'totalBudgetsCommitted': totalBudgetsCommitted,
+      'totalLiabilitiesCommitted': totalLiabilitiesCommitted,
+      'totalSavingsCommitted': totalSavingsCommitted,
+      'freeToSpend': freeToSpend,
     };
   }
 
@@ -757,10 +813,16 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     final double totalLiquidChecking = analysis['totalLiquidChecking'];
     final double spentToday = analysis['spentToday'];
     
+    final double totalCommitted = analysis['totalCommittedThisMonth'];
+    final double budgetsCommitted = analysis['totalBudgetsCommitted'];
+    final double liabilitiesCommitted = analysis['totalLiabilitiesCommitted'];
+    final double savingsCommitted = analysis['totalSavingsCommitted'];
+    final double freeToSpend = analysis['freeToSpend'];
+    final double incomeBase = analysis['currentMonthIncome'];
+
     final double needs = analysis['needsExpense'];
     final double wants = analysis['wantsExpense'];
     final double savings = analysis['savingsContribution'];
-    final double incomeBase = analysis['currentMonthIncome'];
 
     final double fixed = analysis['fixedOverhead'];
     final double variable = analysis['variableSpending'];
@@ -819,11 +881,19 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                       icon: Icon(Icons.info_outline, size: 16, color: theme.textSecondary),
                       onPressed: () => _showInfoDialog(
                         context,
-                        'Metrics Calculation & Insights Overview',
-                        '• Real-time Recalculation: Metrics refresh instantaneously whenever transactions are added, edited, or confirmed.\n\n'
-                        '• Monthly Baselines: Monthly comparisons and spend-rate velocity metrics are re-anchored on the 1st day of each calendar month.',
+                        'Health & Insights',
+                        '"At a Glance" - Auto-generated actionable insights based on spending patterns, recurring payments, and runway health.\n\n'
+                        '• Health Score: Weighted scoring based on savings rate, emergency runway, budget adherence, cashflow trend, and debt load.\n'
+                        '• Committed This Month: Automatically aggregates your budgets ceiling, active liability installments, and savings goal contributions, shown against your income as "Free to Spend".\n'
+                        '• Runway Health: Calculated based on liquid balances and average monthly burn rate, indicating how many months of expenses can be covered.\n'
+                        '• Target Buffer Allowance: Recommended daily spending limit to maintain runway health.\n'
+                        '• Money Runway Days: Estimated number of days before liquid balances are depleted based on current spending velocity.\n'
+                        '• Spent Today / Allowed: Total expenses recorded for the current day over the allowed limit.\n'
+                        '• Needs / Wants / Savings: Categorized expenses for the current month, distinguishing between essential needs, discretionary wants, and savings contributions.\n'
+                        '• Fixed / Variable: Breakdown of expenses into fixed overheads and variable spending, providing insight into controllable costs.\n'
+                        '• Suggestions & Actions: Curated list of top actionable insights, highlighting spending anomalies, budget adherence issues, and runway health alerts.',
                       ),
-                      tooltip: 'Recalculation Guide',
+                      tooltip: 'At a Glance',
                       constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                       padding: const EdgeInsets.all(8),
                     ),
@@ -850,7 +920,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           if (!_isCollapsed) ...[
             const SizedBox(height: 14),
 
-            // 1. Health Status Box restored to top as full-width card
+            // 1. Health Status Box
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -917,6 +987,66 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
             ),
             const SizedBox(height: 14),
 
+            // --- COMMITTED THIS MONTH CARD ---
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: theme.cardBackground,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.account_balance_wallet, color: theme.accent, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            'COMMITTED THIS MONTH',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: theme.accent, letterSpacing: 0.6),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        _formatCurrency(totalCommitted),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: theme.textPrimary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '• Budgets: ${_formatCurrency(budgetsCommitted)}\n• Liabilities: ${_formatCurrency(liabilitiesCommitted)}\n• Goals: ${_formatCurrency(savingsCommitted)}',
+                        style: TextStyle(fontSize: 10, color: theme.textSecondary, height: 1.3),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text('Free to Spend', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: theme.textSecondary)),
+                          const SizedBox(height: 2),
+                          Text(
+                            _formatCurrency(freeToSpend),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              color: freeToSpend >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -963,7 +1093,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Today\'s Allowance (Spent vs Allowed):',
+                        'Spent Today / Allowed:',
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.textSecondary),
                       ),
                       Text(
@@ -981,7 +1111,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
             ),
             const SizedBox(height: 14),
 
-            // 2. Emergency Runway box styled to standard card height and placed above pool configuration
+            // 2. Emergency Runway box
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -1097,12 +1227,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                   '50 / 30 / 20 BUDGET BREAKDOWN',
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: theme.accent, letterSpacing: 0.8),
                 ),
-                IconButton(
-                  icon: Icon(Icons.info_outline, size: 16, color: theme.textSecondary),
-                  onPressed: () => _showInfoDialog(context, '50/30/20 Rule', 'Compares Needs (≤50%), Wants (≤30%), and Savings (≥20%) against your monthly income.'),
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  padding: EdgeInsets.zero,
-                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -1131,12 +1255,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                 Text(
                   'FIXED VS. VARIABLE BURN RATE',
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: theme.accent, letterSpacing: 0.8),
-                ),
-                IconButton(
-                  icon: Icon(Icons.info_outline, size: 16, color: theme.textSecondary),
-                  onPressed: () => _showInfoDialog(context, 'Fixed vs Variable', 'Separates mandatory overhead from discretionary spending.'),
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  padding: EdgeInsets.zero,
                 ),
               ],
             ),
@@ -1187,7 +1305,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
             const SizedBox(height: 16),
 
             Text(
-              'SUGGESTIONS & COURSES OF ACTION',
+              'SUGGESTIONS & ACTIONS',
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: theme.accent, letterSpacing: 0.8),
             ),
             const SizedBox(height: 8),

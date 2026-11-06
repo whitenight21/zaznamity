@@ -108,12 +108,18 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
 
   String _formatCurrency(double amount, String currencyCode) {
     String symbol = '\$';
-    if (currencyCode == 'EUR') symbol = '€';
-    else if (currencyCode == 'GBP') symbol = '£';
-    else if (currencyCode == 'JPY') symbol = '¥';
+    if (currencyCode.toUpperCase() == 'EUR') symbol = '€';
+    else if (currencyCode.toUpperCase() == 'GBP') symbol = '£';
+    else if (currencyCode.toUpperCase() == 'JPY') symbol = '¥';
     
-    final format = NumberFormat.currency(symbol: symbol, decimalDigits: currencyCode == 'JPY' ? 0 : 2);
-    return format.format(amount);
+    final int decimalDigits = currencyCode.toUpperCase() == 'JPY' ? 0 : 2;
+    final formattedNumber = NumberFormat('#,##0${decimalDigits > 0 ? '.00' : ''}', 'en_US').format(amount);
+    
+    if (currencyCode.toUpperCase() == 'EUR') {
+      return '$formattedNumber $symbol';
+    } else {
+      return '$symbol$formattedNumber';
+    }
   }
 
   void _showInfoDialog(BuildContext context, String title, String description) {
@@ -797,7 +803,7 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                           dateStr = '${DateFormat('MMM d, yyyy').format(spotDates[spotIndex])}\n';
                         }
                         return LineTooltipItem(
-                          '${dateStr}\$${spot.y.toStringAsFixed(2)}',
+                          '$dateStr${_formatCurrency(spot.y, _primaryCurrency)}',
                           const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
                         );
                       }).toList();

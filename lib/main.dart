@@ -6,6 +6,7 @@ import 'package:local_auth/local_auth.dart';
 import 'screens/dashboard_screen.dart';
 import 'services/database_helper.dart';
 import 'services/notification_service.dart';
+import 'package:zaznamity/services/snackbar_notification.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -245,9 +246,7 @@ class _SplashScreenState extends State<SplashScreen> with WidgetsBindingObserver
           if (_enteredPin == _savedPin) {
             _navigateToDashboard();
           } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Incorrect PIN')),
-            );
+            showSnackbarNotification(context, 'Incorrect PIN', isError: true);
             _enteredPin = "";
           }
         }

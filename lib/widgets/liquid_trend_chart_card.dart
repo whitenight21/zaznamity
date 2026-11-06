@@ -56,7 +56,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
   MovingAverageFilter? _lastMaFilter;
   bool? _lastShowFuture;
   String _lastPoolsKey = '';
-  String _currencySymbol = '\$';
+  String _currencyCode = 'USD';
   String _dateRangeSetting = '30 Days';
   bool _showFuture = false;
   bool _isZaznamityMode = true;
@@ -75,7 +75,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
     final collapsed = prefs.getBool('set_liquidTrend_collapsed') ?? false;
     if (mounted) {
       setState(() {
-        _currencySymbol = _getCurrencySymbol(primary);
+        _currencyCode = primary;
         _dateRangeSetting = prefs.getString('set_liquidTrend_range') ?? '30 Days';
         _showFuture = prefs.getBool('set_liquidTrend_show_future') ?? false;
         _isZaznamityMode = (savedTheme == 'zaznamity');
@@ -104,6 +104,17 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
   void didUpdateWidget(covariant LiquidTrendChartCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     _loadPrefs();
+  }
+
+  String _formatCurrency(double amount, {bool includeDecimals = true}) {
+    final symbol = _getCurrencySymbol(_currencyCode);
+    final formattedNumber = NumberFormat(includeDecimals ? '#,##0.00' : '#,##0', 'en_US').format(amount);
+    
+    if (_currencyCode.toUpperCase() == 'EUR') {
+      return '$formattedNumber $symbol';
+    } else {
+      return '$symbol$formattedNumber';
+    }
   }
 
   String _getCurrencySymbol(String code) {
@@ -222,7 +233,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
     Color? currentSegmentColor;
     bool currentIsDashed = false;
 
-    List<Map<String, dynamic>> balancePoints = [];
+    List balancePoints = [];
 
     for (int i = 0; i < sortedTx.length; i++) {
       final t = sortedTx[i];
@@ -747,7 +758,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                     ),
                                     const SizedBox(height: 1),
                                     Text(
-                                      '${_cachedMonthlyVelocity >= 0 ? '+' : ''}$_currencySymbol${_cachedMonthlyVelocity.toStringAsFixed(2)}/mo',
+                                      '${_cachedMonthlyVelocity >= 0 ? '+' : ''}${_formatCurrency(_cachedMonthlyVelocity)}/mo',
                                       style: TextStyle(
                                         fontSize: 9,
                                         fontWeight: FontWeight.bold,
@@ -974,7 +985,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                             reservedSize: 48,
                             getTitlesWidget: (value, meta) {
                               return Text(
-                                '$_currencySymbol${value.toInt()}',
+                                _formatCurrency(value.toDouble(), includeDecimals: false),
                                 style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                               );
                             },
@@ -994,7 +1005,7 @@ class _LiquidTrendChartChartCardState extends State<LiquidTrendChartCard> {
                                 dateStr = '${DateFormat('MMM d, yyyy').format(_cachedSpotDates[spotIndex])}\n';
                               }
                               return LineTooltipItem(
-                                '${dateStr}$_currencySymbol${spot.y.toStringAsFixed(2)}',
+                                '$dateStr${_formatCurrency(spot.y)}',
                                 const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
                               );
                             }).toList();

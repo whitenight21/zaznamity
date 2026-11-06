@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_model_use
+// ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -6,12 +6,12 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
-import 'dart:math' as math;
 
 class IncomeExpensesByLabelsCard extends StatefulWidget {
   final List<TransactionModel> transactions;
   final List<LabelModel> labels;
   final List<String> owners;
+  final List budgets;
   final DateTime? startDate;
   final DateTime? endDate;
   final String? selectedOwner;
@@ -32,6 +32,7 @@ class IncomeExpensesByLabelsCard extends StatefulWidget {
     required this.transactions,
     required this.labels,
     required this.owners,
+    this.budgets = const [],
     this.startDate,
     this.endDate,
     this.selectedOwner,
@@ -69,6 +70,10 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   bool _excludeTransfers = true;
   bool _isCollapsed = false;
 
+  // Local date state fallbacks to mirror SelectedLabelFocusCard behavior
+  DateTime? _localStartDate;
+  DateTime? _localEndDate;
+
   String _primaryCurrency = 'USD';
 
   Map<int, double> _labelBudgetsById = {};
@@ -97,11 +102,14 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   String _lastFixedLabelsKey = '';
   bool? _lastExcludeTransfers;
   String? _lastCurrencyKey;
+  String _lastBudgetsKey = '';
 
   @override
   void initState() {
     super.initState();
     _localOwner = widget.selectedOwner;
+    _localStartDate = widget.startDate;
+    _localEndDate = widget.endDate;
     _loadMultiLabelSettingsOnce();
   }
 
@@ -197,6 +205,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               '• It displays the total income, total expenses, and a breakdown of each label\'s contribution to the overall financial picture.\n'
               '• You can switch between different chart types (bar, pie, tree) to visualize the data in a way that best suits your preferences.\n'
               '• It provides insights into fixed and discretionary expenses, helping you identify areas where you can potentially save money.\n'
+              '• Target budget indicators display directly inside charts comparing spending against set limits.\n'
               '• The card calculates month-over-month changes for each label (in percentages: "+ [red] %" (more than last month) or "- [green] %" (less than last month)), allowing you to track trends and identify areas of concern or improvement.\n'
               '• It automatically detects and flags labels (yellow !) that have exceeded 30% above their 3-month average, alerting you to potential overspending in those categories.\n'
               '• The share-of-income calculation shows how much each label contributes to your total income, providing a clear picture of your financial priorities.\n'
@@ -246,6 +255,12 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     if (widget.selectedOwner != oldWidget.selectedOwner) {
       _localOwner = widget.selectedOwner;
     }
+    if (widget.startDate != oldWidget.startDate) {
+      _localStartDate = widget.startDate;
+    }
+    if (widget.endDate != oldWidget.endDate) {
+      _localEndDate = widget.endDate;
+    }
   }
 
   bool _isFixedExpenseLabel(LabelModel label) {
@@ -282,6 +297,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   }
 
   DateTime? _getEffectiveStartDate() {
+    if (_localStartDate != null) return _localStartDate;
     if (widget.startDate != null) return widget.startDate;
     if (_multiLabelDefaultRange.isEmpty) return null;
     final now = DateTime.now();
@@ -300,8 +316,66 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
   }
 
   DateTime? _getEffectiveEndDate() {
+    if (_localEndDate != null) return _localEndDate;
     if (widget.endDate != null) return widget.endDate;
     return DateTime.now();
+  }
+
+  void _applyQuickRange(String rangeKey) {
+    final now = DateTime.now();
+    DateTime start;
+    DateTime end = now;
+
+    switch (rangeKey) {
+      case 'Month':
+        start = DateTime(now.year, now.month, 1);
+        break;
+      case '90D':
+        start = now.subtract(const Duration(days: 90));
+        break;
+      case '6M':
+        start = DateTime(now.year, now.month - 6, now.day);
+        break;
+      case '1Y':
+        start = DateTime(now.year - 1, now.month, now.day);
+        break;
+      default:
+        return;
+    }
+
+    setState(() {
+      _localStartDate = start;
+      _localEndDate = end;
+    });
+
+    if (widget.onDateRangeSelected != null) {
+      widget.onDateRangeSelected!(start, end);
+    }
+  }
+
+  bool _isQuickRangeActive(String rangeKey) {
+    final activeStart = _getEffectiveStartDate();
+    if (activeStart == null) return false;
+    final now = DateTime.now();
+    DateTime? expectedStart;
+    switch (rangeKey) {
+      case 'Month':
+        expectedStart = DateTime(now.year, now.month, 1);
+        break;
+      case '90D':
+        expectedStart = now.subtract(const Duration(days: 90));
+        break;
+      case '6M':
+        expectedStart = DateTime(now.year, now.month - 6, now.day);
+        break;
+      case '1Y':
+        expectedStart = DateTime(now.year - 1, now.month, now.day);
+        break;
+    }
+    if (expectedStart == null) return false;
+    final startClean = DateTime(activeStart.year, activeStart.month, activeStart.day);
+    final expectedClean = DateTime(expectedStart.year, expectedStart.month, expectedStart.day);
+    return startClean.isAtSameMomentAs(expectedClean);
   }
 
   String _formatCurrency(double amount) {
@@ -335,11 +409,35 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     return sb.toString();
   }
 
+  double _getBudgetForLabel(String labelName) {
+    final matchedLabel = widget.labels.where((l) => l.name == labelName).firstOrNull;
+    if (matchedLabel != null && _labelBudgetsById.containsKey(matchedLabel.id)) {
+      return _labelBudgetsById[matchedLabel.id]!;
+    }
+    if (_labelBudgetsByName.containsKey(labelName)) {
+      return _labelBudgetsByName[labelName]!;
+    }
+    
+    // Check widget.budgets passed from DashboardScreen
+    final matchingBudget = widget.budgets.where((b) {
+      final bLabelId = b['label_id'] ?? b['labelId'];
+      final bLabelName = b['label_name'] ?? b['labelName'];
+      return (matchedLabel != null && bLabelId == matchedLabel.id) || (bLabelName == labelName);
+    }).firstOrNull;
+
+    if (matchingBudget != null) {
+      return ((matchingBudget['limit_amount'] ?? matchingBudget['limitAmount'] ?? 0) as num).toDouble();
+    }
+
+    return 0.0;
+  }
+
   void _computeDataIfNeeded() {
     final activeOwner = widget.selectedOwner ?? _localOwner;
     final incomeLabelsKey = selectedIncomeLabels.join(',');
     final expenseLabelsKey = selectedExpenseLabels.join(',');
     final fixedLabelsKey = _multiLabelFixedCategoriesById.entries.where((e) => e.value).map((e) => e.key).join(',');
+    final budgetsKey = widget.budgets.length.toString();
     final effectiveStart = _getEffectiveStartDate();
     final effectiveEnd = _getEffectiveEndDate();
     final currentTxFingerprint = _createTxFingerprint(widget.transactions);
@@ -353,7 +451,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
         _lastExpenseLabelsKey == expenseLabelsKey &&
         _lastFixedLabelsKey == fixedLabelsKey &&
         _lastExcludeTransfers == _excludeTransfers &&
-        _lastCurrencyKey == _primaryCurrency) {
+        _lastCurrencyKey == _primaryCurrency &&
+        _lastBudgetsKey == budgetsKey) {
       return;
     }
 
@@ -501,6 +600,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     _lastFixedLabelsKey = fixedLabelsKey;
     _lastExcludeTransfers = _excludeTransfers;
     _lastCurrencyKey = _primaryCurrency;
+    _lastBudgetsKey = budgetsKey;
   }
 
   void _showInfoModal(BuildContext context, String title, String description) {
@@ -588,7 +688,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       const Color(0xFF7C3AED),
     ];
 
-    final bool hasDateFilter = widget.startDate != null || widget.endDate != null;
+    final bool hasDateFilter = _localStartDate != null || _localEndDate != null || widget.startDate != null || widget.endDate != null;
     final double fixedRatio = _cachedTotalExpenses > 0 ? (_cachedFixedExpenses / _cachedTotalExpenses) * 100 : 0.0;
     final double discRatio = _cachedTotalExpenses > 0 ? (_cachedDiscretionaryExpenses / _cachedTotalExpenses) * 100 : 0.0;
     final effectiveStart = _getEffectiveStartDate();
@@ -712,110 +812,126 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               if (!_isCollapsed) ...[
                 const SizedBox(height: 12),
 
-                // Row 1: Date Range Picker
+                // Timeframe Selector Pills & Custom Date Range Picker in One Row (Synced with SelectedLabelFocusCard)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
+                    SizedBox(
+                      width: boxWidth,
+                      child: Row(
+                        children: ['Month', '90D', '6M', '1Y'].map((tf) {
+                          final isSelected = _isQuickRangeActive(tf);
+                          return Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(right: tf != '1Y' ? 4 : 0),
+                              child: InkWell(
+                                onTap: () => _applyQuickRange(tf),
                                 child: Container(
                                   height: 44,
                                   decoration: BoxDecoration(
-                                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                                    borderRadius: BorderRadius.horizontal(
-                                      left: const Radius.circular(10),
-                                      right: hasDateFilter ? Radius.zero : const Radius.circular(10),
-                                    ),
+                                    color: isSelected 
+                                        ? const Color(0xFF582F95) 
+                                        : (_isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC)),
+                                    borderRadius: BorderRadius.circular(10),
                                     border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                                   ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: widget.onSelectStartDate,
-                                      borderRadius: BorderRadius.horizontal(
-                                        left: const Radius.circular(10),
-                                        right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                  alignment: Alignment.center,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                                    child: Text(
+                                      tf,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected ? Colors.white : (_isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
                                       ),
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(left: 14, right: 8),
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                            const SizedBox(width: 6),
-                                            Expanded(
-                                              child: Text(
-                                                effectiveStart != null && effectiveEnd != null
-                                                    ? '${DateFormat('MM/dd').format(effectiveStart)} - ${DateFormat('MM/dd').format(effectiveEnd)}'
-                                                    : 'Date Range',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: hasDateFilter
-                                                      ? (_isZaznamityMode ? Colors.white : const Color(0xFF1E293B))
-                                                      : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                                  fontWeight: hasDateFilter
-                                                      ? FontWeight.bold
-                                                      : FontWeight.normal,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
+                                      textAlign: TextAlign.center,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    SizedBox(
+                      width: boxWidth,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.horizontal(
+                                  left: const Radius.circular(10),
+                                  right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                ),
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: widget.onSelectStartDate,
+                                  borderRadius: BorderRadius.horizontal(
+                                    left: const Radius.circular(10),
+                                    right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            hasDateFilter
+                                                ? '${effectiveStart != null ? DateFormat('MM/dd').format(effectiveStart) : '...'} - ${effectiveEnd != null ? DateFormat('MM/dd').format(effectiveEnd) : '...'}'
+                                                : 'Date Range',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155)) : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)),
+                                              fontWeight: FontWeight.bold,
                                             ),
-                                            if (!hasDateFilter)
-                                              Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
-                                          ],
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
-                                      ),
+                                      ],
                                     ),
                                   ),
                                 ),
-                              ),
-                              if (hasDateFilter) ...[
-                                const SizedBox(width: 1),
-                                Container(
-                                  height: 44,
-                                  width: 36,
-                                  decoration: BoxDecoration(
-                                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFE2E8F0),
-                                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                                  ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: widget.onClearDateFilter,
-                                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                                      child: const Center(
-                                        child: Icon(Icons.clear, size: 14, color: Color(0xFFDC2626)),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          Positioned(
-                            top: -6,
-                            left: -4,
-                            child: InkWell(
-                              onTap: () => _showInfoModal(
-                                context,
-                                'Date Filter Default',
-                                'The default date range of this card is set to the current month unless custom date bounds are explicitly picked.',
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
                               ),
                             ),
                           ),
+                          if (hasDateFilter) ...[
+                            Container(
+                              height: 44,
+                              width: 32,
+                              decoration: BoxDecoration(
+                                color: _isZaznamityMode ? const Color(0xFF3D256B) : const Color(0xFFE2E8F0),
+                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _localStartDate = null;
+                                      _localEndDate = null;
+                                    });
+                                    widget.onClearDateFilter();
+                                  },
+                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                  child: const Center(
+                                    child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -823,7 +939,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                 ),
                 const SizedBox(height: 12),
 
-                // Row 2: "Income Labels" Dropdown and "Expense Labels" Dropdown
+                // Row: "Income Labels" Dropdown and "Expense Labels" Dropdown
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1244,7 +1360,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                 final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
                                 final shareOfIncomeText = _cachedShareOfIncome[entry.key] ?? '';
                                 final isFlagged = _cachedFlagged30PercentLabels.contains(entry.key);
-                                final budget = _labelBudgetsByName[entry.key];
+                                final budget = _getBudgetForLabel(entry.key);
 
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 12.0),
@@ -1338,14 +1454,24 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                               ),
                                                             ),
                                                           ),
-                                                          if (budget != null && budget > 0 && _cachedMaxChartAmount > 0) ...[
+                                                          if (budget > 0 && _cachedMaxChartAmount > 0) ...[
                                                             Positioned(
                                                               left: ((budget / _cachedMaxChartAmount) * availableBarArea).clamp(0.0, availableBarArea),
                                                               top: -2,
                                                               bottom: -2,
                                                               child: Container(
-                                                                width: 2,
-                                                                color: entry.value > budget ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                                                                width: 2.5,
+                                                                height: 22,
+                                                                decoration: BoxDecoration(
+                                                                  color: entry.value > budget ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                                                                  borderRadius: BorderRadius.circular(2),
+                                                                  boxShadow: const [
+                                                                    BoxShadow(
+                                                                      color: Colors.black26,
+                                                                      blurRadius: 2,
+                                                                    ),
+                                                                  ],
+                                                                ),
                                                               ),
                                                             ),
                                                           ],
@@ -1374,7 +1500,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                             ),
                                           ],
                                         ),
-                                        if (budget != null && budget > 0)
+                                        if (budget > 0)
                                           Padding(
                                             padding: const EdgeInsets.only(left: 117.0, top: 2.0),
                                             child: Text(
@@ -1436,6 +1562,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                       final color = paletteColors[index % paletteColors.length];
                                       final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
                                       final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
+                                      final budget = _getBudgetForLabel(entry.key);
 
                                       return InkWell(
                                         onTap: () => _handleLabelTap(entry.key),
@@ -1467,6 +1594,11 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                 '${_formatCurrency(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
                                                 style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                               ),
+                                              if (budget > 0)
+                                                Text(
+                                                  '/ ${_formatCurrency(budget)} ',
+                                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: entry.value > budget ? const Color(0xFFF87171) : const Color(0xFF34D399)),
+                                                ),
                                               Text(
                                                 '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
                                                 style: TextStyle(
@@ -1504,7 +1636,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                               }
                                             }
 
-                                            // Trigger navigation on tap release
                                             if (event is FlTapUpEvent) {
                                               if (touchedPieIndex != null && touchedPieIndex! >= 0 && touchedPieIndex! < _cachedSortedEntries.length) {
                                                 final entryName = _cachedSortedEntries[touchedPieIndex!].key;
@@ -1522,7 +1653,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                         sections: List.generate(_cachedSortedEntries.length, (index) {
                                           final entry = _cachedSortedEntries[index];
                                           final isTouched = index == touchedPieIndex;
-                                          const radius = 50.0; // Fixed radius so slices never pop out
+                                          const radius = 50.0;
                                           final color = paletteColors[index % paletteColors.length];
                                           final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
 
@@ -1552,6 +1683,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                       final color = paletteColors[index % paletteColors.length];
                                       final percentage = _cachedActiveModeTotalSum > 0 ? (entry.value / _cachedActiveModeTotalSum) * 100 : 0.0;
                                       final delta = _cachedLabelMoMDelta[entry.key] ?? 0.0;
+                                      final budget = _getBudgetForLabel(entry.key);
 
                                       return InkWell(
                                         onTap: () => _handleLabelTap(entry.key),
@@ -1583,6 +1715,11 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                 '${_formatCurrency(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
                                                 style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                               ),
+                                              if (budget > 0)
+                                                Text(
+                                                  '/ ${_formatCurrency(budget)} ',
+                                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: entry.value > budget ? const Color(0xFFF87171) : const Color(0xFF34D399)),
+                                                ),
                                               Text(
                                                 '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
                                                 style: TextStyle(
@@ -1750,10 +1887,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       },
     );
   }
-}
-
-class BorderColorHelper {
-  static Color getCachedBorderColor() => Colors.white12;
 }
 
 class TreemapNode {

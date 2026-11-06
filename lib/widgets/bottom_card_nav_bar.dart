@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/card_config.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import '../services/snackbar_notification.dart';
 
 class BottomCardNavBar extends StatefulWidget {
   final List<CardConfig> cards;
@@ -79,16 +80,10 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
     // Prompt user to enable permission in system settings if permanently denied
     if (status.isPermanentlyDenied) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Microphone permission is required for voice input. Please enable it in Settings.'),
-            action: SnackBarAction(
-              label: 'Settings',
-              textColor: Colors.white,
-              onPressed: () => openAppSettings(),
-            ),
-            backgroundColor: Colors.red.shade700,
-          ),
+        showSnackbarNotification(
+          context,
+          'Microphone permission is required for voice input. Please enable it in Settings.',
+          isError: true,
         );
       }
     }
@@ -116,18 +111,10 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
         });
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Center(
-                child: Text(
-                  'Listening... Speak your Zaznam',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              duration: Duration(seconds: 4),
-              backgroundColor: Colors.red,
-            ),
+          showSnackbarNotification(
+            context,
+            'Listening... Speak your Zaznam',
+            isError: false,
           );
         }
 
@@ -140,8 +127,10 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
         );
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Speech recognition not available on this device.')),
+          showSnackbarNotification(
+            context,
+            'Speech recognition not available on this device.',
+            isError: true,
           );
         }
       }
@@ -151,7 +140,7 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
         _isRecordingActive = false;
       });
 
-      String spokenResult = _lastWords.isNotEmpty ? _lastWords : "Incomplete Voice Input Zaznam";
+      String spokenResult = _lastWords.isNotEmpty ? _lastWords : "";
 
       if (widget.onVoiceDataParsed != null) {
         widget.onVoiceDataParsed!(spokenResult);
@@ -160,18 +149,10 @@ class _BottomCardNavBarState extends State<BottomCardNavBar> {
       // Live 2-second decreasing countdown in the Snackbar while fields remain populated
       for (int i = 2; i >= 1; i--) {
         if (!mounted) break;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Center(
-              child: Text(
-                'Captured: "$spokenResult" - Saving in ${i}s...',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            duration: const Duration(milliseconds: 950),
-            backgroundColor: const Color(0xFF582F95),
-          ),
+        showSnackbarNotification(
+          context,
+          'Captured: "$spokenResult" - Saving in ${i}s...',
+          isError: false,
         );
         await Future.delayed(const Duration(seconds: 1));
       }

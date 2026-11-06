@@ -48,6 +48,8 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
   double _lumpSumExpense = 0.0; // 0 to 2000
   double _extraDebtPayment = 0.0; // 0 to 1500 (Liability Impact)
   int _horizonDays = 30; // 30, 90, 180, 365
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
 
   // Default Preset Deletion Toggles/Tracking
   final Set<String> _hiddenDefaultPresets = {};
@@ -198,9 +200,24 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
   }
 
   String _formatCurrency(double amount) {
-    final symbol = _getCurrencySymbol();
-    final format = NumberFormat.currency(symbol: symbol, decimalDigits: 2);
-    return format.format(amount);
+    final cleanAmount = amount.abs();
+    final formatter = NumberFormat('#,##0.00', 'en_US');
+    final formattedNum = formatter.format(cleanAmount);
+    
+    String result;
+    if (_primaryCurrency.toUpperCase() == 'EUR') {
+      result = '$formattedNum €';
+    } else if (_primaryCurrency.toUpperCase() == 'USD') {
+      result = '\$$formattedNum';
+    } else {
+      final symbol = _getCurrencySymbol();
+      result = '$symbol$formattedNum';
+    }
+
+    if (amount < 0) {
+      return '-$result';
+    }
+    return result;
   }
 
   void _resetScenario() {
@@ -210,7 +227,56 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
       _lumpSumExpense = 0.0;
       _extraDebtPayment = 0.0;
       _horizonDays = 30;
+      _customStartDate = null;
+      _customEndDate = null;
     });
+  }
+
+  Future<void> _pickDateRange(BuildContext context) async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: now,
+      lastDate: DateTime(2040),
+      initialDateRange: (_customStartDate != null && _customEndDate != null)
+          ? DateTimeRange(
+              start: _customStartDate!.isBefore(now) ? now : _customStartDate!,
+              end: _customEndDate!,
+            )
+          : DateTimeRange(start: now, end: now.add(Duration(days: _horizonDays))),
+      builder: (context, child) {
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10.0),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 1.0,
+                maxHeight: MediaQuery.of(context).size.height * 0.8,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: child!,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _customStartDate = picked.start.isBefore(now) ? now : picked.start;
+        _customEndDate = picked.end;
+      });
+    }
+  }
+
+  int get _effectiveHorizonDays {
+    if (_customStartDate != null && _customEndDate != null) {
+      return _customEndDate!.difference(_customStartDate!).inDays.clamp(1, 3650);
+    }
+    return _horizonDays;
   }
 
   void _showPoolsCheckmarkModal(BuildContext context) {
@@ -504,10 +570,11 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     final double expenseSqueezeVal = expSqz ?? _expenseSqueezePercent;
     final double lumpSumVal = lump ?? _lumpSumExpense;
     final double extraDebtVal = extraDebt ?? _extraDebtPayment;
-    final int horizonVal = horizon ?? _horizonDays;
+    final int horizonVal = horizon ?? _effectiveHorizonDays;
 
     final now = DateTime.now();
-    final horizonEnd = now.add(Duration(days: horizonVal));
+    final startDate = _customStartDate != null ? (_customStartDate!.isBefore(now) ? now : _customStartDate!) : now;
+    final horizonEnd = _customEndDate != null ? _customEndDate! : now.add(Duration(days: horizonVal));
 
     double baselineIncome = 0;
     double baselineExpense = 0;
@@ -529,7 +596,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
       }
 
       final dt = DateTime.tryParse(tx.createdAt);
-      if (dt != null && dt.isAfter(now) && dt.isBefore(horizonEnd)) {
+      if (dt != null && dt.isAfter(startDate) && dt.isBefore(horizonEnd)) {
         if (tx.type == 'income') {
           baselineIncome += tx.amount;
         } else if (tx.type == 'expense') {
@@ -936,6 +1003,12 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
       labelsButtonText = '${_selectedLabelIds.length} Labels';
     }
 
+    final now = DateTime.now();
+    final startDate = _customStartDate != null ? (_customStartDate!.isBefore(now) ? now : _customStartDate!) : now;
+    final endDate = _customEndDate != null ? _customEndDate! : now.add(Duration(days: _effectiveHorizonDays));
+    final windowDateStr = '${DateFormat('MMM dd, yyyy').format(startDate)} – ${DateFormat('MMM dd, yyyy').format(endDate)}';
+    final bool hasDateFilter = _customStartDate != null;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         return Container(
@@ -995,8 +1068,13 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                         InkWell(
                           onTap: () => _showInfoDialog(
                             context,
-                            'What-If Lab Simulations',
-                            'The What-If Lab simulates how financial shocks, income adjustments, or debt accelerations might impact your future cash trajectory.\n\n• Basis: Projections are computed by extrapolating future scheduled Zaznams (transactions) and existing liabilities stored in your offline database.\n• Predictions vs. Certainty: These calculations represent simulated estimations and trend extrapolations, NOT guaranteed certainties. Real-world outcomes may differ due to unexpected expenses or variable earnings.\n\n• Disclaimer: This tool is for personal organizational tracking and self-analysis only. It does not constitute professional or expert financial advice.',
+                            'What-If Lab',
+                            '"What-If I do this?"\n\n' 
+                            '• This is a common question when planning for financial stability. The What-If Lab allows you to explore hypothetical scenarios and their potential impact on your finances.\n'
+                            '• The What-If Lab simulates how financial shocks, income adjustments, or debt accelerations might impact your future cash trajectory.\n'
+                            '• Basis: Projections are computed by extrapolating future scheduled Zaznams (transactions) and existing liabilities stored in your offline database.\n'
+                            '• Predictions vs. Certainty: These calculations represent simulated estimations and trend extrapolations, NOT guaranteed certainties. Real-world outcomes may differ due to unexpected expenses or variable earnings.\n'
+                            '• Disclaimer: This tool is for personal organizational tracking and self-analysis only. It does not constitute professional or expert financial advice.',
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(2.0),
@@ -1167,13 +1245,15 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                         ),
                         const SizedBox(width: 8),
                         ToggleButtons(
-                          isSelected: [_horizonDays == 30, _horizonDays == 90, _horizonDays == 180, _horizonDays == 365],
+                          isSelected: [_customStartDate == null && _horizonDays == 30, _customStartDate == null && _horizonDays == 90, _customStartDate == null && _horizonDays == 180, _customStartDate == null && _horizonDays == 365],
                           onPressed: (index) {
                             setState(() {
                               if (index == 0) _horizonDays = 30;
                               else if (index == 1) _horizonDays = 90;
                               else if (index == 2) _horizonDays = 180;
                               else if (index == 3) _horizonDays = 365;
+                              _customStartDate = null;
+                              _customEndDate = null;
                             });
                           },
                           borderRadius: BorderRadius.circular(8),
@@ -1206,6 +1286,108 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                         ),
                         onPressed: _resetScenario,
                         child: const Text('Reset All', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'PROJECTION WINDOW: $windowDateStr',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Date Range Picker Row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: Text(
+                        'Custom Date Range:',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
+                      ),
+                    ),
+                    SizedBox(
+                      width: boxWidth,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.horizontal(
+                                  left: const Radius.circular(8),
+                                  right: hasDateFilter ? Radius.zero : const Radius.circular(8),
+                                ),
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => _pickDateRange(context),
+                                  borderRadius: BorderRadius.horizontal(
+                                    left: const Radius.circular(8),
+                                    right: hasDateFilter ? Radius.zero : const Radius.circular(8),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.date_range_rounded, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            hasDateFilter
+                                                ? '${DateFormat('MM/dd').format(_customStartDate!)} - ${DateFormat('MM/dd').format(_customEndDate!)}'
+                                                : 'Select Range',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155)) : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)),
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (hasDateFilter) ...[
+                            Container(
+                              height: 38,
+                              width: 30,
+                              decoration: BoxDecoration(
+                                color: _isZaznamityMode ? const Color(0xFF3D256B) : const Color(0xFFE2E8F0),
+                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)),
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => setState(() {
+                                    _horizonDays = 30;
+                                    _customStartDate = null;
+                                    _customEndDate = null;
+                                  }),
+                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)),
+                                  child: const Center(
+                                    child: Icon(Icons.clear, size: 12, color: Color(0xFFF87171)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ],
@@ -1248,7 +1430,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Simulated Net Shift (${_horizonDays}D):', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          Text('Simulated Net Shift (${_effectiveHorizonDays}D):', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                           Text(
                             '${simulatedNetShift >= 0 ? '+' : ''}${_formatCurrency(simulatedNetShift)}',
                             style: TextStyle(
@@ -1519,7 +1701,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
   }
 
   Widget _buildDeletablePresetChip(String label, double incMul, double expSqz, double lump, double extraDebt, int horizon) {
-    bool isSelected = _incomeMultiplier == incMul && _expenseSqueezePercent == expSqz && _lumpSumExpense == lump && _extraDebtPayment == extraDebt && _horizonDays == horizon;
+    bool isSelected = _customStartDate == null && _incomeMultiplier == incMul && _expenseSqueezePercent == expSqz && _lumpSumExpense == lump && _extraDebtPayment == extraDebt && _horizonDays == horizon;
     return Container(
       padding: const EdgeInsets.only(left: 8, right: 4, top: 4, bottom: 4),
       decoration: BoxDecoration(
@@ -1542,6 +1724,8 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                 _lumpSumExpense = lump;
                 _extraDebtPayment = extraDebt;
                 _horizonDays = horizon;
+                _customStartDate = null;
+                _customEndDate = null;
               });
             },
             child: Text(
@@ -1578,7 +1762,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     double debt = preset['extraDebt'] ?? 0.0;
     int horiz = preset['horizonDays'] ?? 30;
 
-    bool isSelected = _incomeMultiplier == inc && _expenseSqueezePercent == sqz && _lumpSumExpense == lump && _extraDebtPayment == debt && _horizonDays == horiz;
+    bool isSelected = _customStartDate == null && _incomeMultiplier == inc && _expenseSqueezePercent == sqz && _lumpSumExpense == lump && _extraDebtPayment == debt && _horizonDays == horiz;
 
     return Container(
       padding: const EdgeInsets.only(left: 8, right: 4, top: 4, bottom: 4),
@@ -1602,6 +1786,8 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                 _lumpSumExpense = lump;
                 _extraDebtPayment = debt;
                 _horizonDays = horiz;
+                _customStartDate = null;
+                _customEndDate = null;
               });
             },
             child: Text(

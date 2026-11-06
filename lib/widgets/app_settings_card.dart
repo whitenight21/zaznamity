@@ -23,6 +23,7 @@ import 'package:zaznamity/widgets/csv_import_mapper_dialog.dart';
 import 'package:zaznamity/widgets/settings/history_display_settings_widget.dart';
 import 'package:zaznamity/models/transaction_model.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:zaznamity/services/snackbar_notification.dart';
 
 /// Shared helper to determine if a transaction is an internal transfer, goal, savings, or pool move.
 bool isExcludedTransferOrSavings(TransactionModel tx, List<LabelModel> labels) {
@@ -245,12 +246,9 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       if (parsedDate != null) finalDate = parsedDate;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Voice Parsed: ${preset.name} (${preset.currency} $amount) -> Saving Zaznam in 2 sec...'),
-        duration: const Duration(seconds: 2),
-        backgroundColor: const Color(0xFF582F95),
-      ),
+    showSnackbarNotification(
+      context,
+      'Voice Parsed: ${preset.name} (${preset.currency} $amount) -> Saving Zaznam in 2 sec...',
     );
 
     // Auto-Save after 2 seconds delay
@@ -276,9 +274,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
         await DatabaseHelper.instance.insertTransaction(newTx);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Zaznam auto-saved successfully!')),
-          );
+          
+          showSnackbarNotification(context, 'Zaznam auto-saved successfully!');
         }
       } catch (e) {
         debugPrint('Error auto-saving Zaznam from preset: $e');
@@ -920,9 +917,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open file: $e')),
-      );
+      showSnackbarNotification(context, 'Could not open file: $e');
     }
   }
 
@@ -931,9 +926,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
       await Share.shareXFiles([XFile(file.path)], text: 'Zaznamity Backup File');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sharing failed: $e')),
-      );
+      showSnackbarNotification(context, 'Sharing failed: $e');
     }
   }
 
@@ -944,14 +937,10 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
       }
       await _loadSavedReports();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('File deleted successfully')),
-      );
+      showSnackbarNotification(context, 'File deleted successfully');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error deleting file: $e')),
-      );
+      showSnackbarNotification(context, 'Error deleting file: $e');
     }
   }
 
@@ -1187,9 +1176,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                   widget.onSavePools({'checking': true, 'cash': true, 'savings': true});
                 }
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Delete operation executed successfully')),
-                  );
+                  showSnackbarNotification(context, 'Delete operation executed successfully');
                 }
               },
               child: const Text('Execute Delete'),
@@ -1402,9 +1389,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Preview error: $e')),
-      );
+      showSnackbarNotification(context, 'Preview error: $e');
     }
   }
 
@@ -1500,14 +1485,10 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
       await _loadSavedReports();
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Backup saved successfully: $fileName (${filteredTxs.length} records)')),
-      );
+      showSnackbarNotification(context, 'Backup saved successfully: $fileName (${filteredTxs.length} Zaznams)');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export failed: $e')),
-      );
+      showSnackbarNotification(context, 'Export failed: $e');
     }
   }
 
@@ -1560,14 +1541,10 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
       await _loadSavedReports();
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Full System Backup saved successfully: $fileName')),
-      );
+      showSnackbarNotification(context, 'Full System Backup saved successfully: $fileName');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Full backup failed: $e')),
-      );
+      showSnackbarNotification(context, 'Full backup failed: $e');
     }
   }
 
@@ -1827,31 +1804,42 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                   final updatedLiability = LiabilityModel(
                     id: liability.id,
                     name: nameController.text.trim(),
+                    originalAmount: liability.originalAmount,
                     remainingBalance: double.tryParse(balanceController.text) ?? liability.remainingBalance,
                     monthlyInstallment: double.tryParse(installmentController.text) ?? liability.monthlyInstallment,
                     interestRate: double.tryParse(aprController.text) ?? liability.interestRate,
                     dueDay: int.tryParse(dueDayController.text) ?? liability.dueDay,
                     owner: selectedOwner,
+                    startDate: liability.startDate,
                     lastProcessedDate: liability.lastProcessedDate,
                     projectionEndDate: selectedProjectionDate.toIso8601String(),
                   );
 
+                  // 1. Clear future unconfirmed payment entries tied to the old name
                   await DatabaseHelper.instance.deleteTransactionsByLabelOrDescription(liability.name);
+                  
+                  // 2. Save/Update liability in database
                   await DatabaseHelper.instance.insertLiability(updatedLiability);
+                  
+                  // 3. Update existing future transaction descriptions, amounts, and labels
                   await DatabaseHelper.instance.updateExistingLiabilityTransactions(
                     liability.id!, 
                     liability.name, 
                     updatedLiability,
                   );
+
+                  // 4. Clean up any entries exceeding the new projection end date
                   final allTxs = await DatabaseHelper.instance.getTransactions();
                   for (var tx in allTxs) {
-                    if (tx.description.contains(liability.name)) {
+                    if (tx.description.contains(updatedLiability.name)) {
                       final txDate = DateTime.tryParse(tx.createdAt);
                       if (txDate != null && txDate.isAfter(selectedProjectionDate)) {
                         await DatabaseHelper.instance.deleteTransaction(tx.id!);
                       }
                     }
                   }
+
+                  // 5. Trigger automatic scheduler regeneration
                   await DatabaseHelper.instance.checkAndApplyAutomaticLiabilityPayments();
                   await _loadLiabilities();
 
@@ -1861,14 +1849,10 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
 
                   if (!context.mounted) return;
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Liability updated and payments reprojected successfully'))
-                  );
-                } catch (e) {
+                  showSnackbarNotification(context, 'Liability updated and Calendar/Zaznams reprojected successfully');
+                  } catch (e) {
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error updating liability: $e'))
-                  );
+                  showSnackbarNotification(context, 'Error updating liability: $e');
                 }
               },
               child: const Text('Save Changes & Reproject'),
@@ -1961,14 +1945,10 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
 
                   if (!context.mounted) return;
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Savings goal updated successfully'))
-                  );
+                  showSnackbarNotification(context, 'Savings goal updated successfully');
                 } catch (e) {
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error updating savings goal: $e'))
-                  );
+                  showSnackbarNotification(context, 'Error updating savings goal: $e');
                 }
               },
               child: const Text('Save Changes'),
@@ -2197,9 +2177,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
 
                 if (context.mounted) {
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Budget updated successfully')),
-                  );
+                  showSnackbarNotification(context, 'Budget updated successfully');
                 }
               },
               child: const Text('Save Changes'),
@@ -2661,15 +2639,11 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                   await _loadSavedReports();
 
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Report saved to Downloads & Log: $fileName (${filteredTxs.length} zaznams included)')),
-                  );
+                  showSnackbarNotification(context, 'Report saved to Downloads & Log: $fileName (${filteredTxs.length} Zaznams included)');
 
                 } catch (e) {
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error saving PDF report: $e')),
-                  );
+                  showSnackbarNotification(context, 'Error saving PDF report: $e');
                 }
               },
               child: const Text('Generate & Save PDF'),
@@ -3102,8 +3076,8 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                       }).toList(),
                     ),
                     _buildSubSectionCard(
-                      title: 'Future Metrics',
-                      subtitle: 'Select which pools update future metrics',
+                      title: 'Future Outlook',
+                      subtitle: 'Select which pools update future outlook projections (liabilities excluded)',
                       children: [
                         ..._pools.keys.map((poolKey) {
                           return CheckboxListTile(
@@ -3122,7 +3096,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                     ),
                     _buildSubSectionCard(
                       title: 'Liabilities',
-                      subtitle: 'Edit remaining balances, installments, interest rates, due dates, and projection end dates',
+                      subtitle: 'Delete active liabilities and scheduled recurring payments',
                       children: [
                         Text(
                           'Active Liabilities & Loans',
@@ -3167,14 +3141,26 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                                         color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B),
                                       ),
                                     ),
+                                    // CHANGED: Replaced edit IconButton with delete IconButton
                                     trailing: IconButton(
                                       icon: Icon(
-                                        Icons.edit,
+                                        Icons.delete,
                                         size: 16,
-                                        color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF64748B),
+                                        color: _isZaznamityMode ? const Color(0xFFEF4444) : const Color(0xFFDC2626),
                                       ),
-                                      onPressed: () => _showEditLiabilityDialog(item),
-                                      tooltip: 'Edit Liability Parameters & Reproject',
+                                      tooltip: 'Delete Liability',
+                                      onPressed: () async {
+                                        if (item.id != null) {
+                                          await DatabaseHelper.instance.deleteLiability(item.id!, item.name);
+                                          await _loadLiabilities();
+                                          if (widget.onLiabilityUpdated != null) {
+                                            widget.onLiabilityUpdated!();
+                                          }
+                                          if (context.mounted) {
+                                            showSnackbarNotification(context, 'Liability "${item.name}" deleted successfully');
+                                          }
+                                        }
+                                      },
                                     ),
                                   );
                                 },
@@ -3797,7 +3783,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                     ),
                     _buildSubSectionCard(
                       title: 'Owner Management',
-                      subtitle: 'Manage local Zaznamity Owners',
+                      subtitle: 'Manage Local Zaznamity Owners',
                       children: [
                         ListTile(
                           contentPadding: EdgeInsets.zero,
@@ -3821,7 +3807,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                     ),
                     _buildSubSectionCard(
                       title: 'Pools Management',
-                      subtitle: 'Manage financial Pools',
+                      subtitle: 'Manage Financial Pools',
                       children: [
                         ListTile(
                           contentPadding: EdgeInsets.zero,
@@ -3845,12 +3831,12 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                     ),
                   ],
                 ),
-// ==========================================
-// GROUP 4: SECURITY & NOTIFICATIONS
-// ==========================================
+                // ==========================================
+                // GROUP 4: SECURITY & NOTIFICATIONS
+                // ==========================================
                 _buildMainCategoryGroup(
                   title: 'Security & Notifications',
-                  subtitle: 'App security lock and reminder schedules',
+                  subtitle: 'App Security Lock and Notification schedules',
                   children: [
                     _buildSubSectionCard(
                       title: 'Security',
@@ -3912,7 +3898,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                                         await prefs.setBool('useFingerprint', true);
                                       }
                                     } else {
-                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Biometrics not supported on this device')));
+                                      showSnackbarNotification(context, 'Biometrics not supported on this device');
                                     }
                                   },
                                 ),
@@ -4258,14 +4244,14 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                     ),
                     _buildSubSectionCard(
                       title: 'CSV Import Mapper',
-                      subtitle: 'Select, map, and import your CSV data',
+                      subtitle: 'Select, Map, and Import your CSV data',
                       children: [
                         Text(
                           'Upload any CSV file, match your columns to Zaznamity fields, choose to create labels, owners and pools, and detect future zaznams.\n\n'
                           'This feature is designed to help you import your financial data from other sources into Zaznamity with ease and efficiency.\n\n'
-                          'INSTRUCTIONS : Before importing your data, please select in "Currency Preferences" your Primary Currency. Then proceed to importing your data.\n\n'
+                          'INSTRUCTIONS : Before importing your data, please select your Primary Currency in "Currency Preferences". Then proceed to importing your data.\n\n'
                           'After importing, please allow some time for data parsing - more Zaznams imported require more time to parse data.\n\n' 
-                          'If you encounter a label or pool discrepency in your imported data, reassign errors with bulk actions in settings.',
+                          'If you encounter a label or pool discrepency in your imported data, reassign labels or pools and fix errors with bulk actions in settings.',
                           style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
                         ),
                         const SizedBox(height: 12),

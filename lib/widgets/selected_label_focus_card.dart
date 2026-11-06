@@ -14,14 +14,20 @@ class SelectedLabelFocusCard extends StatefulWidget {
   final DateTime? endDate;
   final String? selectedOwner;
   final int? selectedLabelId;
+  final List budgets; // Connected Budgets card integration
   final Function(int?) onLabelChanged;
   final Function(String?) onOwnerChanged;
   final VoidCallback onSelectStartDate;
   final VoidCallback onSelectEndDate;
   final VoidCallback onClearDateFilter;
   
+  // Custom date range updater callback for Month, 90D, 6M, 1Y
+  final Function(DateTime? start, DateTime? end)? onDateRangeChanged;
+  final Function(int labelId, double limitAmount, String owner)? onAddBudget;
+  
   final Function(int? labelId, String? owner, DateTime? start, DateTime? end)? onJumpToHistory;
   final VoidCallback? onNavigateToWhatIf;
+  final Function(String cardId)? onNavigateCard; // <--- ADDED NAVIGATION CALLBACK
 
   const SelectedLabelFocusCard({
     super.key,
@@ -32,13 +38,17 @@ class SelectedLabelFocusCard extends StatefulWidget {
     required this.endDate,
     required this.selectedOwner,
     required this.selectedLabelId,
+    this.budgets = const [],
     required this.onLabelChanged,
     required this.onOwnerChanged,
     required this.onSelectStartDate,
     required this.onSelectEndDate,
     required this.onClearDateFilter,
+    this.onDateRangeChanged,
+    this.onAddBudget,
     this.onJumpToHistory,
     this.onNavigateToWhatIf,
+    this.onNavigateCard, // <--- ADDED TO CONSTRUCTOR
   });
 
   @override
@@ -53,6 +63,13 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
   final NumberFormat _currencyFormatter = NumberFormat('#,##0.00', 'en_US');
   final Map<String, bool> _multiLabelFixedCategories = {};
   
+  // Local state fallbacks for instant responsiveness
+  int? _localSelectedLabelId;
+  DateTime? _localStartDate;
+  DateTime? _localEndDate;
+
+  double _whatIfSliderPercentage = 20.0;
+
   String _lastFingerprint = '';
   List<TransactionModel> _cachedFilteredTxs = [];
   double _cachedInflow = 0;
@@ -60,24 +77,36 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
   double _cachedPreviousPeriodValue = 0;
   double _cachedMomPercentage = 0;
   Map<int, double> _cachedMonthlyTrend12M = {};
-  
-  final Map<String, double> _labelBudgetsByName = {};
 
   @override
   void initState() {
     super.initState();
+    _localSelectedLabelId = widget.selectedLabelId;
+    _localStartDate = widget.startDate;
+    _localEndDate = widget.endDate;
     _loadPrefs();
+  }
+
+  @override
+  void didUpdateWidget(covariant SelectedLabelFocusCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedLabelId != oldWidget.selectedLabelId) {
+      _localSelectedLabelId = widget.selectedLabelId;
+    }
+    if (widget.startDate != oldWidget.startDate) {
+      _localStartDate = widget.startDate;
+    }
+    if (widget.endDate != oldWidget.endDate) {
+      _localEndDate = widget.endDate;
+    }
   }
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     
     final fixedMap = <String, bool>{};
-    final budgetMap = <String, double>{};
     for (var label in widget.labels) {
       fixedMap[label.name] = prefs.getBool('set_multilabel_fixed_${label.name}') ?? false;
-      final bVal = prefs.getDouble('budget_label_${label.name}');
-      if (bVal != null) budgetMap[label.name] = bVal;
     }
 
     if (!mounted) return;
@@ -88,20 +117,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
       _isCollapsed = prefs.getBool('set_selectedLabelFocus_collapsed') ?? false;
       _primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
       _multiLabelFixedCategories.addAll(fixedMap);
-      _labelBudgetsByName.addAll(budgetMap);
     });
-  }
-
-  Future<void> _saveBudget(String labelName, double amount) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('budget_label_$labelName', amount);
-    if (!mounted) return;
-    setState(() {
-      _labelBudgetsByName[labelName] = amount;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Budget for "$labelName" set to ${_formatAmount(amount)}')),
-    );
   }
 
   Future<void> _toggleCollapse() async {
@@ -128,22 +144,8 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
     return '${_currencyFormatter.format(amount)} $symbol';
   }
 
-  bool _isFixedExpenseLabelByName(String labelName) {
-    if (_multiLabelFixedCategories.containsKey(labelName)) {
-      return _multiLabelFixedCategories[labelName] == true;
-    }
-    final lower = labelName.toLowerCase();
-    return lower.contains('rent') ||
-        lower.contains('housing') ||
-        lower.contains('utility') ||
-        lower.contains('utilities') ||
-        lower.contains('insurance') ||
-        lower.contains('loan') ||
-        lower.contains('mortgage') ||
-        lower.contains('bill');
-  }
-
   DateTime? _getComputedStartDate() {
+    if (_localStartDate != null) return _localStartDate!;
     if (widget.startDate != null) return widget.startDate!;
     if (_singleLabelDefaultRange.isEmpty) return null;
     final now = DateTime.now();
@@ -162,17 +164,75 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
   }
 
   DateTime? _getComputedEndDate() {
+    if (_localEndDate != null) return _localEndDate!;
     if (widget.endDate != null) return widget.endDate!;
     if (_getComputedStartDate() == null) return null;
     return DateTime.now();
   }
 
+  void _applyQuickRange(String rangeKey) {
+    final now = DateTime.now();
+    DateTime start;
+    DateTime end = now;
+
+    switch (rangeKey) {
+      case 'Month':
+        start = DateTime(now.year, now.month, 1);
+        break;
+      case '90D':
+        start = now.subtract(const Duration(days: 90));
+        break;
+      case '6M':
+        start = DateTime(now.year, now.month - 6, now.day);
+        break;
+      case '1Y':
+        start = DateTime(now.year - 1, now.month, now.day);
+        break;
+      default:
+        return;
+    }
+
+    setState(() {
+      _localStartDate = start;
+      _localEndDate = end;
+    });
+
+    if (widget.onDateRangeChanged != null) {
+      widget.onDateRangeChanged!(start, end);
+    }
+  }
+
+  bool _isQuickRangeActive(String rangeKey) {
+    final activeStart = _getComputedStartDate();
+    if (activeStart == null) return false;
+    final now = DateTime.now();
+    DateTime? expectedStart;
+    switch (rangeKey) {
+      case 'Month':
+        expectedStart = DateTime(now.year, now.month, 1);
+        break;
+      case '90D':
+        expectedStart = now.subtract(const Duration(days: 90));
+        break;
+      case '6M':
+        expectedStart = DateTime(now.year, now.month - 6, now.day);
+        break;
+      case '1Y':
+        expectedStart = DateTime(now.year - 1, now.month, now.day);
+        break;
+    }
+    if (expectedStart == null) return false;
+    final startClean = DateTime(activeStart.year, activeStart.month, activeStart.day);
+    final expectedClean = DateTime(expectedStart.year, expectedStart.month, expectedStart.day);
+    return startClean.isAtSameMomentAs(expectedClean);
+  }
+
   String _buildFingerprint() {
     final sb = StringBuffer();
     sb.write('${widget.transactions.length}_');
-    sb.write('${widget.selectedLabelId}_');
+    sb.write('${_localSelectedLabelId}_');
     sb.write('${widget.selectedOwner}_');
-    sb.write('${widget.startDate}_${widget.endDate}_');
+    sb.write('${_getComputedStartDate()}_${_getComputedEndDate()}_');
     return sb.toString();
   }
 
@@ -197,7 +257,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
         if (txDate.isAfter(endClean)) return false;
       }
 
-      if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) return false;
+      if (_localSelectedLabelId != null && tx.labelId != _localSelectedLabelId) return false;
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) return false;
       return true;
     }).toList();
@@ -230,7 +290,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
         final txDate = DateTime.tryParse(tx.createdAt);
         if (txDate == null || tx.isConfirmed != 1) continue;
         if (txDate.isAfter(prevStart.subtract(const Duration(seconds: 1))) && txDate.isBefore(prevEnd.add(const Duration(seconds: 1)))) {
-          if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) continue;
+          if (_localSelectedLabelId != null && tx.labelId != _localSelectedLabelId) continue;
           if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) continue;
           
           if (isIncomeFocus && tx.type == 'income') {
@@ -260,7 +320,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
       if (isIncomeFocus && tx.type != 'income') continue;
       if (!isIncomeFocus && tx.type != 'expense') continue;
       
-      if (widget.selectedLabelId != null && tx.labelId != widget.selectedLabelId) continue;
+      if (_localSelectedLabelId != null && tx.labelId != _localSelectedLabelId) continue;
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) continue;
       
       final diffMonths = (now.year - txDate.year) * 12 + (now.month - txDate.month);
@@ -276,35 +336,6 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
     _cachedMomPercentage = momPct;
     _cachedMonthlyTrend12M = monthly12M;
     _lastFingerprint = fp;
-  }
-
-  void _showSetBudgetDialog(String labelName) {
-    final controller = TextEditingController(text: (_labelBudgetsByName[labelName] ?? 0.0).toStringAsFixed(2));
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-        title: Text('Set Budget for $labelName', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87)),
-        content: TextField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
-          decoration: const InputDecoration(labelText: 'Monthly Target Amount', border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),
-            onPressed: () {
-              final val = double.tryParse(controller.text) ?? 0.0;
-              _saveBudget(labelName, val);
-              Navigator.pop(ctx);
-            },
-            child: const Text('Save Budget'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showLabelFocusInfoModal(BuildContext context) {
@@ -328,11 +359,11 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
           ),
           content: SingleChildScrollView(
             child: Text(
-              '“What is going on with this one label?” - Label Focus provides deep analytical insights into your category patterns[cite: 16].\n\n'
-              '• Type-Aware Metrics: Dynamically adapts metrics for both Income and Expense categories[cite: 17].\n'
-              '• Granular stats: Transaction counts, averages, frequency intervals, and anomaly detection[cite: 16].\n'
-              '• Seasonality & Pace: Daily cumulative pace charts and 12-month historical heatmaps[cite: 16].\n'
-              '• Recurring & What-If: Next occurrence forecasts and budget optimization simulations[cite: 16].',
+              '“What is going on with this one label?” - Label Focus provides deep analytical insights into your category patterns.\n\n'
+              '• Type-Aware Metrics: Dynamically adapts metrics for both Income and Expense categories.\n'
+              '• Granular stats: Transaction counts, averages, frequency intervals, and biggest transactions.\n'
+              '• Seasonality & Pace: Daily cumulative pace charts and 12-month historical heatmaps.\n'
+              '• Recurring & What-If: Next occurrence forecasts and budget optimization simulations.',
               style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.4),
             ),
           ),
@@ -381,15 +412,15 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
     final effectiveEndDate = _getComputedEndDate();
 
     String selectedLabelName = 'All Labels';
-    if (widget.selectedLabelId != null) {
-      final matchLbl = widget.labels.where((l) => l.id == widget.selectedLabelId).firstOrNull;
+    int? selectedLabelId = _localSelectedLabelId;
+    if (selectedLabelId != null) {
+      final matchLbl = widget.labels.where((l) => l.id == selectedLabelId).firstOrNull;
       if (matchLbl != null) {
         selectedLabelName = matchLbl.name;
       } else {
         selectedLabelName = 'General';
       }
     }
-    bool isFixedLabel = _isFixedExpenseLabelByName(selectedLabelName);
 
     bool isIncomeFocus = _cachedInflow >= _cachedOutflow;
     double primaryFocusAmount = isIncomeFocus ? _cachedInflow : _cachedOutflow;
@@ -426,29 +457,40 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
       }
     }
 
-    List<TransactionModel> anomalies = _cachedFilteredTxs.where((tx) => 
-      ((isIncomeFocus && tx.type == 'income') || (!isIncomeFocus && tx.type == 'expense')) && 
-      avgPerTx > 0 && tx.amount > (avgPerTx * 1.5)
-    ).toList();
+    // Connected Budget Lookup from Budgets card data source
+    double labelBudget = 0.0;
+    if (selectedLabelId != null) {
+      final matchingBudget = widget.budgets.where((b) {
+        final bLabelId = b['label_id'] ?? b['labelId'];
+        return bLabelId == selectedLabelId;
+      }).firstOrNull;
 
-    double labelBudget = _labelBudgetsByName[selectedLabelName] ?? 0.0;
+      if (matchingBudget != null) {
+        labelBudget = ((matchingBudget['limit_amount'] ?? matchingBudget['limitAmount'] ?? 0) as num).toDouble();
+      }
+    }
     double budgetProgressRatio = labelBudget > 0 ? (primaryFocusAmount / labelBudget).clamp(0.0, 1.0) : 0.0;
 
-    double potentialImpactYearly = primaryFocusAmount * 0.20 * 12;
+    double potentialImpactYearly = primaryFocusAmount * (_whatIfSliderPercentage / 100.0) * 12;
+
+    // Biggest Transactions sorted by amount descending
+    final sortedByAmountTxs = List<TransactionModel>.from(_cachedFilteredTxs.where((tx) => isIncomeFocus ? tx.type == 'income' : tx.type == 'expense'))
+      ..sort((a, b) => b.amount.compareTo(a.amount));
+    final topBiggestTxs = sortedByAmountTxs.take(3).toList();
 
     final last5Txs = List<TransactionModel>.from(_cachedFilteredTxs)
       ..sort((a, b) => (DateTime.tryParse(b.createdAt) ?? DateTime.now()).compareTo(DateTime.tryParse(a.createdAt) ?? DateTime.now()));
     final top5Recent = last5Txs.take(5).toList();
 
-    final bool hasDateFilter = effectiveStartDate != null || effectiveEndDate != null;
+    final bool hasDateFilter = _localStartDate != null || _localEndDate != null || widget.startDate != null || widget.endDate != null;
     final displayOwner = (widget.selectedOwner == null || widget.selectedOwner!.isEmpty) ? 'All Owners' : widget.selectedOwner!;
     double maxMonthlyAmount = _cachedMonthlyTrend12M.values.fold(1.0, (prev, val) => val > prev ? val : prev);
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double availableWidth = constraints.maxWidth;
-        final double fullWidth = availableWidth - 32;
+        final double fullWidth = constraints.maxWidth - 32;
         final double boxWidth = (fullWidth - 12) / 2;
+        final double halfWidth = boxWidth;
 
         return Container(
           padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
@@ -536,9 +578,51 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
               ),
               if (!_isCollapsed) ...[
                 const SizedBox(height: 12),
+
+                // Timeframe Selector Pills & Custom Date Range Picker in One Row
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    SizedBox(
+                      width: boxWidth,
+                      child: Row(
+                        children: ['Month', '90D', '6M', '1Y'].map((tf) {
+                          final isSelected = _isQuickRangeActive(tf);
+                          return Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(right: tf != '1Y' ? 4 : 0),
+                              child: InkWell(
+                                onTap: () => _applyQuickRange(tf),
+                                child: Container(
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: isSelected 
+                                        ? const Color(0xFF582F95) 
+                                        : (_isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC)),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                                    child: Text(
+                                      tf,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected ? Colors.white : (_isZaznamityMode ? Colors.white70 : const Color(0xFF64748B)),
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
                     SizedBox(
                       width: boxWidth,
                       child: Row(
@@ -548,124 +632,120 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                               height: 44,
                               decoration: BoxDecoration(
                                 color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.horizontal(left: const Radius.circular(10), right: hasDateFilter ? Radius.zero : const Radius.circular(10)),
+                                borderRadius: BorderRadius.horizontal(
+                                  left: const Radius.circular(10),
+                                  right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                ),
                                 border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                               ),
-                              child: InkWell(
-                                onTap: widget.onSelectStartDate,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          hasDateFilter
-                                              ? '${effectiveStartDate != null ? DateFormat('MM/dd').format(effectiveStartDate) : '...'} - ${effectiveEndDate != null ? DateFormat('MM/dd').format(effectiveEndDate) : '...'}'
-                                              : 'Select Date Range',
-                                          style: TextStyle(fontSize: 11, color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155)) : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)), fontWeight: FontWeight.bold),
-                                          overflow: TextOverflow.ellipsis,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: widget.onSelectStartDate,
+                                  borderRadius: BorderRadius.horizontal(
+                                    left: const Radius.circular(10),
+                                    right: hasDateFilter ? Radius.zero : const Radius.circular(10),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.date_range_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            hasDateFilter
+                                                ? '${effectiveStartDate != null ? DateFormat('MM/dd').format(effectiveStartDate) : '...'} - ${effectiveEndDate != null ? DateFormat('MM/dd').format(effectiveEndDate) : '...'}'
+                                                : 'Date Range',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155)) : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)),
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                          if (hasDateFilter)
+                          if (hasDateFilter) ...[
                             Container(
                               height: 44,
-                              width: 36,
+                              width: 32,
                               decoration: BoxDecoration(
                                 color: _isZaznamityMode ? const Color(0xFF3D256B) : const Color(0xFFE2E8F0),
                                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                               ),
-                              child: InkWell(
-                                onTap: widget.onClearDateFilter,
-                                child: const Center(child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171))),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(
-                      width: boxWidth,
-                      child: Container(
-                        height: 44,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.label_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<int?>(
-                                  value: widget.selectedLabelId,
-                                  dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                  isDense: true,
-                                  isExpanded: true,
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
-                                  hint: Text('All Labels', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8))),
-                                  items: [
-                                    const DropdownMenuItem<int?>(value: null, child: Text('All Labels')),
-                                    ...widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))),
-                                  ],
-                                  onChanged: widget.onLabelChanged,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _localStartDate = null;
+                                      _localEndDate = null;
+                                    });
+                                    widget.onClearDateFilter();
+                                  },
+                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                  child: const Center(
+                                    child: Icon(Icons.clear, size: 14, color: Color(0xFFF87171)),
+                                  ),
                                 ),
                               ),
                             ),
                           ],
-                        ),
+                        ],
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    SizedBox(
-                      width: boxWidth,
-                      child: InkWell(
-                        onTap: () {
-                          if (widget.onJumpToHistory != null) {
-                            widget.onJumpToHistory!(widget.selectedLabelId, (widget.selectedOwner == 'All Owners' ? null : widget.selectedOwner), effectiveStartDate, effectiveEndDate);
-                          }
-                        },
-                        child: Container(
-                          height: 44,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('Display all records', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC084FC) : const Color(0xFF582F95), fontSize: 9.5, fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 1),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text('${_cachedFilteredTxs.length} Zaznams', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 13, fontWeight: FontWeight.bold)),
-                                  const SizedBox(width: 3),
-                                  Icon(Icons.arrow_forward_ios, size: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                ],
-                              ),
-                            ],
+
+                // Label Picker (Half the size of the full width) with working local state
+                SizedBox(
+                  width: halfWidth,
+                  child: Container(
+                    height: 44,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.label_outline_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int?>(
+                              value: _localSelectedLabelId,
+                              dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                              isDense: true,
+                              isExpanded: true,
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
+                              hint: Text('All Labels', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8))),
+                              items: [
+                                const DropdownMenuItem<int?>(value: null, child: Text('All Labels')),
+                                ...widget.labels.map((l) => DropdownMenuItem<int?>(value: l.id, child: Text(l.name))),
+                              ],
+                              onChanged: (val) {
+                                setState(() {
+                                  _localSelectedLabelId = val;
+                                });
+                                widget.onLabelChanged(val);
+                              },
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
                 const SizedBox(height: 16),
 
@@ -676,10 +756,10 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text('TOTAL ${isIncomeFocus ? 'EARNINGS' : 'SPENDING'} FOR $selectedLabelName'.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                          Text('TOTAL ${isIncomeFocus ? 'EARNINGS' : 'SPENDING'} : $selectedLabelName'.toUpperCase(), style: TextStyle(color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                           const SizedBox(width: 4),
                           InkWell(
-                            onTap: () => _showInfoModal(context, isIncomeFocus ? 'Total Earnings' : 'Total Spending', 'Total amount for this specific label over the selected timeframe[cite: 16].'),
+                            onTap: () => _showInfoModal(context, isIncomeFocus ? 'Total Earnings' : 'Total Spending', 'Total amount for this specific label over the selected timeframe.'),
                             child: Icon(Icons.info_outline, size: 13, color: _isZaznamityMode ? Colors.white54 : const Color(0xFF64748B)),
                           ),
                         ],
@@ -753,7 +833,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 ),
                 const SizedBox(height: 16),
 
-                // Budget / Target Progress
+                // Connected Budget / Target Progress (Updated action based on whether budget/target exists)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -764,9 +844,23 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                     ),
                     TextButton.icon(
                       style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                      onPressed: () => _showSetBudgetDialog(selectedLabelName),
-                      icon: Icon(Icons.edit, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                      label: Text(isIncomeFocus ? 'Set Target' : 'Set Budget', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                      onPressed: () {
+                        // Brings to Settings/Budgets if budget/target created, or to budget card if not created[cite: 19]
+                        if (widget.onNavigateCard != null) {
+                          if (labelBudget > 0) {
+                            widget.onNavigateCard!('settings'); // Brings to Settings/Budgets
+                          } else {
+                            widget.onNavigateCard!('budget'); // Brings to budget card
+                          }
+                        }
+                      },
+                      icon: Icon(Icons.arrow_forward_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                      label: Text(
+                        labelBudget > 0 
+                            ? (isIncomeFocus ? 'Manage Target' : 'Manage Budget') 
+                            : (isIncomeFocus ? 'Set Target' : 'Set Budget'), 
+                        style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                      ),
                     ),
                   ],
                 ),
@@ -784,7 +878,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(labelBudget > 0 ? '${isIncomeFocus ? 'Earned' : 'Spent'}: ${_formatAmount(primaryFocusAmount)} / ${_formatAmount(labelBudget)}' : 'No target set for this label', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                          Text(labelBudget > 0 ? '${isIncomeFocus ? 'Earned' : 'Spent'}: ${_formatAmount(primaryFocusAmount)} / ${_formatAmount(labelBudget)}' : (selectedLabelId == null ? 'Select a label to view connected budget' : 'No budget set for $selectedLabelName'), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                           Text(labelBudget > 0 ? '${(budgetProgressRatio * 100).toStringAsFixed(0)}%' : '', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : (budgetProgressRatio > 0.9 ? const Color(0xFFF87171) : const Color(0xFF34D399)))),
                         ],
                       ),
@@ -919,39 +1013,50 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 ),
                 const SizedBox(height: 16),
 
-                // Outlier / Anomaly Detection
-                if (anomalies.isNotEmpty) ...[
+                // Biggest Transactions (Replaced Outlier Anomalies)
+                if (topBiggestTxs.isNotEmpty) ...[
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(isIncomeFocus ? 'INCOME SURGE ANOMALIES (${anomalies.length})' : 'OUTLIER ANOMALIES DETECTED (${anomalies.length})', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171), letterSpacing: 0.5)),
+                      Text(isIncomeFocus ? 'BIGGEST INFLOWS' : 'BIGGEST TRANSACTIONS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFA855F7), letterSpacing: 0.5)),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: (isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171)).withValues(alpha: 0.1),
+                      color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: (isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171)).withValues(alpha: 0.4)),
+                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                     ),
                     child: Column(
-                      children: anomalies.take(2).map((tx) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(tx.description, style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                            Text(_formatAmount(tx.amount), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171))),
-                          ],
-                        ),
-                      )).toList(),
+                      children: topBiggestTxs.map((tx) {
+                        final dt = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(tx.description.isEmpty ? 'Transaction' : tx.description, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87), overflow: TextOverflow.ellipsis),
+                                    Text(DateFormat('MMM dd, yyyy').format(dt), style: TextStyle(fontSize: 9, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
+                                  ],
+                                ),
+                              ),
+                              Text(_formatAmount(tx.amount), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171))),
+                            ],
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ),
                   const SizedBox(height: 16),
                 ],
 
-                // What-If Link / Optimization Banner
+                // What-If Banner with Interactive Slider
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -959,62 +1064,104 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.4)),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(isIncomeFocus ? 'What if income increases 20%?' : 'What if I cut this 20%?', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
-                            const SizedBox(height: 2),
-                            Text('${isIncomeFocus ? 'Adds' : 'Saves'} ${_formatAmount(potentialImpactYearly)} / year', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669))),
-                          ],
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            isIncomeFocus ? 'What if income increases ${_whatIfSliderPercentage.toStringAsFixed(0)}%?' : 'What if I cut this ${_whatIfSliderPercentage.toStringAsFixed(0)}%?',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                          ),
+                          Text(
+                            '${isIncomeFocus ? 'Adds' : 'Saves'} ${_formatAmount(potentialImpactYearly)} / yr',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                          ),
+                        ],
+                      ),
+                      Slider(
+                        value: _whatIfSliderPercentage,
+                        min: 0,
+                        max: 100,
+                        divisions: 20,
+                        activeColor: const Color(0xFFA855F7),
+                        inactiveColor: _isZaznamityMode ? Colors.white24 : Colors.grey.shade300,
+                        label: '${_whatIfSliderPercentage.toStringAsFixed(0)}%',
+                        onChanged: (val) {
+                          setState(() {
+                            _whatIfSliderPercentage = val;
+                          });
+                        },
                       ),
                       if (widget.onNavigateToWhatIf != null)
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFA855F7),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            minimumSize: Size.zero,
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFA855F7),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              minimumSize: Size.zero,
+                            ),
+                            onPressed: widget.onNavigateToWhatIf,
+                            child: const Text('What-If Lab', style: TextStyle(fontSize: 10)),
                           ),
-                          onPressed: widget.onNavigateToWhatIf,
-                          child: const Text('What-If Lab', style: TextStyle(fontSize: 10)),
                         ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
 
-                // Last 5 Zaznams Inline
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('LAST 5 ZAZNAMS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
-                  ],
-                ),
-                const SizedBox(height: 6),
+                // Last 5 Zaznams Box with Display all records header
                 Container(
                   decoration: BoxDecoration(
                     color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                   ),
-                  child: top5Recent.isEmpty
-                      ? const Padding(padding: EdgeInsets.all(12), child: Center(child: Text('No zaznams found', style: TextStyle(fontSize: 11, color: Colors.grey))))
-                      : Column(
-                          children: top5Recent.map((tx) {
-                            final dt = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
-                            return ListTile(
-                              dense: true,
-                              title: Text(tx.description.isEmpty ? 'Zaznam' : tx.description, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                              subtitle: Text(DateFormat('MMM dd, yyyy').format(dt), style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
-                              trailing: Text(_formatAmount(tx.amount), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: tx.type == 'income' ? const Color(0xFF34D399) : const Color(0xFFF87171))),
-                            );
-                          }).toList(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      InkWell(
+                        onTap: () {
+                          if (widget.onJumpToHistory != null) {
+                            widget.onJumpToHistory!(_localSelectedLabelId, (widget.selectedOwner == 'All Owners' ? null : widget.selectedOwner), effectiveStartDate, effectiveEndDate);
+                          }
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('LAST 5 ZAZNAMS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
+                              Row(
+                                children: [
+                                  Text('Display all records (${_cachedFilteredTxs.length})', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC084FC) : const Color(0xFF582F95), fontSize: 10, fontWeight: FontWeight.bold)),
+                                  const SizedBox(width: 4),
+                                  Icon(Icons.arrow_forward_ios, size: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
+                      ),
+                      const Divider(height: 1, color: Colors.white12),
+                      top5Recent.isEmpty
+                          ? const Padding(padding: EdgeInsets.all(12), child: Center(child: Text('No zaznams found', style: TextStyle(fontSize: 11, color: Colors.grey))))
+                          : Column(
+                              children: top5Recent.map((tx) {
+                                final dt = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(tx.description.isEmpty ? 'Zaznam' : tx.description, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                  subtitle: Text(DateFormat('MMM dd, yyyy').format(dt), style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
+                                  trailing: Text(_formatAmount(tx.amount), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: tx.type == 'income' ? const Color(0xFF34D399) : const Color(0xFFF87171))),
+                                );
+                              }).toList(),
+                            ),
+                    ],
+                  ),
                 ),
               ],
             ],

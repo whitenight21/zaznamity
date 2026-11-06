@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:file_selector/file_selector.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import '../services/snackbar_notification.dart';
 
 class TitleCard extends StatefulWidget {
   final List<String> owners;
@@ -94,15 +95,11 @@ class _TitleCardState extends State<TitleCard> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Profile picture updated for $_displayName!')),
-        );
+        showSnackbarNotification(context, 'Profile picture updated for $_displayName!');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating profile picture: $e')),
-        );
+        showSnackbarNotification(context, 'Error updating profile picture: $e', isError: true);
       }
     }
   }

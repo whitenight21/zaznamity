@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/savings_goal_model.dart';
 import '../models/label.dart';
+import '../services/snackbar_notification.dart';
 
 class SavingsGoalsCard extends StatefulWidget {
   final List<SavingsGoalModel> goals;
@@ -15,7 +16,6 @@ class SavingsGoalsCard extends StatefulWidget {
   final Function(SavingsGoalModel) onSaveGoal;
   final Function(int goalId, double amountToAdd, String owner, String fromPool, String goalName, String currency) onAddFundsToGoal;
   final Function(int goalId, double amountToRemove, String owner, String toPool, String goalName, String currency) onRemoveFundsFromGoal;
-  final Function(int goalId) onDeleteGoal;
   final Function(int goalId) onCompleteGoal;
 
   const SavingsGoalsCard({
@@ -28,7 +28,6 @@ class SavingsGoalsCard extends StatefulWidget {
     required this.onSaveGoal,
     required this.onAddFundsToGoal,
     required this.onRemoveFundsFromGoal,
-    required this.onDeleteGoal,
     required this.onCompleteGoal,
   });
 
@@ -77,6 +76,11 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
     await prefs.setBool('set_savingsGoals_collapsed', _isCollapsed);
   }
 
+  double _parseNum(String text) {
+    if (text.isEmpty) return 0.0;
+    return double.tryParse(text.trim().replaceAll(',', '.')) ?? 0.0;
+  }
+
   String _getCurrencySymbol(String code) {
     switch (code.toUpperCase()) {
       case 'EUR': return '€';
@@ -97,6 +101,24 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
       case 'CLP': 
       case 'COP': return '\$';
       default: return '\$';
+    }
+  }
+
+  /// Formats currency with thousands comma and positions symbol trailing/leading based on currency type
+  String _formatCurrency(double amount, [String? currencyCode]) {
+    final formatter = NumberFormat('#,##0.00', 'en_US');
+    final formattedNumber = formatter.format(amount);
+    final code = currencyCode ?? _userCurrencies.first;
+    final symbol = _getCurrencySymbol(code).trim();
+
+    // List of common trailing currency symbols/codes
+    const trailingSymbols = ['€', 'Ft', 'Kč', 'zł', 'CHF'];
+    bool isTrailing = trailingSymbols.any((s) => symbol.toLowerCase() == s.toLowerCase());
+
+    if (isTrailing) {
+      return '$formattedNumber $symbol';
+    } else {
+      return '$symbol$formattedNumber';
     }
   }
 
@@ -132,23 +154,43 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
     }
   }
 
-  String? _getCompletionForecastText(SavingsGoalModel goal) {
+  Map<String, dynamic> _evaluateGoalPaceAndForecast(SavingsGoalModel goal) {
     if (goal.currentAmount >= goal.targetAmount) {
-      return 'Goal completed!';
-    }
-    
-    if (goal.monthlyContribution <= 0) {
-      return null;
+      return {'text': 'Goal completed!', 'status': 'completed', 'neededPerMonth': 0.0};
     }
 
     double remaining = goal.targetAmount - goal.currentAmount;
-    if (remaining <= 0) return 'On track';
+    if (remaining <= 0) {
+      return {'text': 'On track', 'status': 'ontrack', 'neededPerMonth': 0.0};
+    }
+
+    DateTime now = DateTime.now();
+    DateTime? targetDate = goal.targetDate != null ? DateTime.tryParse(goal.targetDate!) : null;
+
+    double neededPerMonth = goal.monthlyContribution;
+    if (targetDate != null) {
+      int totalMonths = (targetDate.year - now.year) * 12 + targetDate.month - now.month;
+      if (totalMonths <= 0) totalMonths = 1;
+      neededPerMonth = remaining / totalMonths;
+    }
+
+    if (goal.monthlyContribution <= 0) {
+      return {'text': 'No installment set', 'status': 'behind', 'neededPerMonth': neededPerMonth};
+    }
 
     int monthsNeeded = (remaining / goal.monthlyContribution).ceil();
-    DateTime projectedDate = DateTime.now().add(Duration(days: monthsNeeded * 30));
+    DateTime projectedDate = DateTime(now.year, now.month + monthsNeeded, now.day);
     String formattedDate = DateFormat('MMMM yyyy').format(projectedDate);
 
-    return 'On track to complete by $formattedDate';
+    if (targetDate != null) {
+      if (projectedDate.isAfter(targetDate)) {
+        return {'text': 'Late (est. $formattedDate)', 'status': 'late', 'neededPerMonth': neededPerMonth};
+      } else {
+        return {'text': 'On track by $formattedDate', 'status': 'ontrack', 'neededPerMonth': neededPerMonth};
+      }
+    }
+
+    return {'text': 'On track by $formattedDate', 'status': 'ontrack', 'neededPerMonth': neededPerMonth};
   }
 
   void _checkMilestoneCelebration(double previousAmount, double newAmount, SavingsGoalModel goal) {
@@ -161,46 +203,23 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
     List<double> milestones = [25.0, 50.0, 75.0, 100.0];
     for (var m in milestones) {
       if (prevPct < m && newPct >= m) {
-        _showMilestoneDialog(goal.name, m);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            showSnackbarNotification(
+              context,
+              '🎉 Milestone Reached! ${m.toStringAsFixed(0)}% of "${goal.name}" achieved!',
+              isError: false,
+            );
+          }
+        });
         break;
       }
     }
   }
 
-  void _showMilestoneDialog(String goalName, double milestonePct) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.celebration_rounded, color: Color(0xFF34D399), size: 28),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Milestone Reached! (${milestonePct.toStringAsFixed(0)}%)',
-                style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 16),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          'Fantastic progress! You have reached ${milestonePct.toStringAsFixed(0)}% of your goal for "$goalName". Keep up the great momentum!',
-          style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Awesome!'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showCompletionDialog(SavingsGoalModel goal) {
+    final bool isReady = goal.currentAmount >= goal.targetAmount;
+    final primaryCurr = _userCurrencies.first;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -208,18 +227,20 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.info_outline_rounded, color: Color(0xFFA855F7), size: 24),
+            Icon(isReady ? Icons.check_circle_rounded : Icons.warning_amber_rounded, color: isReady ? Colors.green : Colors.amber, size: 24),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Complete Goal & Remove Funds?',
+                isReady ? 'Complete Savings Goal?' : 'Goal Not Yet Complete',
                 style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 16),
               ),
             ),
           ],
         ),
         content: Text(
-          'Clicking this checkmark will mark the goal as complete and remove the funds from the savings pool balance.',
+          isReady 
+              ? 'Marking this goal as complete will finalize it and disburse or remove the savings funds from your active pool balance.'
+              : 'You have not reached your target amount yet (${_formatCurrency(goal.currentAmount, primaryCurr)} / ${_formatCurrency(goal.targetAmount, primaryCurr)}). You can still complete it if desired.',
           style: TextStyle(fontSize: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
         ),
         actions: [
@@ -233,7 +254,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
               Navigator.pop(context);
               widget.onCompleteGoal(goal.id!);
             },
-            child: const Text('Proceed'),
+            child: const Text('Confirm Complete'),
           ),
         ],
       ),
@@ -265,13 +286,14 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
           content: SingleChildScrollView(
             child: Text(
               'Savings Goals help you build toward milestones, future purchases, bills or any financial targets:\n\n'
-              '• Set a completion due date to automatically calculate required monthly installments.\n'
-              '• Set a target amount, due date and track your progress visually with the progress bar.\n'
-              '• If you do not set a due date, you can manually add funds to the goal at your own pace.\n'
-              '• You can add funds to a goal from any of your pools, and the app will track the total amount saved toward that goal.\n'
-              '• You can remove funds from a goal and return them to your pool balance if needed.\n'
-              '• You can mark a goal as complete (green checkmark) when you reach your target amount, which will remove the funds from your pool balance.\n'
-              '• Edit and delete Savings Goals anytime in App Settings.',
+              '• Due-Date Pace & Forecasts: Track whether you are ahead or behind your monthly target installment.\n'
+              '• Emergency Fund Template: Quickly spin up 3–6 months burn-rate safety buffers.\n'
+              '• Scheduled Transfers: Turn monthly installments into automated recurring transfers for accurate cash flow runway.\n'
+              '• Withdraw Funds: Move funds from a goal and return them to your pool balance if needed.\n'
+              '• Milestone Notifications: Receive instant alerts as you cross 25%, 50%, 75%, and 100%.\n'
+              '• Goal Completion: Mark a goal as complete when you reach your target and disburse the funds.\n'
+              '• Edit & Update: Change the goal name, target amount, due date, or monthly installment at any time in Zaznamity Settings.\n'
+              '• Smart Insights / 50/30/20 Integration: Savings goal installments feed directly into your financial health breakdown.',
               style: TextStyle(
                 fontSize: 13,
                 color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
@@ -325,7 +347,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
                         fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
@@ -383,7 +404,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
                         fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
@@ -402,7 +422,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
                         fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
@@ -429,8 +448,8 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                 elevation: 0,
               ),
               onPressed: () {
-                final val = double.tryParse(amountController.text);
-                if (val != null && val > 0) {
+                final val = _parseNum(amountController.text);
+                if (val > 0) {
                   _checkMilestoneCelebration(goal.currentAmount, goal.currentAmount + val, goal);
                   widget.onAddFundsToGoal(goal.id!, val, selectedDialogOwner, selectedDialogPool, goal.name, selectedCurrency);
                   Navigator.pop(context);
@@ -460,6 +479,8 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Text('Available to remove: ${_formatCurrency(goal.currentAmount, selectedCurrency)}', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white60 : Colors.grey)),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
@@ -474,7 +495,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
                         fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
@@ -532,7 +552,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
                         fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
@@ -551,7 +570,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                         filled: true,
                         fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                       ),
@@ -578,9 +596,10 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                 elevation: 0,
               ),
               onPressed: () {
-                final val = double.tryParse(amountController.text);
-                if (val != null && val > 0) {
-                  widget.onRemoveFundsFromGoal(goal.id!, val, selectedDialogOwner, selectedDialogPool, goal.name, selectedCurrency);
+                final val = _parseNum(amountController.text);
+                if (val > 0) {
+                  final removeAmt = val > goal.currentAmount ? goal.currentAmount : val;
+                  widget.onRemoveFundsFromGoal(goal.id!, removeAmt, selectedDialogOwner, selectedDialogPool, goal.name, selectedCurrency);
                   Navigator.pop(context);
                 }
               },
@@ -592,13 +611,16 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
     );
   }
 
-  void _showCreateGoalDialog() {
-    final TextEditingController nameController = TextEditingController();
-    final TextEditingController targetController = TextEditingController();
-    final TextEditingController contributionController = TextEditingController();
+  void _showCreateGoalDialog({bool isEmergencyFundTemplate = false}) {
+    final TextEditingController nameController = TextEditingController(text: isEmergencyFundTemplate ? 'Emergency Fund' : '');
+    final TextEditingController targetController = TextEditingController(text: isEmergencyFundTemplate ? '3000' : '');
+    final TextEditingController contributionController = TextEditingController(text: isEmergencyFundTemplate ? '500' : '');
+    final TextEditingController paymentDayController = TextEditingController(text: '1');
     
     String selectedCurrency = _userCurrencies.first;
     String dialogOwner = widget.owners.isNotEmpty ? widget.owners.first : 'Shared';
+    String selectedPriority = 'Medium';
+    bool scheduledTransfer = false;
     DateTime? selectedDueDate;
 
     showDialog(
@@ -607,7 +629,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
         builder: (context, setDialogState) {
           void updateSuggestedContribution() {
             if (selectedDueDate != null) {
-              final target = double.tryParse(targetController.text) ?? 0.0;
+              final target = _parseNum(targetController.text);
               if (target > 0) {
                 final now = DateTime.now();
                 int monthsDifference = (selectedDueDate!.year - now.year) * 12 + selectedDueDate!.month - now.month;
@@ -621,7 +643,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
           return AlertDialog(
             backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Text('Create New Goal', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95), fontWeight: FontWeight.bold, fontSize: 16)),
+            title: Text(isEmergencyFundTemplate ? 'Emergency Fund Template (3 Mos)' : 'Create New Goal', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF582F95), fontWeight: FontWeight.bold, fontSize: 16)),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -640,7 +662,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                             filled: true,
                             fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                           ),
@@ -693,7 +714,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                       filled: true,
                       fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                     ),
@@ -713,7 +733,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                             filled: true,
                             fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                           ),
@@ -731,7 +750,6 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
                             filled: true,
                             fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
                           ),
@@ -740,6 +758,56 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                     ],
                   ),
                   const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: paymentDayController,
+                          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: 'Payment Day (1-31)',
+                            labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 12),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                            filled: true,
+                            fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: selectedPriority,
+                          dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                          style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                          decoration: InputDecoration(
+                            labelText: 'Priority',
+                            labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 12),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1))),
+                            filled: true,
+                            fillColor: _isZaznamityMode ? const Color(0xFF1E1333) : Colors.white,
+                          ),
+                          items: ['High', 'Medium', 'Low'].map((p) => DropdownMenuItem(value: p, child: Text(p, style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : Colors.black87)))).toList(),
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => selectedPriority = val);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SwitchListTile(
+                    title: Text('Scheduled Automatic Transfer', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                    value: scheduledTransfer,
+                    activeColor: const Color(0xFFA855F7),
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: (val) => setDialogState(() => scheduledTransfer = val),
+                  ),
+                  const SizedBox(height: 6),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -783,22 +851,22 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                 ),
                 onPressed: () {
                   final name = nameController.text.trim();
-                  final target = double.tryParse(targetController.text);
-                  final contribution = double.tryParse(contributionController.text) ?? 0.0;
-                  if (name.isNotEmpty && target != null && target > 0) {
+                  final target = _parseNum(targetController.text);
+                  final contribution = _parseNum(contributionController.text);
+                  if (name.isNotEmpty && target > 0) {
                     final newGoal = SavingsGoalModel(
                       name: name,
                       targetAmount: target,
-                      currentAmount: 0.0,
+                      currentAmount: isEmergencyFundTemplate ? 0.0 : 0.0,
                       monthlyContribution: contribution,
                       targetDate: selectedDueDate?.toIso8601String(),
                       owner: dialogOwner,
                     );
-                    widget.onSaveGoal(newGoal); // Clean callback dispatch without local setState race
+                    widget.onSaveGoal(newGoal);
                     Navigator.pop(context);
                   }
                 },
-                child: const Text('Add Goal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                child: Text(isEmergencyFundTemplate ? 'Save Emergency Fund' : 'Add Goal', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
               ),
             ],
           );
@@ -809,11 +877,27 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
 
   @override
   Widget build(BuildContext context) {
-    final sortedGoals = List<SavingsGoalModel>.from(widget.goals)
-      ..sort((a, b) => (a.id ?? 0).compareTo(b.id ?? 0));
+    final filteredGoals = widget.goals.where((g) {
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners') {
+        return g.owner.trim().toLowerCase() == widget.selectedOwner!.trim().toLowerCase();
+      }
+      return true;
+    }).toList();
+
+    Map<String, Map<String, double>> currencyTotals = {};
+    for (var goal in filteredGoals) {
+      String curr = _userCurrencies.first;
+      currencyTotals.putIfAbsent(curr, () => {'saved': 0.0, 'target': 0.0});
+      currencyTotals[curr]!['saved'] = currencyTotals[curr]!['saved']! + goal.currentAmount;
+      currencyTotals[curr]!['target'] = currencyTotals[curr]!['target']! + goal.targetAmount;
+    }
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final double fullWidth = availableWidth - 32;
+        final double boxWidth = (fullWidth - 12) / 2;
+
         return Container(
           padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
           decoration: _isZaznamityMode
@@ -931,31 +1015,84 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                 const SizedBox(height: 12),
 
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     SizedBox(
-                      height: 40,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
-                          foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      width: boxWidth,
+                      child: SizedBox(
+                        height: 40,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          onPressed: () => _showCreateGoalDialog(isEmergencyFundTemplate: true),
+                          icon: const Icon(Icons.shield_outlined, size: 14, color: Color(0xFFA855F7)),
+                          label: Text('Emergency Fund', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                         ),
-                        onPressed: _showCreateGoalDialog,
-                        label: const Text('Add Savings Goal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    SizedBox(
+                      width: boxWidth,
+                      child: SizedBox(
+                        height: 40,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
+                            foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () => _showCreateGoalDialog(isEmergencyFundTemplate: false),
+                          icon: const Icon(Icons.add, size: 14),
+                          label: const Text('Add Goal', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
-                sortedGoals.isEmpty
+                if (currencyTotals.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFEDE9FE),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Total Savings Progress', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95))),
+                        const SizedBox(height: 6),
+                        ...currencyTotals.entries.map((entry) {
+                          final saved = entry.value['saved']!;
+                          final target = entry.value['target']!;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 4.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('${_getCurrencyFlag(entry.key)} ${entry.key}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                Text('${_formatCurrency(saved, entry.key)} / ${_formatCurrency(target, entry.key)}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669))),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
+                filteredGoals.isEmpty
                     ? Center(
                         child: Padding(
                           padding: const EdgeInsets.all(24.0),
                           child: Text(
-                            'No savings goals set.',
+                            'No savings goals set for this selection.',
                             style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8), fontSize: 12),
                           ),
                         ),
@@ -963,21 +1100,25 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                     : ListView.separated(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: sortedGoals.length,
+                        itemCount: filteredGoals.length,
                         separatorBuilder: (context, index) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
-                          final goal = sortedGoals[index];
+                          final goal = filteredGoals[index];
                           final double progress = goal.targetAmount > 0 
                               ? (goal.currentAmount / goal.targetAmount).clamp(0.0, 1.0) 
                               : 0.0;
                           
                           final bool isCompleted = goal.currentAmount >= goal.targetAmount;
-                          final activeSymbol = _getCurrencySymbol(_userCurrencies.first);
-                          final activeFlag = _getCurrencyFlag(_userCurrencies.first);
-                          final currencyFormat = NumberFormat.currency(symbol: activeSymbol, decimalDigits: 2);
+                          final activeCurr = _userCurrencies.first;
+                          final activeFlag = _getCurrencyFlag(activeCurr);
                           
-                          final forecastText = _getCompletionForecastText(goal);
+                          final evaluation = _evaluateGoalPaceAndForecast(goal);
+                          final forecastText = evaluation['text'] as String;
+                          final neededPerMonth = evaluation['neededPerMonth'] as double;
+                          final status = evaluation['status'] as String;
+
                           final dueDateStr = goal.targetDate != null ? DateFormat('yyyy-MM-dd').format(DateTime.parse(goal.targetDate!)) : null;
+                          bool isAheadOrOnTrack = goal.monthlyContribution >= neededPerMonth;
 
                           return Container(
                             padding: const EdgeInsets.all(16),
@@ -1037,7 +1178,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                       ),
                                     ),
                                     Text(
-                                      'Target: ${currencyFormat.format(goal.targetAmount)}',
+                                      'Target: ${_formatCurrency(goal.targetAmount, activeCurr)}',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w600,
                                         fontSize: 12,
@@ -1047,35 +1188,44 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                if (forecastText != null) ...[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF34D399).withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.trending_up_rounded,
-                                          size: 12,
-                                          color: Color(0xFF34D399),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          forecastText,
-                                          style: const TextStyle(
-                                            fontSize: 10.5,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF34D399),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: status == 'late' 
+                                            ? Colors.red.shade900.withValues(alpha: 0.2)
+                                            : const Color(0xFF34D399).withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            status == 'late' ? Icons.warning_amber_rounded : Icons.trending_up_rounded,
+                                            size: 12,
+                                            color: status == 'late' ? Colors.redAccent : const Color(0xFF34D399),
                                           ),
-                                        ),
-                                      ],
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            forecastText,
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.bold,
+                                              color: status == 'late' ? Colors.redAccent : const Color(0xFF34D399),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                ],
+                                    Text(
+                                      'Needed: ${_formatCurrency(neededPerMonth, activeCurr)}/mo • ${isAheadOrOnTrack ? '🟢 On Track' : '🔴 Behind'}',
+                                      style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white60 : Colors.grey.shade600),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(6),
                                   child: LinearProgressIndicator(
@@ -1092,7 +1242,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                     Row(
                                       children: [
                                         Text(
-                                          'Saved: ${currencyFormat.format(goal.currentAmount)}',
+                                          'Saved: ${_formatCurrency(goal.currentAmount, activeCurr)}',
                                           style: const TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 12,
