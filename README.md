@@ -42,20 +42,20 @@ Zaznamity is modularized into dedicated analytics cards, data input sheets, visu
 
 ```
 zaznamity/
-├── assets/                       # Branding logos and splash graphics
+├── assets/                                # Branding logos and splash graphics
 │   ├── ZaznamityLogoFULL.jpg
-│   ├── ZaznamityLogo_only2white.png
+│   ├── ZaznamityLogo_onlyZwhite.png
 │   └── solid_purple.png
 ├── lib/
-│   ├── main.dart                 # Application lifecycle, auth lock, and initialization
-│   ├── models/                   # TransactionModel, LabelModel, SavingsGoalModel, etc.
-│   ├── screens/                  # Top-level screen components (DashboardScreen)
-│   ├── services/                 # Local persistence and global utilities
-│   │   ├── database_helper.dart  # SQLite persistence engine
-│   │   ├── notification_service.dart # Local scheduled notifications
-│   │   ├── privacy_service.dart  # Reactive state persistence for Privacy Mode
-│   │   └── snackbar_notification.dart # Customized alert toasts
-│   └── widgets/                  # Modular UI cards, charts, and input sheets
+│   ├── main.dart                          # Application lifecycle, auth lock, and initialization
+│   ├── models/                            # TransactionModel, LabelModel, SavingsGoalModel, etc.
+│   ├── screens/                           # Top-level screen components (DashboardScreen)
+│   ├── services/                          # Local persistence and global utilities
+│   │   ├── database_helper.dart           # SQLite persistence engine
+│   │   ├── notification_service.dart      # Local scheduled notifications
+│   │   ├── privacy_service.dart           # Reactive state persistence for Privacy Mode
+│   │   └── snackbar_notification.dart     # Customized alert toasts
+│   └── widgets/                           # Modular UI cards, charts, and input sheets
 │       ├── app_settings_card.dart
 │       ├── bottom_card_nav_bar.dart
 │       ├── budget_progress_card.dart
@@ -81,8 +81,8 @@ zaznamity/
 │       ├── transaction_history_card.dart
 │       ├── transfer_funds_card.dart
 │       ├── what_if_scenario_card.dart
-│       └── settings/             # Dynamic setting forms & sheets
-├── pubspec.yaml                  # Dependency definitions & asset manifest
+│       └── settings/                      # Dynamic setting forms & sheets
+├── pubspec.yaml                           # Dependency definitions & asset manifest
 └── README.md
 ```
 
