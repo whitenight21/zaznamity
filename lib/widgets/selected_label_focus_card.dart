@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
+import '../services/privacy_service.dart';
+import '../widgets/masked_amount.dart';
 
 class SelectedLabelFocusCard extends StatefulWidget {
   final List<TransactionModel> transactions;
@@ -457,7 +459,6 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
       }
     }
 
-    // Connected Budget Lookup from Budgets card data source
     double labelBudget = 0.0;
     if (selectedLabelId != null) {
       final matchingBudget = widget.budgets.where((b) {
@@ -473,7 +474,6 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
 
     double potentialImpactYearly = primaryFocusAmount * (_whatIfSliderPercentage / 100.0) * 12;
 
-    // Biggest Transactions sorted by amount descending
     final sortedByAmountTxs = List<TransactionModel>.from(_cachedFilteredTxs.where((tx) => isIncomeFocus ? tx.type == 'income' : tx.type == 'expense'))
       ..sort((a, b) => b.amount.compareTo(a.amount));
     final topBiggestTxs = sortedByAmountTxs.take(3).toList();
@@ -706,7 +706,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 ),
                 const SizedBox(height: 12),
 
-                // Label Picker (Half the size of the full width) with working local state
+                // Label Picker
                 SizedBox(
                   width: halfWidth,
                   child: Container(
@@ -749,7 +749,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 ),
                 const SizedBox(height: 16),
 
-                // Type-Aware Main Display (Earnings vs. Spending)
+                // Type-Aware Main Display (Earnings vs. Spending) with Privacy Support
                 Center(
                   child: Column(
                     children: [
@@ -765,10 +765,13 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(_formatAmount(primaryFocusAmount), style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                      MaskedAmount(
+                        formattedAmount: _formatAmount(primaryFocusAmount),
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                      ),
                       const SizedBox(height: 4),
-                      Text(
-                        'vs. Prev Period: ${_formatAmount(_cachedPreviousPeriodValue)} (${_cachedMomPercentage >= 0 ? '+' : ''}${_cachedMomPercentage.toStringAsFixed(1)}%)',
+                      MaskedAmount(
+                        formattedAmount: 'vs. Prev Period: ${_formatAmount(_cachedPreviousPeriodValue)} (${_cachedMomPercentage >= 0 ? '+' : ''}${_cachedMomPercentage.toStringAsFixed(1)}%)',
                         style: TextStyle(
                           fontSize: 11, 
                           fontWeight: FontWeight.bold, 
@@ -810,14 +813,20 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                           ),
                           Column(
                             children: [
-                              Text('Avg / Tx', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
-                              Text(_formatAmount(avgPerTx), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                              Text('Average', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
+                              MaskedAmount(
+                                formattedAmount: _formatAmount(avgPerTx),
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                              ),
                             ],
                           ),
                           Column(
                             children: [
-                              Text(isIncomeFocus ? 'Largest Inflow' : 'Largest Tx', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
-                              Text(_formatAmount(largestTx), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171))),
+                              Text(isIncomeFocus ? 'Largest Inflow' : 'Largest Expense', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
+                              MaskedAmount(
+                                formattedAmount: _formatAmount(largestTx),
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171)),
+                              ),
                             ],
                           ),
                           Column(
@@ -833,7 +842,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 ),
                 const SizedBox(height: 16),
 
-                // Connected Budget / Target Progress (Updated action based on whether budget/target exists)
+                // Connected Budget / Target Progress
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -845,12 +854,11 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                     TextButton.icon(
                       style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                       onPressed: () {
-                        // Brings to Settings/Budgets if budget/target created, or to budget card if not created[cite: 19]
                         if (widget.onNavigateCard != null) {
                           if (labelBudget > 0) {
-                            widget.onNavigateCard!('settings'); // Brings to Settings/Budgets
+                            widget.onNavigateCard!('settings');
                           } else {
-                            widget.onNavigateCard!('budget'); // Brings to budget card
+                            widget.onNavigateCard!('budget');
                           }
                         }
                       },
@@ -878,7 +886,10 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(labelBudget > 0 ? '${isIncomeFocus ? 'Earned' : 'Spent'}: ${_formatAmount(primaryFocusAmount)} / ${_formatAmount(labelBudget)}' : (selectedLabelId == null ? 'Select a label to view connected budget' : 'No budget set for $selectedLabelName'), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                          MaskedAmount(
+                            formattedAmount: labelBudget > 0 ? '${isIncomeFocus ? 'Earned' : 'Spent'}: ${_formatAmount(primaryFocusAmount)} / ${_formatAmount(labelBudget)}' : (selectedLabelId == null ? 'Select a label to view connected budget' : 'No budget set for $selectedLabelName'),
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                          ),
                           Text(labelBudget > 0 ? '${(budgetProgressRatio * 100).toStringAsFixed(0)}%' : '', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : (budgetProgressRatio > 0.9 ? const Color(0xFFF87171) : const Color(0xFF34D399)))),
                         ],
                       ),
@@ -995,7 +1006,10 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text('Current Run Rate vs Target', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B))),
-                          Text(_formatAmount(primaryFocusAmount), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                          MaskedAmount(
+                            formattedAmount: _formatAmount(primaryFocusAmount),
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -1013,12 +1027,12 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 ),
                 const SizedBox(height: 16),
 
-                // Biggest Transactions (Replaced Outlier Anomalies)
+                // Biggest Transactions
                 if (topBiggestTxs.isNotEmpty) ...[
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(isIncomeFocus ? 'BIGGEST INFLOWS' : 'BIGGEST TRANSACTIONS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFA855F7), letterSpacing: 0.5)),
+                      Text(isIncomeFocus ? 'BIGGEST INFLOWS' : 'BIGGEST ZAZNAMS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFA855F7), letterSpacing: 0.5)),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -1046,7 +1060,10 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                                   ],
                                 ),
                               ),
-                              Text(_formatAmount(tx.amount), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171))),
+                              MaskedAmount(
+                                formattedAmount: _formatAmount(tx.amount),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isIncomeFocus ? const Color(0xFF34D399) : const Color(0xFFF87171)),
+                              ),
                             ],
                           ),
                         );
@@ -1074,8 +1091,8 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                             isIncomeFocus ? 'What if income increases ${_whatIfSliderPercentage.toStringAsFixed(0)}%?' : 'What if I cut this ${_whatIfSliderPercentage.toStringAsFixed(0)}%?',
                             style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
                           ),
-                          Text(
-                            '${isIncomeFocus ? 'Adds' : 'Saves'} ${_formatAmount(potentialImpactYearly)} / yr',
+                          MaskedAmount(
+                            formattedAmount: '${isIncomeFocus ? 'Adds' : 'Saves'} ${_formatAmount(potentialImpactYearly)} / yr',
                             style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
                           ),
                         ],
@@ -1113,7 +1130,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 ),
                 const SizedBox(height: 16),
 
-                // Last 5 Zaznams Box with Display all records header
+                // Last 5 Zaznams Box
                 Container(
                   decoration: BoxDecoration(
                     color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
@@ -1134,10 +1151,10 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('LAST 5 ZAZNAMS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
+                              Text('LAST FEW ZAZNAMS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B), letterSpacing: 0.5)),
                               Row(
                                 children: [
-                                  Text('Display all records (${_cachedFilteredTxs.length})', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC084FC) : const Color(0xFF582F95), fontSize: 10, fontWeight: FontWeight.bold)),
+                                  Text('Display all Zaznams (${_cachedFilteredTxs.length})', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC084FC) : const Color(0xFF582F95), fontSize: 10, fontWeight: FontWeight.bold)),
                                   const SizedBox(width: 4),
                                   Icon(Icons.arrow_forward_ios, size: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                 ],
@@ -1156,7 +1173,10 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                                   dense: true,
                                   title: Text(tx.description.isEmpty ? 'Zaznam' : tx.description, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                                   subtitle: Text(DateFormat('MMM dd, yyyy').format(dt), style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? Colors.white54 : Colors.grey)),
-                                  trailing: Text(_formatAmount(tx.amount), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: tx.type == 'income' ? const Color(0xFF34D399) : const Color(0xFFF87171))),
+                                  trailing: MaskedAmount(
+                                    formattedAmount: _formatAmount(tx.amount),
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: tx.type == 'income' ? const Color(0xFF34D399) : const Color(0xFFF87171)),
+                                  ),
                                 );
                               }).toList(),
                             ),

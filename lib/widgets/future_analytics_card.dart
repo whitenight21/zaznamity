@@ -456,6 +456,8 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
     final startDate = widget.startDate ?? _getEffectiveStartDate(now);
     final endDate = widget.endDate ?? _getEffectiveEndDate(now);
 
+    final activeOwner = widget.selectedOwner ?? 'All Owners';
+
     final Map<int, double> expenseByCategory = {};
     final Map<int, double> incomeByCategory = {};
     double totalFutureExpense = 0;
@@ -546,40 +548,31 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (widget.onJumpToMetrics != null) ...[
-                    Tooltip(
-                      message: 'Jump to Future Metrics',
-                      child: InkWell(
-                        onTap: widget.onJumpToMetrics,
-                        borderRadius: BorderRadius.circular(6),
-                        child: Container(
-                          height: 28,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: _isZaznamityMode ? const Color(0xFF3D256B) : const Color(0xFFEDE9FE),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: _isZaznamityMode ? const Color(0xFFA855F7).withValues(alpha: 0.4) : const Color(0xFFDDD6FE)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.insights_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95)),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Metrics',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95),
-                                ),
-                              ),
-                            ],
+                  Container(
+                    height: 28,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                        const SizedBox(width: 4),
+                        Text(
+                          activeOwner,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(width: 6),
-                  ],
+                  ),
+                  const SizedBox(width: 6),
                   SizedBox(
                     height: 28,
                     width: 28,

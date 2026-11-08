@@ -12,6 +12,7 @@ import 'package:zaznamity/services/database_helper.dart';
 import 'package:intl/intl.dart';
 import 'package:zaznamity/services/snackbar_notification.dart';
 import '../services/privacy_service.dart';
+import 'package:zaznamity/services/notification_service.dart';
 
 import '../widgets/summary_metrics_card.dart';
 import '../widgets/future_metrics_card.dart';
@@ -35,6 +36,7 @@ import '../widgets/liabilities_card.dart';
 import '../widgets/smart_insights_card.dart';
 import '../widgets/what_if_scenario_card.dart';
 import '../widgets/future_analytics_card.dart';
+import '../widgets/balance_trends_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -78,6 +80,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   Map<String, double> _prognosisByOwner = {};
   double _totalPrognosis = 0;
 
+  DateTime? _balanceTrendsStartDate;
+  DateTime? _balanceTrendsEndDate;
+  String? _balanceTrendsSelectedOwner;
+
   DateTime? _historyStartDate;
   DateTime? _historyEndDate;
   int? _historySelectedLabelId;
@@ -117,6 +123,60 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   List<String> _leftNavItems = ['owner', 'metrics', 'budget'];
   List<String> _rightNavItems = ['history', 'calendar', 'snapshot'];
+
+  // SYNC NOTIFICATIONS WITH DATA (LIABILITIES & UNCONFIRMED TRANSACTIONS)
+  Future<void> _syncNotificationsWithData() async {
+    final prefs = await SharedPreferences.getInstance();
+    bool notificationsEnabled = prefs.getBool('notificationsEnabled') ?? false;
+
+    // Clear all existing reminders before rescheduling fresh ones
+    await NotificationService.cancelNotifications();
+
+    if (!notificationsEnabled) return;
+
+    int notifyDaysBefore = prefs.getInt('notifyDaysBefore') ?? 1;
+    int notifyHoursBefore = prefs.getInt('notifyHoursBefore') ?? 9;
+
+    // 1. Schedule notifications for upcoming unconfirmed transactions / bills
+    for (var tx in _transactions) {
+      if (tx.isConfirmed == 0 && tx.id != null) {
+        DateTime? txDate = DateTime.tryParse(tx.createdAt);
+        if (txDate != null && txDate.isAfter(DateTime.now())) {
+          await NotificationService.scheduleTransactionReminder(
+            id: tx.id!,
+            title: 'Upcoming Zaznam Reminder',
+            body: '${tx.description} of ${tx.amount} ${tx.currencyCode} is due soon.',
+            scheduledDate: txDate,
+            daysBefore: notifyDaysBefore,
+            hoursBefore: notifyHoursBefore,
+          );
+        }
+      }
+    }
+
+    // 2. Schedule notifications for liabilities / loans
+    for (var liability in _liabilities) {
+      if (liability.dueDay != null) {
+        final now = DateTime.now();
+        DateTime nextDueDate = DateTime(now.year, now.month, liability.dueDay!);
+        if (!nextDueDate.isAfter(now)) {
+          nextDueDate = DateTime(now.year, now.month + 1, liability.dueDay!);
+        }
+
+        // Generate a stable integer ID for the liability reminder
+        int uniqueId = 100000 + (liability.id ?? liability.name.hashCode.abs() % 50000);
+
+        await NotificationService.scheduleTransactionReminder(
+          id: uniqueId,
+          title: 'Liability Due Reminder',
+          body: '${liability.name} installment of ${liability.monthlyInstallment} is due on day ${liability.dueDay}.',
+          scheduledDate: nextDueDate,
+          daysBefore: notifyDaysBefore,
+          hoursBefore: notifyHoursBefore,
+        );
+      }
+    }
+  }
 
   List<String> _availableCurrencies = ['USD'];
   final Map<String, String> _currencyFlags = {
@@ -173,9 +233,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     CardConfig(id: 'new_entry', title: 'New Zaznam', key: GlobalKey()),
     CardConfig(id: 'transfer', title: 'Transfer Funds', key: GlobalKey()),
     CardConfig(id: 'budget', title: 'Budgets', key: GlobalKey()),
-    CardConfig(id: 'trend_chart', title: 'Liquid Trend', key: GlobalKey()),
-    CardConfig(id: 'savings_chart', title: 'Savings Trend', key: GlobalKey()),
-    CardConfig(id: 'pools_analytics', title: 'Pools Trends', key: GlobalKey()),
+    CardConfig(id: 'balance_trends', title: 'Balance Trends', key: GlobalKey()),
+    //CardConfig(id: 'trend_chart', title: 'Liquid Trend', key: GlobalKey()),
+    //CardConfig(id: 'savings_chart', title: 'Savings Trend', key: GlobalKey()),
+    //CardConfig(id: 'pools_analytics', title: 'Pools Trends', key: GlobalKey()),
     CardConfig(id: 'sankey_flow', title: 'Sankey Flow Trend', key: GlobalKey()),
     CardConfig(id: 'monthly_trend', title: 'Cash Flow Trend', key: GlobalKey()),
     CardConfig(id: 'calendar', title: 'Calendar', key: GlobalKey()),
@@ -187,6 +248,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   @override
   void initState() {
     super.initState();
+    
+    // Initialize Notification Service
+    NotificationService.init();
+
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
@@ -210,6 +275,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     _tabController.dispose();
     super.dispose();
   }
+
+  
 
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
@@ -450,7 +517,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     int targetTab = 0;
     if (['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(cardId)) {
       targetTab = 0;
-    } else if (['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(cardId)) {
+    } else if (['monthly_trend', 'balance_trends', 'sankey_flow'].contains(cardId)) {
       targetTab = 1;
     } else if (['label_focus', 'income_expenses_labels', 'future_analytics', 'calendar', 'what_if_scenario'].contains(cardId)) {
       targetTab = 2; 
@@ -536,7 +603,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         child: StatefulBuilder(
           builder: (stateContext, setModalState) {
             final metricsCards = cards.where((c) => ['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(c.id)).toList();
-            final trendsCards = cards.where((c) => ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
+            final trendsCards = cards.where((c) => ['monthly_trend', 'balance_trends', 'sankey_flow'].contains(c.id)).toList();
             final analyticsCards = cards.where((c) => ['label_focus', 'income_expenses_labels', 'future_analytics', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
             final actionsCards = cards.where((c) => ['new_entry', 'transfer', 'history'].contains(c.id)).toList();
             final settingsCard = cards.firstWhere((c) => c.id == 'settings', orElse: () => CardConfig(id: 'settings', title: 'Zaznamity Settings', key: GlobalKey()));
@@ -932,12 +999,16 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       setState(() {
         _transactions = txs;
         _labels = lbls;
-        _budgets = List<Map<String, dynamic>>.from(bdgs);
+        _budgets = List.from(bdgs).cast();
         _goals = List<SavingsGoalModel>.from(gls);
-        _liabilities = List<LiabilityModel>.from(liabs); 
+        _liabilities = List<LiabilityModel>.from(liabs);
         calculateMetrics();
         _isLoading = false;
       });
+
+      // Synchronize push notifications with latest transactions and liabilities
+      await _syncNotificationsWithData();
+      
     } catch (e) {
       print('Error loading data: $e');
       setState(() {
@@ -1929,6 +2000,30 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             // Jump to budgets tab handler
           },
         );
+      case 'balance_trends':
+        return BalanceTrendsCard(
+          transactions: _transactions,
+          liquidNetPools: _liquidNetPools,
+          allPools: _pools,
+          labels: _labels,
+          savingsGoals: _goals,
+          owners: _owners,
+          selectedOwner: _balanceTrendsSelectedOwner ?? _globalSelectedOwner,
+          startDate: _balanceTrendsStartDate,
+          endDate: _balanceTrendsEndDate,
+          onSelectStartDate: () => _pickDateRange(context, _balanceTrendsStartDate, _balanceTrendsEndDate, (start, end) => setState(() {
+            _balanceTrendsStartDate = start;
+            _balanceTrendsEndDate = end;
+          })),
+          onSelectEndDate: () => _pickDateRange(context, _balanceTrendsStartDate, _balanceTrendsEndDate, (start, end) => setState(() {
+            _balanceTrendsStartDate = start;
+            _balanceTrendsEndDate = end;
+          })),
+          onClearDateFilter: () => setState(() {
+            _balanceTrendsStartDate = null;
+            _balanceTrendsEndDate = null;
+          }),
+        );
       case 'savings_goals':
         return SavingsGoalsCard(
           goals: _goals,
@@ -2552,7 +2647,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   void _showZoomOutSnapshotModal() {
     final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'smart_insights', 'future_metrics', 'liabilities_card', 'savings_goals', 'budget'].contains(c.id)).toList();
-    final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
+    final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'balance_trends', 'sankey_flow'].contains(c.id)).toList();
     final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'future_analytics', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
     final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'history', 'settings'].contains(c.id)).toList();
 
@@ -2854,7 +2949,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                               final screenWidth = constraints.maxWidth;
 
                               final metricsCards = _cards.where((c) => c.isVisible && ['metrics', 'smart_insights', 'liabilities_card', 'future_metrics', 'savings_goals', 'budget'].contains(c.id)).toList();
-                              final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'trend_chart', 'savings_chart', 'pools_analytics', 'sankey_flow'].contains(c.id)).toList();
+                              final trendsCards = _cards.where((c) => c.isVisible && ['monthly_trend', 'balance_trends', 'sankey_flow'].contains(c.id)).toList();
                               final analyticsCards = _cards.where((c) => c.isVisible && ['label_focus', 'income_expenses_labels', 'future_analytics', 'calendar', 'what_if_scenario'].contains(c.id)).toList();
                               final actionsCards = _cards.where((c) => c.isVisible && ['new_entry', 'transfer', 'history', 'settings'].contains(c.id)).toList();
 

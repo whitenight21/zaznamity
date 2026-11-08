@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/label.dart';
 import '../models/transaction_model.dart';
 import '../services/snackbar_notification.dart';
+import '../widgets/masked_amount.dart';
 
 class BudgetProgressCard extends StatefulWidget {
   final List budgets;
@@ -765,19 +766,45 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Total: ${_formatCurrency(totalSpentAll, _selectedCurrency)} / ${_formatCurrency(totalLimitAll, _selectedCurrency)}',
-                      style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.bold),
+                    Row(
+                      children: [
+                        Text(
+                          'Total: ',
+                          style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        MaskedAmount(
+                          formattedAmount: _formatCurrency(totalSpentAll, _selectedCurrency),
+                          style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          ' / ',
+                          style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        MaskedAmount(
+                          formattedAmount: _formatCurrency(totalLimitAll, _selectedCurrency),
+                          style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                      ],
                     ),
-                    Text(
-                      overallRemaining >= 1 
-                          ? 'Remaining: ${_formatCurrency(overallRemaining, _selectedCurrency)}' 
-                          : 'Over limit: ${_formatCurrency(overallRemaining.abs(), _selectedCurrency)}',
-                      style: TextStyle(
-                        color: overallRemaining < 0 ? Colors.red.shade400 : const Color(0xFF34D399),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          overallRemaining >= 1 ? 'Remaining: ' : 'Over limit: ',
+                          style: TextStyle(
+                            color: overallRemaining < 0 ? Colors.red.shade400 : const Color(0xFF34D399),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                        MaskedAmount(
+                          formattedAmount: _formatCurrency(overallRemaining.abs(), _selectedCurrency),
+                          style: TextStyle(
+                            color: overallRemaining < 0 ? Colors.red.shade400 : const Color(0xFF34D399),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -814,7 +841,10 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                             Text('Unbudgeted Spending', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                           ],
                         ),
-                        Text(_formatCurrency(unbudgetedSpent, _selectedCurrency), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber)),
+                        MaskedAmount(
+                          formattedAmount: _formatCurrency(unbudgetedSpent, _selectedCurrency),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber),
+                        ),
                       ],
                     ),
                   ),
@@ -840,14 +870,12 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
   }
 
   Widget _buildGroupedBudgetsList(List budgets, double monthProgressRatio, int daysRemaining) {
-    // Find unique currencies present in budgets, ordered by available currencies order (primary first, then secondary)
     List<String> presentCurrencies = [];
     for (var curr in _availableCurrencies) {
       if (budgets.any((b) => (b['currency'] ?? _selectedCurrency).toString().toUpperCase() == curr.toUpperCase())) {
         presentCurrencies.add(curr);
       }
     }
-    // Also add any unexpected currency not in prefs
     for (var b in budgets) {
       String curr = (b['currency'] ?? _selectedCurrency).toString().toUpperCase();
       if (!presentCurrencies.contains(curr)) {
@@ -911,12 +939,6 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
     final isOverBudget = spent > limit;
     final cardColor = _parseColor(b['label_color']);
 
-    if (progress >= 1.0) {
-      // 100% notification trigger benchmark
-    } else if (progress >= 0.8) {
-      // 80% notification trigger benchmark
-    }
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 14.0),
       child: InkWell(
@@ -956,21 +978,55 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
-                      '${_formatCurrency(spent, currency)} / ${_formatCurrency(limit, currency)}',
-                      style: TextStyle(
-                        color: isOverBudget ? Colors.red.shade400 : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                        fontSize: 12,
-                        fontWeight: isOverBudget ? FontWeight.bold : FontWeight.normal,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        MaskedAmount(
+                          formattedAmount: _formatCurrency(spent, currency),
+                          style: TextStyle(
+                            color: isOverBudget ? Colors.red.shade400 : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                            fontSize: 12,
+                            fontWeight: isOverBudget ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        Text(
+                          ' / ',
+                          style: TextStyle(
+                            color: isOverBudget ? Colors.red.shade400 : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                            fontSize: 12,
+                            fontWeight: isOverBudget ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        MaskedAmount(
+                          formattedAmount: _formatCurrency(limit, currency),
+                          style: TextStyle(
+                            color: isOverBudget ? Colors.red.shade400 : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                            fontSize: 12,
+                            fontWeight: isOverBudget ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ],
                     ),
-                    Text(
-                      remaining >= 0 ? 'Left: ${_formatCurrency(remaining, currency)}' : 'Over: ${_formatCurrency(remaining.abs(), currency)}',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: remaining >= 0 ? const Color(0xFF34D399) : Colors.red.shade400,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          remaining >= 0 ? 'Left: ' : 'Over: ',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: remaining >= 0 ? const Color(0xFF34D399) : Colors.red.shade400,
+                          ),
+                        ),
+                        MaskedAmount(
+                          formattedAmount: _formatCurrency(remaining.abs(), currency),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: remaining >= 0 ? const Color(0xFF34D399) : Colors.red.shade400,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1009,9 +1065,22 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '${_formatCurrency(dailyAllowance, currency)}/day for $daysRemaining days • Proj: ${_formatCurrency(projectedEom, currency)}',
-                  style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white60 : Colors.grey.shade600),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    MaskedAmount(
+                      formattedAmount: _formatCurrency(dailyAllowance, currency),
+                      style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white60 : Colors.grey.shade600),
+                    ),
+                    Text(
+                      '/day for $daysRemaining days • Proj: ',
+                      style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white60 : Colors.grey.shade600),
+                    ),
+                    MaskedAmount(
+                      formattedAmount: _formatCurrency(projectedEom, currency),
+                      style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white60 : Colors.grey.shade600),
+                    ),
+                  ],
                 ),
                 Row(
                   children: sparklineHits.map((hit) {

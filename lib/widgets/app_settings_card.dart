@@ -24,6 +24,7 @@ import 'package:zaznamity/widgets/settings/history_display_settings_widget.dart'
 import 'package:zaznamity/models/transaction_model.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:zaznamity/services/snackbar_notification.dart';
+import 'package:file_selector/file_selector.dart';
 
 /// Shared helper to determine if a transaction is an internal transfer, goal, savings, or pool move.
 bool isExcludedTransferOrSavings(TransactionModel tx, List<LabelModel> labels) {
@@ -187,8 +188,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   bool _isZaznamityMode = true;
   bool _isCollapsed = false;
   bool _notificationsEnabled = true;
-  final int _notifyDaysBefore = 1;
-  final int _notifyHoursBefore = 9;
+  int _notifyDaysBefore = 1;
+  int _notifyHoursBefore = 9;
   
   bool _biometricsEnabled = false;
   String _biometricType = 'PIN';
@@ -221,6 +222,98 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       hasReceipt: false,
     ),
   ];
+
+  Future<void> _importFullSystemBackup() async {
+    try {
+      // 1. Define allowed file types/extensions for the JSON backup
+      final XTypeGroup jsonTypeGroup = XTypeGroup(
+        label: 'Zaznamity Backups',
+        extensions: ['json','csv'],
+      );
+
+      // 2. Open the file selector dialog
+      final XFile? selectedFile = await openFile(
+        acceptedTypeGroups: [jsonTypeGroup],
+      );
+
+      if (selectedFile == null) return;
+
+      // 3. Read backup contents as a string
+      final jsonString = await selectedFile.readAsString(encoding: utf8);
+      final Map<String, dynamic> backupData = jsonDecode(jsonString);
+
+      if (!backupData.containsKey('version') || !backupData.containsKey('transactions')) {
+        if (!mounted) return;
+        showSnackbarNotification(context, 'Invalid backup file format.');
+        return;
+      }
+
+      // 4. Restore SharedPreferences (Preferences)
+      if (backupData.containsKey('preferences')) {
+        final prefs = await SharedPreferences.getInstance();
+        final Map<String, dynamic> prefsMap = backupData['preferences'];
+        
+        for (var entry in prefsMap.entries) {
+          final key = entry.key;
+          final val = entry.value;
+          if (val is bool) await prefs.setBool(key, val);
+          else if (val is int) await prefs.setInt(key, val);
+          else if (val is double) await prefs.setDouble(key, val);
+          else if (val is String) await prefs.setString(key, val);
+          else if (val is List) await prefs.setStringList(key, List<String>.from(val));
+        }
+      }
+
+      // 5. Restore Labels (Using correct name and color arguments)
+      if (backupData.containsKey('labels')) {
+        final List<dynamic> labelsList = backupData['labels'];
+        for (var lMap in labelsList) {
+          await DatabaseHelper.instance.insertLabel(
+            lMap['name'],
+            lMap['color'] ?? '582F95',
+          );
+        }
+      }
+
+      // 6. Restore Liabilities
+      if (backupData.containsKey('liabilities')) {
+        final List<dynamic> liabilitiesList = backupData['liabilities'];
+        for (var lMap in liabilitiesList) {
+          await DatabaseHelper.instance.insertLiability(LiabilityModel.fromMap(lMap));
+        }
+      }
+
+      // 7. Restore Savings Goals
+      if (backupData.containsKey('savingsGoals')) {
+        final List<dynamic> goalsList = backupData['savingsGoals'];
+        for (var gMap in goalsList) {
+          await DatabaseHelper.instance.insertSavingsGoal(SavingsGoalModel.fromMap(gMap));
+        }
+      }
+
+      // 8. Restore Transactions
+      if (backupData.containsKey('transactions')) {
+        final List<dynamic> txList = backupData['transactions'];
+        for (var txMap in txList) {
+          await DatabaseHelper.instance.insertTransaction(TransactionModel.fromMap(txMap));
+        }
+      }
+
+      // 9. Reload local states and notify parent
+      await _loadSavedReports();
+      await _loadLiabilities();
+      await _loadSavingsGoals();
+      if (widget.onLiabilityUpdated != null) {
+        widget.onLiabilityUpdated!();
+      }
+
+      if (!mounted) return;
+      showSnackbarNotification(context, 'Full-System Backup imported successfully!');
+    } catch (e) {
+      if (!mounted) return;
+      showSnackbarNotification(context, 'Import failed: $e');
+    }
+  }
 
   Future<void> _loadSpeechPresets() async {
     final prefs = await SharedPreferences.getInstance();
@@ -404,6 +497,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
       _isZaznamityMode = (themeStr == 'zaznamity');
       _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
+      _notifyDaysBefore = prefs.getInt('notifyDaysBefore') ?? 1;
+      _notifyHoursBefore = prefs.getInt('notifyHoursBefore') ?? 9;
       _biometricsEnabled = prefs.getBool('biometricsEnabled') ?? false;
       _biometricType = prefs.getString('biometricType') ?? 'PIN';
       _savedPin = prefs.getString('savedPin') ?? "1234";
@@ -481,9 +576,17 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
   Future<void> _loadSavedReports() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
+      Directory? directory;
+      if (Platform.isAndroid) {
+        directory = Directory('/storage/emulated/0/Download');
+        if (!await directory.exists()) {
+          directory = await getExternalStorageDirectory();
+        }
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
 
-      if (await directory.exists()) {
+      if (directory != null && await directory.exists()) {
         final List<FileSystemEntity> entities = directory.listSync();
         
         List<File> pdfFiles = [];
@@ -493,35 +596,19 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
           if (entity is File) {
             final path = entity.path;
             final lowerPath = path.toLowerCase();
+            final fileName = entity.uri.pathSegments.last;
             
-            // Check for PDF reports
-            if (lowerPath.endsWith('.pdf')) {
+            if (lowerPath.endsWith('.pdf') && fileName.startsWith('ZaznamityReport')) {
               pdfFiles.add(entity);
-            }
-            
-            // Check for CSV or JSON exports (captures any file ending in .csv or .json)
-            if (lowerPath.endsWith('.csv') || lowerPath.endsWith('.json')) {
+            } else if ((lowerPath.endsWith('.csv') || lowerPath.endsWith('.json')) && 
+                      (fileName.startsWith('Z_ExportZaznams') || fileName.startsWith('Z_FullSystemBackup'))) {
               exportFiles.add(entity);
             }
           }
         }
 
-        // Sort both lists by last modified date (newest first)
-        pdfFiles.sort((a, b) {
-          try {
-            return b.lastModifiedSync().compareTo(a.lastModifiedSync());
-          } catch (_) {
-            return 0;
-          }
-        });
-
-        exportFiles.sort((a, b) {
-          try {
-            return b.lastModifiedSync().compareTo(a.lastModifiedSync());
-          } catch (_) {
-            return 0;
-          }
-        });
+        pdfFiles.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+        exportFiles.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
 
         if (mounted) {
           setState(() {
@@ -535,7 +622,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     }
   }
 
-void _showSpeechPresetsManagerDialog() {
+  void _showSpeechPresetsManagerDialog() {
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -657,7 +744,7 @@ void _showSpeechPresetsManagerDialog() {
     );
   }
 
-void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSave) {
+  void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSave) {
     final isEditing = existingPreset != null;
     final nameCtrl = TextEditingController(text: existingPreset?.name ?? '');
     final descCtrl = TextEditingController(text: existingPreset?.description ?? '');
@@ -1458,7 +1545,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
         }
         fileContent = buffer.toString();
       } else {
-        final List<Map<String, dynamic>> txMaps = filteredTxs.map((tx) => {
+        final List txMaps = filteredTxs.map((tx) => {
           'id': tx.id,
           'createdAt': tx.createdAt,
           'type': tx.type,
@@ -1472,20 +1559,30 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
           'isConfirmed': tx.isConfirmed,
         }).toList();
         
-        fileContent = txMaps.toString();
+        fileContent = jsonEncode(txMaps);
       }
 
-      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final timestamp = DateFormat('yyyyMMdd_HHmmss');
       final fileName = 'Z_ExportZaznams_$timestamp.$extension';
 
-      final directory = await getApplicationDocumentsDirectory();
-      final savedFile = File('${directory.path}/$fileName');
-      
+      // Target public Downloads folder directly on Android
+      Directory? directory;
+      if (Platform.isAndroid) {
+        directory = Directory('/storage/emulated/0/Download');
+        if (!await directory.exists()) {
+          directory = await getExternalStorageDirectory();
+        }
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      final savedFile = File('${directory!.path}/$fileName');
       await savedFile.writeAsString(fileContent, encoding: utf8);
+      
       await _loadSavedReports();
 
       if (!mounted) return;
-      showSnackbarNotification(context, 'Backup saved successfully: $fileName (${filteredTxs.length} Zaznams)');
+      showSnackbarNotification(context, 'Export saved to Downloads: $fileName');
     } catch (e) {
       if (!mounted) return;
       showSnackbarNotification(context, 'Export failed: $e');
@@ -1497,7 +1594,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
       final transactions = await DatabaseHelper.instance.getTransactions();
       final liabilities = await DatabaseHelper.instance.getLiabilities();
       
-      List<Map<String, dynamic>> savingsGoalsMaps = [];
+      List savingsGoalsMaps = [];
       try {
         final goals = await DatabaseHelper.instance.getSavingsGoals();
         for (var g in goals) {
@@ -1505,7 +1602,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
         }
       } catch (_) {}
 
-      List<Map<String, dynamic>> budgets = [];
+      List budgets = [];
       try {
         budgets = await DatabaseHelper.instance.getBudgets();
       } catch (_) {}
@@ -1531,17 +1628,26 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
       };
 
       final jsonString = jsonEncode(fullBackup);
-      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final timestamp = DateFormat('yyyyMMdd_HHmmss');
       final fileName = 'Z_FullSystemBackup_$timestamp.json';
 
-      final directory = await getApplicationDocumentsDirectory();
-      final savedFile = File('${directory.path}/$fileName');
+      Directory? directory;
+      if (Platform.isAndroid) {
+        directory = Directory('/storage/emulated/0/Download');
+        if (!await directory.exists()) {
+          directory = await getExternalStorageDirectory();
+        }
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      final savedFile = File('${directory!.path}/$fileName');
       await savedFile.writeAsString(jsonString, encoding: utf8);
 
       await _loadSavedReports();
 
       if (!mounted) return;
-      showSnackbarNotification(context, 'Full System Backup saved successfully: $fileName');
+      showSnackbarNotification(context, 'Full-System Backup saved successfully: $fileName');
     } catch (e) {
       if (!mounted) return;
       showSnackbarNotification(context, 'Full backup failed: $e');
@@ -3965,7 +4071,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                     ),
                     _buildSubSectionCard(
                       title: 'Notifications & Reminders',
-                      subtitle: 'Setup advance reminders for upcoming Zaznams',
+                      subtitle: 'Setup advance reminders for upcoming Zaznams.\n\nA notification set to "Days before: 1 days; At hour: 9:00" will show 1 Day before, at 9:00 AM.\n\nReceiving a notification reminder of upcoming Zaznams at a fixed time builds a daily routine and maintains clarity.', 
                       children: [
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
@@ -3987,6 +4093,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                         ),
                         if (_notificationsEnabled) ...[
                           const SizedBox(height: 8),
+                          // Find the Row containing Dropdown<int> for Days and Hours and update them to persist values:
                           Row(
                             children: [
                               Text('Days before: ', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
@@ -3995,16 +4102,28 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                                 dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                 style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 12),
                                 items: [0, 1, 2, 3, 5, 7].map((d) => DropdownMenuItem(value: d, child: Text('$d day(s)'))).toList(),
-                                onChanged: (val) {},
+                                onChanged: (val) async {
+                                  if (val != null) {
+                                    setState(() => _notifyDaysBefore = val);
+                                    final prefs = await SharedPreferences.getInstance();
+                                    await prefs.setInt('notifyDaysBefore', val);
+                                  }
+                                },
                               ),
                               const SizedBox(width: 20),
-                              Text('Hours: ', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                              Text('At hour: ', style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
                               DropdownButton<int>(
                                 value: _notifyHoursBefore,
                                 dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                 style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 12),
-                                items: [8, 9, 10, 12, 18, 20].map((h) => DropdownMenuItem(value: h, child: Text('$h:00'))).toList(),
-                                onChanged: (val) {},
+                                items: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].map((h) => DropdownMenuItem(value: h, child: Text('$h:00'))).toList(),
+                                onChanged: (val) async {
+                                  if (val != null) {
+                                    setState(() => _notifyHoursBefore = val);
+                                    final prefs = await SharedPreferences.getInstance();
+                                    await prefs.setInt('notifyHoursBefore', val);
+                                  }
+                                },
                               ),
                             ],
                           ),
@@ -4123,7 +4242,7 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                       subtitle: 'One-click export of Zaznams or complete system backups',
                       children: [
                         Text(
-                          'Securely export your data for backups or to migrate between devices. Export All Zaznams history to CSV or JSON, or Export a Full System Backup (All Zaznams, Liabilities, Goals, Settings & Saved Preferences))',
+                          'Securely export your data for backups or to migrate between devices. Export All Zaznams history to CSV or JSON, or Import/Export a Full-System Backup (Owner, Pools, All Zaznams, Liabilities, Budgets, Savings Goals, Settings & Saved Preferences)',
                           style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
                         ),
                         const SizedBox(height: 12),
@@ -4165,8 +4284,22 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Export Full Zaznamity Backup',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)),
+                          'Import and Export Full Zaznamity Backup',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                        ),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed: _importFullSystemBackup,
+                            icon: const Icon(Icons.settings_backup_restore, size: 16),
+                            label: const Text('Import Full-System Backup', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          ),
                         ),
                         const SizedBox(height: 6),
                         SizedBox(
@@ -4180,13 +4313,13 @@ void _showEditSinglePresetModal(SpeechPreset? existingPreset, VoidCallback onSav
                             ),
                             onPressed: _exportFullSystemBackup,
                             icon: const Icon(Icons.backup, size: 16),
-                            label: const Text('Full System Backup', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            label: const Text('Create Full-System Backup', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                           ),
                         ),
                         const SizedBox(height: 16),
                         Text(
                           'Created Exports / Backups',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95)),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                         ),
                         const SizedBox(height: 4),
                         _savedExportsList.isEmpty

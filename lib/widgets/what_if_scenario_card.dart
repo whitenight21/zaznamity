@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/liability_model.dart';
 import '../models/label.dart';
+import '../services/privacy_service.dart';
+import '../widgets/masked_amount.dart';
 
 class WhatIfScenarioCard extends StatefulWidget {
   final List<String> owners;
@@ -897,16 +899,16 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                           children: [
                             _buildComparisonRow('Horizon', '${slotA['horizonDays']} Days', '${slotB['horizonDays']} Days'),
                             const Divider(height: 16),
-                            _buildComparisonRow(
+                            _buildComparisonRowMasked(
                               'Simulated Net',
-                              '${resA['simulatedNetShift'] >= 0 ? '+' : ''}${_formatCurrency(resA['simulatedNetShift'])}',
-                              '${resB['simulatedNetShift'] >= 0 ? '+' : ''}${_formatCurrency(resB['simulatedNetShift'])}',
+                              resA['simulatedNetShift'],
+                              resB['simulatedNetShift'],
                             ),
                             const Divider(height: 16),
-                            _buildComparisonRow(
+                            _buildComparisonRowMaskedBalance(
                               'Ending Balance',
-                              _formatCurrency(resA['simulatedEndingBalance']),
-                              _formatCurrency(resB['simulatedEndingBalance']),
+                              resA['simulatedEndingBalance'],
+                              resB['simulatedEndingBalance'],
                             ),
                             const Divider(height: 16),
                             _buildComparisonRow(
@@ -954,6 +956,64 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
         Expanded(
           flex: 3,
           child: Text(valB, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: const Color(0xFFA855F7)), textAlign: TextAlign.right),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildComparisonRowMasked(String label, double valA, double valB) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          flex: 2,
+          child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+        ),
+        Expanded(
+          flex: 3,
+          child: MaskedAmount(
+            formattedAmount: '${valA >= 0 ? '+' : ''}${_formatCurrency(valA)}',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+          ),
+        ),
+        Expanded(
+          flex: 3,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: MaskedAmount(
+              formattedAmount: '${valB >= 0 ? '+' : ''}${_formatCurrency(valB)}',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFA855F7)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildComparisonRowMaskedBalance(String label, double valA, double valB) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          flex: 2,
+          child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+        ),
+        Expanded(
+          flex: 3,
+          child: MaskedAmount(
+            formattedAmount: _formatCurrency(valA),
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+          ),
+        ),
+        Expanded(
+          flex: 3,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: MaskedAmount(
+              formattedAmount: _formatCurrency(valB),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFA855F7)),
+            ),
+          ),
         ),
       ],
     );
@@ -1431,8 +1491,8 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text('Simulated Net Shift (${_effectiveHorizonDays}D):', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          Text(
-                            '${simulatedNetShift >= 0 ? '+' : ''}${_formatCurrency(simulatedNetShift)}',
+                          MaskedAmount(
+                            formattedAmount: '${simulatedNetShift >= 0 ? '+' : ''}${_formatCurrency(simulatedNetShift)}',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
@@ -1446,8 +1506,8 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('Projected Ending Balance:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          Text(
-                            _formatCurrency(endingBalance),
+                          MaskedAmount(
+                            formattedAmount: _formatCurrency(endingBalance),
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
@@ -1642,7 +1702,10 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                               ),
                             ],
                           ),
-                          Text(_formatCurrency(_lumpSumExpense), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFF87171))),
+                          MaskedAmount(
+                            formattedAmount: _formatCurrency(_lumpSumExpense),
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFF87171)),
+                          ),
                         ],
                       ),
                       Slider(
@@ -1677,7 +1740,10 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                               ),
                             ],
                           ),
-                          Text(_formatCurrency(_extraDebtPayment), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                          MaskedAmount(
+                            formattedAmount: _formatCurrency(_extraDebtPayment),
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueAccent),
+                          ),
                         ],
                       ),
                       Slider(

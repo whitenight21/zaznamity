@@ -6,6 +6,8 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
+import '../services/privacy_service.dart';
+import '../widgets/masked_amount.dart';
 
 class IncomeExpensesByLabelsCard extends StatefulWidget {
   final List<TransactionModel> transactions;
@@ -418,7 +420,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       return _labelBudgetsByName[labelName]!;
     }
     
-    // Check widget.budgets passed from DashboardScreen
     final matchingBudget = widget.budgets.where((b) {
       final bLabelId = b['label_id'] ?? b['labelId'];
       final bLabelName = b['label_name'] ?? b['labelName'];
@@ -1102,16 +1103,16 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                           const SizedBox(height: 8),
                           Align(
                             alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Fixed: ${_formatCurrency(_cachedFixedExpenses)} (${fixedRatio.toStringAsFixed(1)}%)',
+                            child: MaskedAmount(
+                              formattedAmount: 'Fixed: ${_formatCurrency(_cachedFixedExpenses)} (${fixedRatio.toStringAsFixed(1)}%)',
                               style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF38BDF8) : const Color(0xFF0284C7)),
                             ),
                           ),
                           const SizedBox(height: 4),
                           Align(
                             alignment: Alignment.centerRight,
-                            child: Text(
-                              'Discretionary: ${_formatCurrency(_cachedDiscretionaryExpenses)} (${discRatio.toStringAsFixed(1)}%)',
+                            child: MaskedAmount(
+                              formattedAmount: 'Discretionary: ${_formatCurrency(_cachedDiscretionaryExpenses)} (${discRatio.toStringAsFixed(1)}%)',
                               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFFBBF24)),
                             ),
                           ),
@@ -1141,130 +1142,135 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                 ),
                 const SizedBox(height: 16),
 
-                Column(
-                  children: [
-                    Stack(
-                      clipBehavior: Clip.none,
+                ValueListenableBuilder<bool>(
+                  valueListenable: PrivacyService.instance.isPrivacyModeEnabled,
+                  builder: (context, isPrivate, child) {
+                    return Column(
                       children: [
-                        InkWell(
-                          onTap: () => setState(() => chartDisplayMode = 'Show Income'),
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: _isZaznamityMode ? const Color.fromARGB(255, 17, 34, 28) : const Color(0xFFECFDF5),
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            InkWell(
+                              onTap: () => setState(() => chartDisplayMode = 'Show Income'),
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)).withValues(alpha: 0.6), width: 1.2),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('TOTAL INCOME     (Tap to view charts)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669), letterSpacing: 0.5)),
-                                const SizedBox(height: 8),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: LinearProgressIndicator(
-                                    value: (_cachedTotalIncome / _cachedMaxTopAmount).clamp(0.0, 1.0),
-                                    backgroundColor: _isZaznamityMode ? const Color(0xFF064E3B) : const Color(0xFFA7F3D0),
-                                    color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669),
-                                    minHeight: 10,
-                                  ),
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: _isZaznamityMode ? const Color.fromARGB(255, 17, 34, 28) : const Color(0xFFECFDF5),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: (_isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)).withValues(alpha: 0.6), width: 1.2),
                                 ),
-                                const SizedBox(height: 8),
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      _formatCurrency(_cachedTotalIncome),
-                                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('TOTAL INCOME     (Tap to view charts)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669), letterSpacing: 0.5)),
+                                    const SizedBox(height: 8),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: LinearProgressIndicator(
+                                        value: (_cachedTotalIncome / _cachedMaxTopAmount).clamp(0.0, 1.0),
+                                        backgroundColor: _isZaznamityMode ? const Color(0xFF064E3B) : const Color(0xFFA7F3D0),
+                                        color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669),
+                                        minHeight: 10,
+                                      ),
                                     ),
-                                  ),
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: MaskedAmount(
+                                          formattedAmount: _formatCurrency(_cachedTotalIncome),
+                                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
+                            Positioned(
+                              top: -6,
+                              right: -4,
+                              child: InkWell(
+                                onTap: () => _showInfoModal(
+                                  context,
+                                  'Total Income',
+                                  'Sum of all incoming money transactions filtered by owner, date range, and selected income labels. Pressing anywhere on this box shows the charts below as income.',
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0), shape: BoxShape.circle),
+                                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        Positioned(
-                          top: -6,
-                          right: -4,
-                          child: InkWell(
-                            onTap: () => _showInfoModal(
-                              context,
-                              'Total Income',
-                              'Sum of all incoming money transactions filtered by owner, date range, and selected income labels. Pressing anywhere on this box shows the charts below as income.',
+                        const SizedBox(height: 12),
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            InkWell(
+                              onTap: () => setState(() => chartDisplayMode = 'Show Expenses'),
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: _isZaznamityMode ? const Color.fromARGB(255, 40, 20, 23) : const Color(0xFFFEF2F2),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)).withValues(alpha: 0.6), width: 1.2),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('TOTAL EXPENSES     (Tap to view charts)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626), letterSpacing: 0.5)),
+                                    const SizedBox(height: 8),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: LinearProgressIndicator(
+                                        value: (_cachedTotalExpenses / _cachedMaxTopAmount).clamp(0.0, 1.0),
+                                        backgroundColor: _isZaznamityMode ? const Color(0xFF7F1D1D) : const Color(0xFFFECACA),
+                                        color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626),
+                                        minHeight: 10,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: MaskedAmount(
+                                          formattedAmount: _formatCurrency(_cachedTotalExpenses),
+                                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: BoxDecoration(color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0), shape: BoxShape.circle),
-                              child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                            Positioned(
+                              top: -6,
+                              right: -4,
+                              child: InkWell(
+                                onTap: () => _showInfoModal(
+                                  context,
+                                  'Total Expenses',
+                                  'Sum of all outgoing expense transactions filtered by owner, date range, and your chosen expense labels. Pressing anywhere on this box shows the charts below as expenses.',
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0), shape: BoxShape.circle),
+                                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 12),
-                    Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        InkWell(
-                          onTap: () => setState(() => chartDisplayMode = 'Show Expenses'),
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: _isZaznamityMode ? const Color.fromARGB(255, 40, 20, 23) : const Color(0xFFFEF2F2),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: (_isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)).withValues(alpha: 0.6), width: 1.2),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('TOTAL EXPENSES     (Tap to view charts)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626), letterSpacing: 0.5)),
-                                const SizedBox(height: 8),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: LinearProgressIndicator(
-                                    value: (_cachedTotalExpenses / _cachedMaxTopAmount).clamp(0.0, 1.0),
-                                    backgroundColor: _isZaznamityMode ? const Color(0xFF7F1D1D) : const Color(0xFFFECACA),
-                                    color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626),
-                                    minHeight: 10,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      _formatCurrency(_cachedTotalExpenses),
-                                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: -6,
-                          right: -4,
-                          child: InkWell(
-                            onTap: () => _showInfoModal(
-                              context,
-                              'Total Expenses',
-                              'Sum of all outgoing expense transactions filtered by owner, date range, and your chosen expense labels. Pressing anywhere on this box shows the charts below as expenses.',
-                            ),
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: BoxDecoration(color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFE2E8F0), shape: BoxShape.circle),
-                              child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFF87171) : const Color(0xFFDC2626)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 16),
 
@@ -1482,9 +1488,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                         child: FittedBox(
                                                           fit: BoxFit.scaleDown,
                                                           alignment: Alignment.centerRight,
-                                                          child: Text(
-                                                            _formatCurrency(entry.value),
-                                                            textAlign: TextAlign.right,
+                                                          child: MaskedAmount(
+                                                            formattedAmount: _formatCurrency(entry.value),
                                                             style: TextStyle(
                                                               fontSize: 12,
                                                               fontWeight: FontWeight.bold,
@@ -1503,8 +1508,8 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                         if (budget > 0)
                                           Padding(
                                             padding: const EdgeInsets.only(left: 117.0, top: 2.0),
-                                            child: Text(
-                                              'Budget: ${_formatCurrency(entry.value)} / ${_formatCurrency(budget)}',
+                                            child: MaskedAmount(
+                                              formattedAmount: 'Budget: ${_formatCurrency(entry.value)} / ${_formatCurrency(budget)}',
                                               style: TextStyle(
                                                 fontSize: 9,
                                                 fontWeight: FontWeight.w600,
@@ -1527,9 +1532,18 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text(_formatCurrency(0), style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                        Text(_formatCurrency(_cachedMaxChartAmount * 0.5), style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                        Text(_formatCurrency(_cachedMaxChartAmount), style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                        MaskedAmount(
+                                          formattedAmount: _formatCurrency(0),
+                                          style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                        ),
+                                        MaskedAmount(
+                                          formattedAmount: _formatCurrency(_cachedMaxChartAmount * 0.5),
+                                          style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                        ),
+                                        MaskedAmount(
+                                          formattedAmount: _formatCurrency(_cachedMaxChartAmount),
+                                          style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                        ),
                                       ],
                                     ),
                                   ],
@@ -1590,13 +1604,13 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                 '${entry.key}: ',
                                                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
                                               ),
-                                              Text(
-                                                '${_formatCurrency(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
+                                              MaskedAmount(
+                                                formattedAmount: '${_formatCurrency(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
                                                 style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                               ),
                                               if (budget > 0)
-                                                Text(
-                                                  '/ ${_formatCurrency(budget)} ',
+                                                MaskedAmount(
+                                                  formattedAmount: '/ ${_formatCurrency(budget)} ',
                                                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: entry.value > budget ? const Color(0xFFF87171) : const Color(0xFF34D399)),
                                                 ),
                                               Text(
@@ -1711,13 +1725,13 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                                                 '${entry.key}: ',
                                                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
                                               ),
-                                              Text(
-                                                '${_formatCurrency(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
+                                              MaskedAmount(
+                                                formattedAmount: '${_formatCurrency(entry.value)} (${percentage.toStringAsFixed(1)}%) ',
                                                 style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
                                               ),
                                               if (budget > 0)
-                                                Text(
-                                                  '/ ${_formatCurrency(budget)} ',
+                                                MaskedAmount(
+                                                  formattedAmount: '/ ${_formatCurrency(budget)} ',
                                                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: entry.value > budget ? const Color(0xFFF87171) : const Color(0xFF34D399)),
                                                 ),
                                               Text(

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zaznamity/models/transaction_model.dart';
+import '../services/privacy_service.dart';
+import '../widgets/masked_amount.dart';
 
 class CalendarCard extends StatefulWidget {
   final List<TransactionModel> transactions;
@@ -325,8 +327,8 @@ class _CalendarCardState extends State<CalendarCard> {
                   if (dayIncome > 0)
                     FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text(
-                        '+${dayIncome.toStringAsFixed(0)}',
+                      child: MaskedAmount(
+                        formattedAmount: '+${dayIncome.toStringAsFixed(0)}',
                         style: const TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.bold,
@@ -337,8 +339,8 @@ class _CalendarCardState extends State<CalendarCard> {
                   if (dayExpense > 0)
                     FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text(
-                        '-${dayExpense.toStringAsFixed(0)}',
+                      child: MaskedAmount(
+                        formattedAmount: '-${dayExpense.toStringAsFixed(0)}',
                         style: const TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.bold,

@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
+import '../services/privacy_service.dart';
+import '../widgets/masked_amount.dart';
 
 class SankeyFlowCard extends StatefulWidget {
   final List<TransactionModel> transactions;
@@ -467,8 +469,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                             ),
                             title: Text(tx.description.isNotEmpty ? tx.description : labelObj.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                             subtitle: Text('${tx.owner} • ${tx.pool.toUpperCase()} • ${tx.createdAt.substring(0, 10)}', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600)),
-                            trailing: Text(
-                              '${tx.type == 'expense' ? '-' : '+'}${_formatCurrency(tx.amount)}',
+                            trailing: MaskedAmount(
+                              formattedAmount: '${tx.type == 'expense' ? '-' : '+'}${_formatCurrency(tx.amount)}',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
@@ -986,43 +988,49 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                           ),
                           child: SizedBox(
                             height: _cachedDynamicHeight,
-                            child: GestureDetector(
-                              onTapDown: (details) {
-                                final localPos = details.localPosition;
-                                final tappedNode = SankeyDiagramPainter.hitTestNode(
-                                  localPos,
-                                  Size(fullWidth, _cachedDynamicHeight),
-                                  _tierMode == '2-tier' ? _cachedSortedSources : _cachedTier1,
-                                  _tierMode == '2-tier' ? _cachedSortedTargets : _cachedTier3,
-                                  middleNodes: _tierMode == '3-tier' ? _cachedTier2 : null,
-                                );
-                                if (tappedNode != null) {
-                                  setState(() {
-                                    if (_isolatedNode == tappedNode) {
-                                      _showDrillDownModal(tappedNode);
-                                    } else {
-                                      _isolatedNode = tappedNode;
+                            child: ValueListenableBuilder<bool>(
+                              valueListenable: PrivacyService.instance.isPrivacyModeEnabled,
+                              builder: (context, isPrivate, child) {
+                                return GestureDetector(
+                                  onTapDown: (details) {
+                                    final localPos = details.localPosition;
+                                    final tappedNode = SankeyDiagramPainter.hitTestNode(
+                                      localPos,
+                                      Size(fullWidth, _cachedDynamicHeight),
+                                      _tierMode == '2-tier' ? _cachedSortedSources : _cachedTier1,
+                                      _tierMode == '2-tier' ? _cachedSortedTargets : _cachedTier3,
+                                      middleNodes: _tierMode == '3-tier' ? _cachedTier2 : null,
+                                    );
+                                    if (tappedNode != null) {
+                                      setState(() {
+                                        if (_isolatedNode == tappedNode) {
+                                          _showDrillDownModal(tappedNode);
+                                        } else {
+                                          _isolatedNode = tappedNode;
+                                        }
+                                      });
                                     }
-                                  });
-                                }
+                                  },
+                                  child: CustomPaint(
+                                    size: Size(double.infinity, _cachedDynamicHeight),
+                                    painter: SankeyDiagramPainter(
+                                      tierMode: _tierMode,
+                                      sources: _cachedSortedSources,
+                                      targets: _cachedSortedTargets,
+                                      tier1: _cachedTier1,
+                                      tier2: _cachedTier2,
+                                      tier3: _cachedTier3,
+                                      flows: _cachedFlows,
+                                      flowsA: _cachedFlowsA,
+                                      flowsB: _cachedFlowsB,
+                                      formatCurrency: _formatCurrency,
+                                      isZaznamityMode: _isZaznamityMode,
+                                      isolatedNode: _isolatedNode,
+                                      isPrivate: isPrivate,
+                                    ),
+                                  ),
+                                );
                               },
-                              child: CustomPaint(
-                                size: Size(double.infinity, _cachedDynamicHeight),
-                                painter: SankeyDiagramPainter(
-                                  tierMode: _tierMode,
-                                  sources: _cachedSortedSources,
-                                  targets: _cachedSortedTargets,
-                                  tier1: _cachedTier1,
-                                  tier2: _cachedTier2,
-                                  tier3: _cachedTier3,
-                                  flows: _cachedFlows,
-                                  flowsA: _cachedFlowsA,
-                                  flowsB: _cachedFlowsB,
-                                  formatCurrency: _formatCurrency,
-                                  isZaznamityMode: _isZaznamityMode,
-                                  isolatedNode: _isolatedNode,
-                                ),
-                              ),
                             ),
                           ),
                         ),
@@ -1049,6 +1057,7 @@ class SankeyDiagramPainter extends CustomPainter {
   final String Function(double) formatCurrency;
   final bool isZaznamityMode;
   final String? isolatedNode;
+  final bool isPrivate;
 
   static final Map<String, Rect> _lastNodeRects = {};
 
@@ -1065,6 +1074,7 @@ class SankeyDiagramPainter extends CustomPainter {
     required this.formatCurrency,
     required this.isZaznamityMode,
     this.isolatedNode,
+    required this.isPrivate,
   });
 
   static String? hitTestNode(Offset pos, Size size, List<MapEntry<String, double>> leftList, List<MapEntry<String, double>> rightList, {List<MapEntry<String, double>>? middleNodes}) {
@@ -1192,13 +1202,13 @@ class SankeyDiagramPainter extends CustomPainter {
         Rect? tRect = targetRects[tgtKey];
         if (sRect == null || tRect == null) continue;
 
-        double srcH = (amount / sources.firstWhere((s) => s.key == srcKey).value) * sRect.height;
+        double sH = (amount / sources.firstWhere((s) => s.key == srcKey).value) * sRect.height;
         double tgtH = (amount / targets.firstWhere((t) => t.key == tgtKey).value) * tRect.height;
 
         double sTop = sourceOffsets[srcKey]!;
         double tTop = targetOffsets[tgtKey]!;
 
-        sourceOffsets[srcKey] = sTop + srcH;
+        sourceOffsets[srcKey] = sTop + sH;
         targetOffsets[tgtKey] = tTop + tgtH;
 
         bool isConnected = isolatedNode == null || isolatedNode == srcKey || isolatedNode == tgtKey;
@@ -1208,7 +1218,7 @@ class SankeyDiagramPainter extends CustomPainter {
         path.moveTo(sRect.right, sTop);
         path.cubicTo((sRect.right + tRect.left) / 2, sTop, (sRect.right + tRect.left) / 2, tTop, tRect.left, tTop);
         path.lineTo(tRect.left, tTop + tgtH);
-        path.cubicTo((sRect.right + tRect.left) / 2, tTop + tgtH, (sRect.right + tRect.left) / 2, sTop + srcH, sRect.right, sTop + srcH);
+        path.cubicTo((sRect.right + tRect.left) / 2, tTop + tgtH, (sRect.right + tRect.left) / 2, sTop + sH, sRect.right, sTop + sH);
         path.close();
 
         paintRibbon.color = ribbonColor;
@@ -1225,9 +1235,10 @@ class SankeyDiagramPainter extends CustomPainter {
 
         double val = sources.firstWhere((s) => s.key == entry.key).value;
         double pct = (val / totalSourceVal) * 100;
+        final amountText = isPrivate ? '••••••' : formatCurrency(val);
         TextPainter tp = TextPainter(
           text: TextSpan(
-            text: '${entry.key} - ${formatCurrency(val)} (${pct.toStringAsFixed(0)}%)',
+            text: '${entry.key} - $amountText (${pct.toStringAsFixed(0)}%)',
             style: TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.bold,
@@ -1251,9 +1262,10 @@ class SankeyDiagramPainter extends CustomPainter {
 
         double val = targets.firstWhere((t) => t.key == entry.key).value;
         double pct = (val / totalTargetVal) * 100;
+        final amountText = isPrivate ? '••••••' : formatCurrency(val);
         TextPainter tp = TextPainter(
           text: TextSpan(
-            text: '${entry.key} - ${formatCurrency(val)} (${pct.toStringAsFixed(0)}%)',
+            text: '${entry.key} - $amountText (${pct.toStringAsFixed(0)}%)',
             style: TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.bold,
@@ -1418,9 +1430,10 @@ class SankeyDiagramPainter extends CustomPainter {
         canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
         double val = tier3.firstWhere((x) => x.key == entry.key).value;
         double pct = (val / totalT3) * 100;
+        final amountText = isPrivate ? '••••••' : formatCurrency(val);
         TextPainter tp = TextPainter(
           text: TextSpan(
-            text: '${entry.key} - ${formatCurrency(val)} (${pct.toStringAsFixed(0)}%)',
+            text: '${entry.key} - $amountText (${pct.toStringAsFixed(0)}%)',
             style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)),
           ),
           textDirection: ui.TextDirection.ltr,
@@ -1442,6 +1455,7 @@ class SankeyDiagramPainter extends CustomPainter {
         oldDelegate.tier1 != tier1 ||
         oldDelegate.tier2 != tier2 ||
         oldDelegate.tier3 != tier3 ||
-        oldDelegate.isZaznamityMode != isZaznamityMode;
+        oldDelegate.isZaznamityMode != isZaznamityMode ||
+        oldDelegate.isPrivate != isPrivate;
   }
 }

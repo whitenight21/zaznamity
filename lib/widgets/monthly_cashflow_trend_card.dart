@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
+import '../services/privacy_service.dart';
+import '../widgets/masked_amount.dart';
 
 class MonthlyCashflowTrendCard extends StatefulWidget {
   final List<TransactionModel> transactions;
@@ -1055,7 +1057,7 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                 ),
                 const SizedBox(height: 12),
 
-                // Current Month Pacing Banner (Two-row format as requested)
+                // Current Month Pacing Banner with Privacy Support
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(10),
@@ -1072,22 +1074,78 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'Pacing (Month ${now.day}/$daysInMonth) : ${_formatCurrency(currentMonthExpenseSoFar, compact: true)} spent.',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
-                              ),
+                            Row(
+                              children: [
+                                Text(
+                                  'Pacing (Month ${now.day}/$daysInMonth) : ',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                                  ),
+                                ),
+                                MaskedAmount(
+                                  formattedAmount: _formatCurrency(currentMonthExpenseSoFar, compact: true),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                                  ),
+                                ),
+                                Text(
+                                  ' spent.',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              'Projected: ${_formatCurrency(pacingProjectedExpense, compact: true)} (Usual ${_formatCurrency(usualExpenseMedian, compact: true)})',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B),
-                              ),
+                            Row(
+                              children: [
+                                Text(
+                                  'Projected: ',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B),
+                                  ),
+                                ),
+                                MaskedAmount(
+                                  formattedAmount: _formatCurrency(pacingProjectedExpense, compact: true),
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B),
+                                  ),
+                                ),
+                                Text(
+                                  ' (Usual ',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B),
+                                  ),
+                                ),
+                                MaskedAmount(
+                                  formattedAmount: _formatCurrency(usualExpenseMedian, compact: true),
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B),
+                                  ),
+                                ),
+                                Text(
+                                  ')',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: _isZaznamityMode ? Colors.white70 : const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -1139,243 +1197,273 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
                           height: 310,
                           child: Stack(
                             children: [
-                              BarChart(
-                                BarChartData(
-                                  alignment: BarChartAlignment.spaceAround,
-                                  maxY: _cachedMaxY * 1.25,
-                                  minY: _cachedMinY * 1.25,
-                                  barTouchData: BarTouchData(
-                                    enabled: true,
-                                    touchTooltipData: BarTouchTooltipData(
-                                      getTooltipColor: (_) => Colors.transparent,
-                                      tooltipBorder: const BorderSide(color: Colors.transparent),
-                                      getTooltipItem: (_, __, ___, ____) => null,
-                                    ),
-                                    touchCallback: (FlTouchEvent event, barTouchResponse) {
-                                      if (event is FlTapUpEvent &&
-                                          barTouchResponse != null &&
-                                          barTouchResponse.spot != null) {
-                                        final groupIndex = barTouchResponse.spot!.touchedBarGroupIndex;
-                                        if (groupIndex >= 0 && groupIndex < _cachedSortedKeys.length) {
-                                          final monthKey = _cachedSortedKeys[groupIndex];
-                                          final monthLabel = _cachedMonthLabels[groupIndex];
-                                          final data = _cachedMonthlyRawData[monthKey] ?? {'income': 0.0, 'expense': 0.0};
-                                          final inc = data['income'] ?? 0.0;
-                                          final exp = data['expense'] ?? 0.0;
-                                          final net = inc - exp;
-                                          final savingsRate = inc > 0 ? (net / inc) * 100 : 0.0;
-                                          final isForecast = monthKey == 'Forecast';
-                                          final isAnomaly = _cachedAnomalyMonths.contains(monthKey);
-                                          final isBest = monthKey == _cachedBestMonth;
-                                          final isWorst = monthKey == _cachedWorstMonth;
+                              ValueListenableBuilder<bool>(
+                                valueListenable: PrivacyService.instance.isPrivacyModeEnabled,
+                                builder: (context, isPrivate, child) {
+                                  return BarChart(
+                                    BarChartData(
+                                      alignment: BarChartAlignment.spaceAround,
+                                      maxY: _cachedMaxY * 1.25,
+                                      minY: _cachedMinY * 1.25,
+                                      barTouchData: BarTouchData(
+                                        enabled: true,
+                                        touchTooltipData: BarTouchTooltipData(
+                                          getTooltipColor: (_) => Colors.transparent,
+                                          tooltipBorder: const BorderSide(color: Colors.transparent),
+                                          getTooltipItem: (_, __, ___, ____) => null,
+                                        ),
+                                        touchCallback: (FlTouchEvent event, barTouchResponse) {
+                                          if (event is FlTapUpEvent &&
+                                              barTouchResponse != null &&
+                                              barTouchResponse.spot != null) {
+                                            final groupIndex = barTouchResponse.spot!.touchedBarGroupIndex;
+                                            if (groupIndex >= 0 && groupIndex < _cachedSortedKeys.length) {
+                                              final monthKey = _cachedSortedKeys[groupIndex];
+                                              final monthLabel = _cachedMonthLabels[groupIndex];
+                                              final data = _cachedMonthlyRawData[monthKey] ?? {'income': 0.0, 'expense': 0.0};
+                                              final inc = data['income'] ?? 0.0;
+                                              final exp = data['expense'] ?? 0.0;
+                                              final net = inc - exp;
+                                              final savingsRate = inc > 0 ? (net / inc) * 100 : 0.0;
+                                              final isForecast = monthKey == 'Forecast';
+                                              final isAnomaly = _cachedAnomalyMonths.contains(monthKey);
+                                              final isBest = monthKey == _cachedBestMonth;
+                                              final isWorst = monthKey == _cachedWorstMonth;
 
-                                          showDialog(
-                                            context: context,
-                                            builder: (ctx) => AlertDialog(
-                                              backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                              title: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Row(
-                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              showDialog(
+                                                context: context,
+                                                builder: (ctx) => AlertDialog(
+                                                  backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                                                  title: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    mainAxisSize: MainAxisSize.min,
                                                     children: [
-                                                      Text(
-                                                        'View Zaznams',
-                                                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                                                      ),
-                                                      if (isBest)
-                                                        Container(
-                                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                          decoration: BoxDecoration(color: const Color(0xFF10B981), borderRadius: BorderRadius.circular(6)),
-                                                          child: const Text('Best Month', style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
-                                                        ),
-                                                      if (isWorst)
-                                                        Container(
-                                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                          decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(6)),
-                                                          child: const Text('Worst Month', style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
-                                                        ),
-                                                    ],
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    isForecast ? '$monthLabel (Est)' : monthLabel,
-                                                    style: TextStyle(fontSize: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold),
-                                                  ),
-                                                ],
-                                              ),
-                                              content: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  if (isAnomaly) ...[
-                                                    Container(
-                                                      padding: const EdgeInsets.all(8),
-                                                      margin: const EdgeInsets.only(bottom: 10),
-                                                      decoration: BoxDecoration(
-                                                        color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
-                                                        borderRadius: BorderRadius.circular(8),
-                                                        border: Border.all(color: const Color(0xFFF59E0B)),
-                                                      ),
-                                                      child: const Row(
+                                                      Row(
+                                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                         children: [
-                                                          Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B), size: 16),
-                                                          SizedBox(width: 6),
-                                                          Expanded(child: Text('Anomaly detected: High spending spike!', style: TextStyle(fontSize: 11, color: Color(0xFFF59E0B), fontWeight: FontWeight.bold))),
+                                                          Text(
+                                                            'View Zaznams',
+                                                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                                                          ),
+                                                          if (isBest)
+                                                            Container(
+                                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                              decoration: BoxDecoration(color: const Color(0xFF10B981), borderRadius: BorderRadius.circular(6)),
+                                                              child: const Text('Best Month', style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
+                                                            ),
+                                                          if (isWorst)
+                                                            Container(
+                                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                              decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(6)),
+                                                              child: const Text('Worst Month', style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
+                                                            ),
                                                         ],
                                                       ),
-                                                    ),
-                                                  ],
-                                                  Container(
-                                                    width: double.infinity,
-                                                    padding: const EdgeInsets.all(12),
-                                                    decoration: BoxDecoration(
-                                                      color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                                                      borderRadius: BorderRadius.circular(10),
-                                                      border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                                                    ),
-                                                    child: Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Text('Income: ${_formatCurrency(inc, compact: true)}', style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 13)),
-                                                        const SizedBox(height: 4),
-                                                        Text('Expenses: ${_formatCurrency(exp, compact: true)}', style: const TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 13)),
-                                                        const SizedBox(height: 4),
-                                                        Text('Net: ${_formatCurrency(net, compact: true)}', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold, fontSize: 13)),
-                                                        const SizedBox(height: 4),
-                                                        Text('Savings Rate: ${savingsRate.toStringAsFixed(1)}%', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        isForecast ? '$monthLabel (Est)' : monthLabel,
+                                                        style: TextStyle(fontSize: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  content: Column(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      if (isAnomaly) ...[
+                                                        Container(
+                                                          padding: const EdgeInsets.all(8),
+                                                          margin: const EdgeInsets.only(bottom: 10),
+                                                          decoration: BoxDecoration(
+                                                            color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                                                            borderRadius: BorderRadius.circular(8),
+                                                            border: Border.all(color: const Color(0xFFF59E0B)),
+                                                          ),
+                                                          child: const Row(
+                                                            children: [
+                                                              Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B), size: 16),
+                                                              SizedBox(width: 6),
+                                                              Expanded(child: Text('Anomaly detected: High spending spike!', style: TextStyle(fontSize: 11, color: Color(0xFFF59E0B), fontWeight: FontWeight.bold))),
+                                                            ],
+                                                          ),
+                                                        ),
                                                       ],
-                                                    ),
+                                                      Container(
+                                                        width: double.infinity,
+                                                        padding: const EdgeInsets.all(12),
+                                                        decoration: BoxDecoration(
+                                                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                                                          borderRadius: BorderRadius.circular(10),
+                                                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                                                        ),
+                                                        child: Column(
+                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                          children: [
+                                                            Row(
+                                                              children: [
+                                                                const Text('Income: ', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                                MaskedAmount(
+                                                                  formattedAmount: _formatCurrency(inc, compact: true),
+                                                                  style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 13),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            const SizedBox(height: 4),
+                                                            Row(
+                                                              children: [
+                                                                const Text('Expenses: ', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                                MaskedAmount(
+                                                                  formattedAmount: _formatCurrency(exp, compact: true),
+                                                                  style: const TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 13),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            const SizedBox(height: 4),
+                                                            Row(
+                                                              children: [
+                                                                Text('Net: ', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                                MaskedAmount(
+                                                                  formattedAmount: _formatCurrency(net, compact: true),
+                                                                  style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold, fontSize: 13),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            const SizedBox(height: 4),
+                                                            Text('Savings Rate: ${savingsRate.toStringAsFixed(1)}%', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 13)),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      if (!isForecast && widget.onJumpToHistory != null) ...[
+                                                        const SizedBox(height: 16),
+                                                        Text('Display in All Zaznams:', style: TextStyle(color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155), fontWeight: FontWeight.w500)),
+                                                      ],
+                                                    ],
                                                   ),
-                                                  if (!isForecast && widget.onJumpToHistory != null) ...[
-                                                    const SizedBox(height: 16),
-                                                    Text('Display in All Zaznams:', style: TextStyle(color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155), fontWeight: FontWeight.w500)),
+                                                  actions: [
+                                                    if (isForecast)
+                                                      ElevatedButton(
+                                                        style: ElevatedButton.styleFrom(
+                                                          backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                                          foregroundColor: Colors.white,
+                                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                                        ),
+                                                        onPressed: () => Navigator.pop(ctx),
+                                                        child: const Text('Close'),
+                                                      )
+                                                    else if (widget.onJumpToHistory != null) ...[
+                                                      ElevatedButton(
+                                                        style: ElevatedButton.styleFrom(
+                                                          backgroundColor: const Color(0xFFEF4444),
+                                                          foregroundColor: Colors.white,
+                                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                                        ),
+                                                        onPressed: () {
+                                                          Navigator.pop(ctx);
+                                                          widget.onJumpToHistory!(monthKey, 'expense', widget.selectedOwner);
+                                                        },
+                                                        child: const Text('Expenses'),
+                                                      ),
+                                                      ElevatedButton(
+                                                        style: ElevatedButton.styleFrom(
+                                                          backgroundColor: const Color(0xFF10B981),
+                                                          foregroundColor: Colors.white,
+                                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                                        ),
+                                                        onPressed: () {
+                                                          Navigator.pop(ctx);
+                                                          widget.onJumpToHistory!(monthKey, 'income', widget.selectedOwner);
+                                                        },
+                                                        child: const Text('Income'),
+                                                      ),
+                                                    ],
                                                   ],
-                                                ],
-                                              ),
-                                              actions: [
-                                                if (isForecast)
-                                                  ElevatedButton(
-                                                    style: ElevatedButton.styleFrom(
-                                                      backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                                                      foregroundColor: Colors.white,
-                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                                    ),
-                                                    onPressed: () => Navigator.pop(ctx),
-                                                    child: const Text('Close'),
-                                                  )
-                                                else if (widget.onJumpToHistory != null) ...[
-                                                  ElevatedButton(
-                                                    style: ElevatedButton.styleFrom(
-                                                      backgroundColor: const Color(0xFFEF4444),
-                                                      foregroundColor: Colors.white,
-                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                                    ),
-                                                    onPressed: () {
-                                                      Navigator.pop(ctx);
-                                                      widget.onJumpToHistory!(monthKey, 'expense', widget.selectedOwner);
-                                                    },
-                                                    child: const Text('Expenses'),
-                                                  ),
-                                                  ElevatedButton(
-                                                    style: ElevatedButton.styleFrom(
-                                                      backgroundColor: const Color(0xFF10B981),
-                                                      foregroundColor: Colors.white,
-                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                                    ),
-                                                    onPressed: () {
-                                                      Navigator.pop(ctx);
-                                                      widget.onJumpToHistory!(monthKey, 'income', widget.selectedOwner);
-                                                    },
-                                                    child: const Text('Income'),
-                                                  ),
-                                                ],
-                                              ],
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    },
-                                  ),
-                                  titlesData: FlTitlesData(
-                                    show: true,
-                                    bottomTitles: AxisTitles(
-                                      sideTitles: SideTitles(
-                                        showTitles: true,
-                                        getTitlesWidget: (value, meta) {
-                                          int index = value.toInt();
-                                          if (index >= 0 && index < _cachedMonthLabels.length && index < _cachedSortedKeys.length) {
-                                            bool isForecast = index == _cachedSortedKeys.length - 1 && _cachedSortedKeys.last == 'Forecast';
-                                            String mKey = _cachedSortedKeys[index];
-                                            
-                                            String labelText = _cachedMonthLabels[index];
-                                            if (!isForecast) {
-                                              try {
-                                                DateTime dt = DateTime.parse('$mKey-01');
-                                                if (index == 0 || DateTime.parse('${_cachedSortedKeys[index - 1]}-01').year != dt.year) {
-                                                  labelText = '${_cachedMonthLabels[index]} \'${dt.year.toString().substring(2)}';
-                                                }
-                                              } catch (_) {}
-                                            }
-
-                                            return Padding(
-                                              padding: const EdgeInsets.only(top: 8.0),
-                                              child: Transform.rotate(
-                                                angle: -1.5708,
-                                                child: Text(
-                                                  isForecast ? '$labelText (Est)' : labelText,
-                                                  style: TextStyle(
-                                                    fontSize: 9,
-                                                    color: isForecast
-                                                        ? const Color(0xFFA855F7)
-                                                        : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
                                                 ),
-                                              ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                      ),
+                                      titlesData: FlTitlesData(
+                                        show: true,
+                                        bottomTitles: AxisTitles(
+                                          sideTitles: SideTitles(
+                                            showTitles: true,
+                                            getTitlesWidget: (value, meta) {
+                                              int index = value.toInt();
+                                              if (index >= 0 && index < _cachedMonthLabels.length && index < _cachedSortedKeys.length) {
+                                                bool isForecast = index == _cachedSortedKeys.length - 1 && _cachedSortedKeys.last == 'Forecast';
+                                                String mKey = _cachedSortedKeys[index];
+                                                
+                                                String labelText = _cachedMonthLabels[index];
+                                                if (!isForecast) {
+                                                  try {
+                                                    DateTime dt = DateTime.parse('$mKey-01');
+                                                    if (index == 0 || DateTime.parse('${_cachedSortedKeys[index - 1]}-01').year != dt.year) {
+                                                      labelText = '${_cachedMonthLabels[index]} \'${dt.year.toString().substring(2)}';
+                                                    }
+                                                  } catch (_) {}
+                                                }
+
+                                                return Padding(
+                                                  padding: const EdgeInsets.only(top: 8.0),
+                                                  child: Transform.rotate(
+                                                    angle: -1.5708,
+                                                    child: Text(
+                                                      isForecast ? '$labelText (Est)' : labelText,
+                                                      style: TextStyle(
+                                                        fontSize: 9,
+                                                        color: isForecast
+                                                            ? const Color(0xFFA855F7)
+                                                            : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                              return const Text('');
+                                            },
+                                            reservedSize: 50,
+                                          ),
+                                        ),
+                                        leftTitles: AxisTitles(
+                                          sideTitles: SideTitles(
+                                            showTitles: true,
+                                            reservedSize: 50,
+                                            getTitlesWidget: (value, meta) {
+                                              final labelText = isPrivate ? '•••' : _formatCurrency(value, compact: true);
+                                              return Text(
+                                                labelText,
+                                                style: TextStyle(fontSize: 9, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                      ),
+                                      gridData: FlGridData(
+                                        show: true,
+                                        drawVerticalLine: false,
+                                        horizontalInterval: _niceStep(_cachedMaxY - _cachedMinY),
+                                        getDrawingHorizontalLine: (value) {
+                                          if (value == 0) {
+                                            return FlLine(
+                                              color: _isZaznamityMode ? Colors.white : Colors.black87,
+                                              strokeWidth: 2,
                                             );
                                           }
-                                          return const Text('');
-                                        },
-                                        reservedSize: 50,
-                                      ),
-                                    ),
-                                    leftTitles: AxisTitles(
-                                      sideTitles: SideTitles(
-                                        showTitles: true,
-                                        reservedSize: 50,
-                                        getTitlesWidget: (value, meta) {
-                                          return Text(
-                                            _formatCurrency(value, compact: true),
-                                            style: TextStyle(fontSize: 9, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
+                                          return FlLine(
+                                            color: _isZaznamityMode ? Colors.white10 : const Color(0xFFE2E8F0),
+                                            strokeWidth: 1,
                                           );
                                         },
                                       ),
+                                      borderData: FlBorderData(show: false),
+                                      barGroups: _cachedBarGroups,
                                     ),
-                                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                                  ),
-                                  gridData: FlGridData(
-                                    show: true,
-                                    drawVerticalLine: false,
-                                    horizontalInterval: _niceStep(_cachedMaxY - _cachedMinY),
-                                    getDrawingHorizontalLine: (value) {
-                                      if (value == 0) {
-                                        return FlLine(
-                                          color: _isZaznamityMode ? Colors.white : Colors.black87,
-                                          strokeWidth: 2,
-                                        );
-                                      }
-                                      return FlLine(
-                                        color: _isZaznamityMode ? Colors.white10 : const Color(0xFFE2E8F0),
-                                        strokeWidth: 1,
-                                      );
-                                    },
-                                  ),
-                                  borderData: FlBorderData(show: false),
-                                  barGroups: _cachedBarGroups,
-                                ),
+                                  );
+                                },
                               ),
                               IgnorePointer(
                                 child: LineChart(

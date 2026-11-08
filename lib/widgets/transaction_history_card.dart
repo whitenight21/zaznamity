@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/label.dart';
 import '../models/history_display_prefs.dart';
+import '../services/privacy_service.dart';
+import '../widgets/masked_amount.dart';
 import 'dart:io';
 
 class TransactionHistoryCard extends StatefulWidget {
@@ -177,7 +179,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     super.didUpdateWidget(oldWidget);
     _loadPrefs();
 
-    // Force re-sync local filters with parent props when a new jump/filter occurs
     if (widget.selectedType != oldWidget.selectedType || 
         widget.startDate != oldWidget.startDate || 
         widget.endDate != oldWidget.endDate ||
@@ -192,7 +193,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       if (_localType != null) {
         _localSelectedTypes.add(_localType!);
       } else {
-        // Always fallback to enabling both income and expense on jumps
         _localSelectedTypes.addAll(['income', 'expense']);
       }
 
@@ -1442,8 +1442,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                         FittedBox(
                                           fit: BoxFit.scaleDown,
                                           alignment: Alignment.centerRight,
-                                          child: Text(
-                                            amountString,
+                                          child: MaskedAmount(
+                                            formattedAmount: amountString,
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 14,

@@ -5,6 +5,8 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
+import '../services/privacy_service.dart';
+import '../widgets/masked_amount.dart';
 
 class PoolsAnalyticsCard extends StatefulWidget {
   final List<TransactionModel> transactions;
@@ -502,15 +504,20 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
 
                 widget.pools.keys.isEmpty
                     ? Text('No pools available.', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontSize: 13))
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: activePoolKeys.length,
-                        itemBuilder: (context, index) {
-                          String poolKey = activePoolKeys[index];
-                          double poolBal = poolBalancesMap[poolKey] ?? 0;
-                          double netWorthShare = (totalLiquidNetWorth > 0 && poolBal > 0) ? (poolBal / totalLiquidNetWorth) * 100 : 0.0;
-                          return _buildPoolMiniSection(poolKey, now, poolBal, netWorthShare);
+                    : ValueListenableBuilder<bool>(
+                        valueListenable: PrivacyService.instance.isPrivacyModeEnabled,
+                        builder: (context, isPrivate, child) {
+                          return ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: activePoolKeys.length,
+                            itemBuilder: (context, index) {
+                              String poolKey = activePoolKeys[index];
+                              double poolBal = poolBalancesMap[poolKey] ?? 0;
+                              double netWorthShare = (totalLiquidNetWorth > 0 && poolBal > 0) ? (poolBal / totalLiquidNetWorth) * 100 : 0.0;
+                              return _buildPoolMiniSection(poolKey, now, poolBal, netWorthShare);
+                            },
+                          );
                         },
                       ),
               ],
@@ -771,8 +778,8 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                   ],
                 ),
               ),
-              Text(
-                _viewAsPercentage
+              MaskedAmount(
+                formattedAmount: _viewAsPercentage
                     ? '${netWorthShare.toStringAsFixed(1)}% of Net Worth'
                     : _formatCurrency(poolBalance, _primaryCurrency),
                 style: TextStyle(
@@ -795,6 +802,8 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                   enabled: true,
                   handleBuiltInTouches: true,
                   touchTooltipData: LineTouchTooltipData(
+                    getTooltipColor: (_) => Colors.transparent,
+                    tooltipBorder: const BorderSide(color: Colors.transparent),
                     getTooltipItems: (touchedSpots) {
                       return touchedSpots.map((spot) {
                         final spotIndex = spot.x.toInt();
@@ -802,8 +811,11 @@ class _PoolsAnalyticsCardState extends State<PoolsAnalyticsCard> {
                         if (spotIndex >= 0 && spotIndex < spotDates.length) {
                           dateStr = '${DateFormat('MMM d, yyyy').format(spotDates[spotIndex])}\n';
                         }
+                        final formattedVal = PrivacyService.instance.isPrivacyModeEnabled.value
+                            ? '••••••'
+                            : _formatCurrency(spot.y, _primaryCurrency);
                         return LineTooltipItem(
-                          '$dateStr${_formatCurrency(spot.y, _primaryCurrency)}',
+                          '$dateStr$formattedVal',
                           const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
                         );
                       }).toList();
