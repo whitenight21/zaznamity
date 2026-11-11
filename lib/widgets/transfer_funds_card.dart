@@ -16,15 +16,20 @@ class TransferFundsCard extends StatefulWidget {
     String fromOwner,
     String toOwner,
     double amount,
+    double fee,
     String description,
     DateTime date,
     String fromCurrency,
     String toCurrency,
     double exchangeRate,
+    String transferGroupId,
   ) onTransfer;
   final VoidCallback? onHide;
   final VoidCallback? onToggleWidth;
   final bool isWide;
+  final List recentTransfers;
+  final Function(Map<String, dynamic>)? onRepeatTransfer;
+  final double Function(String pool, String owner, String currency)? getBalanceForPool;
 
   const TransferFundsCard({
     super.key,
@@ -35,6 +40,9 @@ class TransferFundsCard extends StatefulWidget {
     this.onHide,
     this.onToggleWidth,
     this.isWide = false,
+    this.recentTransfers = const [],
+    this.onRepeatTransfer,
+    this.getBalanceForPool,
   });
 
   @override
@@ -47,11 +55,12 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
   late String _fromOwner;
   late String _toOwner;
   
-  String _fromCurrency = 'USD';
-  String _toCurrency = 'USD';
-  List<String> _availableCurrencies = ['USD'];
+  String _fromCurrency = 'EUR';
+  String _toCurrency = 'EUR';
+  List<String> _availableCurrencies = ['EUR', 'USD'];
   bool _isZaznamityMode = true;
   bool _isCollapsed = false;
+  bool _isSubmitting = false;
   
   final _amountController = TextEditingController();
   final _rateController = TextEditingController(text: '1.0');
@@ -66,6 +75,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
   double _exchangeRate = 1.0;
   bool _isFetchingRate = false;
   String _rateTimestamp = 'Just now';
+  bool _isOfflineRate = false;
 
   final Map<String, String> _currencyFlags = {
     'EUR': '🇪🇺',
@@ -106,16 +116,16 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
 
   void _updateCalculations() {
     setState(() {
-      _enteredAmount = double.tryParse(_amountController.text) ?? 0.0;
-      _transferFee = double.tryParse(_feeController.text) ?? 0.0;
-      _exchangeRate = double.tryParse(_rateController.text) ?? 1.0;
+      _enteredAmount = double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0.0;
+      _transferFee = double.tryParse(_feeController.text.replaceAll(',', '.')) ?? 0.0;
+      _exchangeRate = double.tryParse(_rateController.text.replaceAll(',', '.')) ?? 1.0;
     });
   }
 
   Future<void> _loadCurrencyPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
-    final primary = prefs.getString('primaryCurrency') ?? 'USD';
+    final primary = prefs.getString('primaryCurrency') ?? 'EUR';
     final sec1 = prefs.getString('secondaryCurrency1');
     final sec2 = prefs.getString('secondaryCurrency2');
     final sec3 = prefs.getString('secondaryCurrency3');
@@ -159,6 +169,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
         _exchangeRate = 1.0;
         _rateController.text = '1.0';
         _rateTimestamp = formattedDate;
+        _isOfflineRate = false;
       });
       return;
     }
@@ -166,6 +177,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
     setState(() => _isFetchingRate = true);
 
     double? rate;
+    bool offline = false;
     try {
       final response = await http.get(
         Uri.parse('https://open.er-api.com/v6/latest/$from'),
@@ -182,6 +194,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
 
     if (rate == null) {
       rate = _getOfflineFallbackRate(from, to);
+      offline = true;
     }
 
     if (mounted) {
@@ -189,7 +202,8 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
         _exchangeRate = rate ?? 1.0;
         _rateController.text = _exchangeRate.toStringAsFixed(4);
         _isFetchingRate = false;
-        _rateTimestamp = formattedDate;
+        _rateTimestamp = offline ? 'offline estimate' : formattedDate;
+        _isOfflineRate = offline;
       });
     }
   }
@@ -259,7 +273,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                     Icon(Icons.access_time, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                     const SizedBox(width: 6),
                     Text(
-                      'Latest Rate Refresh: $_rateTimestamp',
+                      'Rate Status: $_rateTimestamp${_isOfflineRate ? ' (offline estimate)' : ''}',
                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                     ),
                   ],
@@ -276,35 +290,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
               ),
               const SizedBox(height: 2),
               Text(
-                'The app fetches live interbank mid-market rates (the midpoint wholesale rate used between global financial institutions).',
-                style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.3),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                '• Retail Exchange Rates (Kiosks & Banks):',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Physical currency exchange booths, kiosks, and commercial banks apply retail margins and spreads (e.g. giving 0.867 EUR per USD instead of the mid-market 0.92 EUR).',
-                style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.3),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                '• Manual Override:',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'You can tap directly into the Exchange Rate text box and type your exact kiosk/bank rate so your ledger balances reflect real-world cash conversions.',
+                'The app fetches live interbank mid-market rates.',
                 style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.3),
               ),
             ],
@@ -391,8 +377,18 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
 
   @override
   Widget build(BuildContext context) {
-    final double netSourceAmount = (_enteredAmount - _transferFee).clamp(0.0, double.infinity);
-    final double netDestinationAmount = netSourceAmount * _exchangeRate;
+    final double totalDeduction = _enteredAmount + _transferFee;
+    final double netDestinationAmount = _enteredAmount * _exchangeRate;
+
+    final double sourceBalanceBefore = widget.getBalanceForPool != null 
+        ? widget.getBalanceForPool!(_fromPool, _fromOwner, _fromCurrency) 
+        : 1000.0;
+    final double sourceBalanceAfter = sourceBalanceBefore - totalDeduction;
+
+    final double destBalanceBefore = widget.getBalanceForPool != null 
+        ? widget.getBalanceForPool!(_toPool, _toOwner, _toCurrency) 
+        : 500.0;
+    final double destBalanceAfter = destBalanceBefore + netDestinationAmount;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -466,31 +462,6 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        height: 28,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.person_outline_rounded, size: 12, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                            const SizedBox(width: 4),
-                            Text(
-                              _fromOwner.isNotEmpty ? _fromOwner : 'All Owners',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 6),
                       SizedBox(
                         height: 28,
                         width: 28,
@@ -611,7 +582,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                 ),
                 const SizedBox(height: 4),
 
-                // Row 2: Owners with single arrow icon in center
+                // Row 2: Owners
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -682,7 +653,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                 ),
                 const SizedBox(height: 12),
 
-                // Row 3: Currencies placed directly under Owners
+                // Row 3: Currencies
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -763,7 +734,7 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                 ),
                 const SizedBox(height: 12),
 
-                // Row 4: Pools with single arrow icon in center
+                // Row 4: Pools
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -832,6 +803,32 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+
+                // Source and destination balances with an “after transfer” preview
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '$_fromPool: ${sourceBalanceBefore.toStringAsFixed(2)} → ${sourceBalanceAfter.toStringAsFixed(2)} $_fromCurrency',
+                        style: TextStyle(fontSize: 10, color: sourceBalanceAfter < 0 ? Colors.red.shade400 : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)), fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        '$_toPool: ${destBalanceBefore.toStringAsFixed(2)} → ${destBalanceAfter.toStringAsFixed(2)} $_toCurrency',
+                        style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+
+                if (sourceBalanceAfter < 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('Warning: Insufficient source balance!', style: TextStyle(fontSize: 10, color: Colors.red.shade400, fontWeight: FontWeight.bold)),
+                  ),
+
                 const SizedBox(height: 12),
 
                 // Row 5: Transfer Fee, Exchange Rate, Net Preview
@@ -953,6 +950,18 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+
+                // “Max” and percentage buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildPercentageButton('25%', 0.25, sourceBalanceBefore),
+                    _buildPercentageButton('50%', 0.50, sourceBalanceBefore),
+                    _buildPercentageButton('75%', 0.75, sourceBalanceBefore),
+                    _buildPercentageButton('Max', 1.0, sourceBalanceBefore),
+                  ],
+                ),
                 const SizedBox(height: 16),
 
                 // Row 7: Transfer Funds Action Button
@@ -966,11 +975,26 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 0,
                     ),
-                    onPressed: () {
-                      final amount = double.tryParse(_amountController.text) ?? 0.0;
-                      final rate = double.tryParse(_rateController.text) ?? 1.0;
-                      if (amount <= 0) return;
-                      
+                    onPressed: _isSubmitting ? null : () async {
+                      final amount = double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0.0;
+                      final fee = double.tryParse(_feeController.text.replaceAll(',', '.')) ?? 0.0;
+                      final rate = double.tryParse(_rateController.text.replaceAll(',', '.')) ?? 1.0;
+
+                      if (amount <= 0) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount must be greater than 0')));
+                        return;
+                      }
+                      if (_fromPool == _toPool && _fromOwner == _toOwner && _fromCurrency == _toCurrency) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('From and To targets must differ')));
+                        return;
+                      }
+                      if (totalDeduction > sourceBalanceBefore) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Exceeds available source balance')));
+                        return;
+                      }
+
+                      setState(() => _isSubmitting = true);
+
                       final fullDate = DateTime(
                         _selectedDate.year,
                         _selectedDate.month,
@@ -979,40 +1003,114 @@ class _TransferFundsCardState extends State<TransferFundsCard> {
                         _selectedTime.minute,
                       );
                       
+                      final transferGroupId = DateTime.now().millisecondsSinceEpoch.toString();
+
                       widget.onTransfer(
                         _fromPool,
                         _toPool,
                         _fromOwner,
                         _toOwner,
                         amount,
+                        fee,
                         _descController.text,
                         fullDate,
                         _fromCurrency,
                         _toCurrency,
                         rate,
+                        transferGroupId,
                       );
                       
                       _amountController.clear();
                       _feeController.text = '0.0';
                       _descController.clear();
+
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transfer completed successfully!')));
+                      setState(() => _isSubmitting = false);
                     },
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.swap_horiz, size: 18, color: Colors.white),
-                        SizedBox(width: 6),
-                        Text(' Transfer Funds ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
-                        SizedBox(width: 6),
-                        Icon(Icons.swap_horiz, size: 18, color: Colors.white),
+                      children: [
+                        const Icon(Icons.swap_horiz, size: 18, color: Colors.white),
+                        const SizedBox(width: 6),
+                        Text(_isSubmitting ? 'Transferring...' : ' Transfer Funds ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.swap_horiz, size: 18, color: Colors.white),
                       ],
                     ),
                   ),
                 ),
+
+                // Recent transfers list with repeat button
+                if (widget.recentTransfers.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text('Recent Transfers', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    height: 60,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: widget.recentTransfers.length,
+                      itemBuilder: (context, index) {
+                        final tx = widget.recentTransfers[index];
+                        return Container(
+                          width: 160,
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text('${tx['amount']} ${tx['fromCurrency']}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
+                                  Text('${tx['fromPool']} → ${tx['toPool']}', style: TextStyle(fontSize: 9, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                ],
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.repeat, size: 16),
+                                color: const Color(0xFFA855F7),
+                                onPressed: () {
+                                  if (widget.onRepeatTransfer != null) {
+                                    widget.onRepeatTransfer!(tx);
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ],
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildPercentageButton(String label, double multiplier, double maxBalance) {
+    return OutlinedButton(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF582F95),
+        side: BorderSide(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      onPressed: () {
+        final val = (maxBalance * multiplier).clamp(0.0, double.infinity);
+        setState(() {
+          _amountController.text = val.toStringAsFixed(2);
+        });
+      },
+      child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
     );
   }
 }

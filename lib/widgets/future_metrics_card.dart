@@ -591,7 +591,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                'FUTURE OUTLOOK ',
+                                'PENDING OUTLOOK ',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -605,15 +605,15 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                           InkWell(
                             onTap: () => _showMetricInfo(
                               context,
-                              'Future Outlook ',
+                              'Pending Outlook ',
                               ' “Will I be okay?” - This card provides forward-looking financial forecasting and risk indicators.\n\n'
-                              '• Basis of Calculation: Projections are computed using a combination of past historical Zaznams, future scheduled recurring/recorded entries, and average burn-rate modeling.\n'
+                              '• Basis of Calculation: Projections are computed using a combination of past historical Zaznams, scheduled pending entries, and average burn-rate modeling.\n'
                               '• Interpretation: Anticipate potential cash flow shortfalls, plan for upcoming expenses, and make informed financial decisions.\n'
                               '• Date Range: By default, this card considers all Zaznams up to the last recorded Zaznam. You can set a custom date range to focus on specific periods.\n'
                               '• Exclusions: Transfers and savings-related Zaznams are excluded from the calculations to provide a clearer picture of actual spendable cash flow.\n'
                               '• Burn Rate Baseline: The burn rate is calculated based on the selected baseline period (Last 30 Days, Last 90 Days, or Fixed Baseline). Adjusting this can provide different perspectives on your spending habits.\n'
-                              '• Next 7-day Pending Zaznams: The number of scheduled Zaznams in the next 7 days and clicking the link will allow you to view them in "All Zaznams".\n'
-                              '• This card is connected to the "Future Breakdown" card, which provides a more detailed breakdown of these metrics by labels and in bar chart form.',
+                              '• Next 7-day Pending Zaznams: The number of scheduled pending Zaznams in the next 7 days. Clicking the link will allow you to view them in "All Zaznams".\n'
+                              '• This card is connected to the "Pedning Breakdown" card, which provides a more detailed breakdown of these metrics by labels and in bar chart form.',
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(2.0),
@@ -926,7 +926,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                           amount: currentPrognosis,
                           amountColor: _isZaznamityMode ? Colors.white : const Color(0xFF000000),
                           width: boxWidth,
-                          infoExplanation: 'Prognosis calculates your projected remaining balance for geothermal/liquid pools at the end of the timeframe by combining current liquid funds with upcoming future cashflows from today forward.',
+                          infoExplanation: 'Prognosis calculates your projected remaining balance for geothermal/liquid pools at the end of the timeframe by combining current liquid funds with pending future cashflows from today forward.',
                         ),
                       ),
                     ),

@@ -161,7 +161,7 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Future Breakdown',
+                  'Pending Breakdown',
                   style: TextStyle(
                     color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                     fontWeight: FontWeight.bold,
@@ -174,10 +174,9 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
             child: Text(
               ' “Where is my money going?”\n\n' 
               '• This card provides forward-looking analytical insights into your projected financial standing by labels.\n\n'
-              '• It breaks down upcoming scheduled income and expenses by category label over your selected future window, starting strictly from today onwards.\n'
+              '• It breaks down pending scheduled income and expenses by category label over the selected future window, starting strictly from today onwards.\n'
               '• Strictly excludes past zaznams and transfers/goal contributions.\n'
-              '• Budget Exceeded Warnings: Visual warning badges indicate if an upcoming category expense exceeds its monthly budget limit.\n'
-              '• Label Filter Persistence: Saved selections automatically persist when leaving or collapsing the card.',
+              '• Budget Exceeded Warnings: Visual warning badges indicate if an upcoming category expense exceeds its monthly budget limit.\n',
               style: TextStyle(
                 fontSize: 13,
                 color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
@@ -527,7 +526,7 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
               Row(
                 children: [
                   Text(
-                    'FUTURE BREAKDOWN ',
+                    'PENDING BREAKDOWN ',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -539,7 +538,7 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                   IconButton(
                     icon: Icon(Icons.info_outline, size: 14, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey),
                     onPressed: () => _showFutureBreakdownInfoModal(context),
-                    tooltip: 'Future Breakdown',
+                    tooltip: 'Pending Breakdown',
                     constraints: const BoxConstraints(),
                     padding: EdgeInsets.zero,
                   ),
@@ -887,7 +886,7 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
             ),
             const SizedBox(height: 12),
 
-            // Jump to Future Outlook button
+            // Jump to Pending Outlook button
             Container(
               width: double.infinity,
               decoration: BoxDecoration(
@@ -910,7 +909,7 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
                             Icon(Icons.insights_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                             const SizedBox(width: 8),
                             Text(
-                              'View Prognosis in "Future Outlook"',
+                              'View Prognosis in "Pending Outlook"',
                               style: TextStyle(
                                 fontSize: 10.5,
                                 fontWeight: FontWeight.bold,

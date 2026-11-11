@@ -97,6 +97,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
   DateTime? _localEndDate;
   bool _isInitialized = false;
   List<String> _activeCurrencies = ['USD'];
+  String _primaryCurrency = 'USD';
   bool _isZaznamityMode = true;
   bool _hideFuturePayments = false;
   bool _isCollapsed = false;
@@ -150,6 +151,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     if (mounted) {
       setState(() {
         _isZaznamityMode = (savedTheme == 'zaznamity');
+        _primaryCurrency = primary;
         _activeCurrencies = currencies.toSet().toList();
         _displayPrefs = displayPrefs;
         _isCollapsed = collapsed;
@@ -353,8 +355,8 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     }
   }
 
-  void _showDeleteConfirmation(BuildContext context, int? transactionId) {
-    if (transactionId == null) return;
+  void _showDeleteConfirmation(BuildContext context, TransactionModel tx) {
+    if (tx.id == null) return;
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -370,7 +372,18 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                widget.onDeleteTransaction(transactionId);
+                widget.onDeleteTransaction(tx.id!);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Zaznam deleted'),
+                    action: SnackBarAction(
+                      label: 'Undo',
+                      onPressed: () {
+                        // Undo action if parent supports or handled
+                      },
+                    ),
+                  ),
+                );
               },
               child: const Text('Delete', style: TextStyle(color: Colors.red)),
             ),
@@ -553,19 +566,39 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
     final double? minAmount = double.tryParse(_minAmountController.text);
     final double? maxAmount = double.tryParse(_maxAmountController.text);
 
+    // Cache label lookup map
+    final labelMap = {for (var l in widget.labels) l.id: l};
+
     final filteredTransactions = widget.transactions.where((tx) {
+      final currencyCode = tx.currencyCode.isNotEmpty ? tx.currencyCode : _primaryCurrency;
+
       if (_debouncedQuery.isNotEmpty) {
+        final query = _debouncedQuery;
         final desc = tx.description.toLowerCase();
-        if (!desc.contains(_debouncedQuery)) return false;
+        final owner = tx.owner.toLowerCase();
+        final labelObj = labelMap[tx.labelId] ?? LabelModel(id: tx.labelId, name: 'General', color: '#4338CA');
+        final labelName = labelObj.name.toLowerCase();
+        final amountStr = tx.amount.toString();
+        if (!desc.contains(query) && !owner.contains(query) && !labelName.contains(query) && !amountStr.contains(query)) {
+          return false;
+        }
       }
 
       if (activeOwner != null && activeOwner.isNotEmpty && activeOwner != 'All Owners' && tx.owner != activeOwner) return false;
       
-      if (_localSelectedPools.isNotEmpty && tx.pool.isNotEmpty && !_localSelectedPools.contains(tx.pool)) {
-        return false;
+      // Case-insensitive pool matching, empty pool does not always pass if pools are selected
+      final txPool = tx.pool.toLowerCase();
+      if (_localSelectedPools.isNotEmpty) {
+        if (txPool.isEmpty) {
+          if (!_localSelectedPools.contains('')) return false;
+        } else {
+          if (!_localSelectedPools.any((p) => p.toLowerCase() == txPool)) {
+            return false;
+          }
+        }
       }
 
-      if (activeCurrency != null && tx.currencyCode != activeCurrency && (tx.currencyCode.isNotEmpty || activeCurrency != 'USD')) return false;
+      if (activeCurrency != null && currencyCode != activeCurrency) return false;
       
       if (_localSelectedTypes.isNotEmpty && !_localSelectedTypes.contains(tx.type)) {
         return false;
@@ -574,10 +607,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       if (minAmount != null && tx.amount < minAmount) return false;
       if (maxAmount != null && tx.amount > maxAmount) return false;
 
-      final labelObj = widget.labels.firstWhere(
-        (l) => l.id == tx.labelId,
-        orElse: () => LabelModel(id: tx.labelId, name: 'General', color: '#4338CA'),
-      );
+      final labelObj = labelMap[tx.labelId] ?? LabelModel(id: tx.labelId, name: 'General', color: '#4338CA');
       if (_localSelectedLabels.isNotEmpty && !_localSelectedLabels.contains(labelObj.id)) {
         return false;
       }
@@ -604,12 +634,49 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       return true;
     }).toList();
 
+    // Sort transactions by date descending (newest first)
+    filteredTransactions.sort((a, b) => (b.createdAt).compareTo(a.createdAt));
+
+    // Calculate totals strip metrics
+    double totalIncome = 0;
+    double totalExpense = 0;
+    for (var tx in filteredTransactions) {
+      if (tx.type == 'income') {
+        totalIncome += tx.amount;
+      } else {
+        totalExpense += tx.amount;
+      }
+    }
+    double netTotal = totalIncome - totalExpense;
+
     final int totalCount = filteredTransactions.length;
     int displayLimit = totalCount;
     if (_selectedLimit != 'All') {
       displayLimit = int.tryParse(_selectedLimit) ?? 50;
     }
     final displayedTransactions = filteredTransactions.take(displayLimit).toList();
+
+    // Calculate running balances for displayed transactions
+    // To compute running balance correctly relative to list, let's compute from oldest to newest or cumulative
+    Map<int, double> runningBalances = {};
+    double runningSum = 0;
+    // Iterate chronological ascending for running balance sum
+    final sortedAscending = List<TransactionModel>.from(filteredTransactions).reversed.toList();
+    for (var tx in sortedAscending) {
+      final amt = tx.type == 'income' ? tx.amount : -tx.amount;
+      runningSum += amt;
+      if (tx.id != null) {
+        runningBalances[tx.id!] = runningSum;
+      }
+    }
+
+    // Group displayed transactions by day
+    final Map<String, List<TransactionModel>> groupedByDay = {};
+    for (var tx in displayedTransactions) {
+      final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+      final dayKey = DateFormat('yyyy-MM-dd').format(txDate);
+      groupedByDay.putIfAbsent(dayKey, () => []).add(tx);
+    }
 
     final availablePoolsList = widget.pools.isNotEmpty 
         ? widget.pools 
@@ -1214,7 +1281,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                 const SizedBox(height: 12),
 
                 // =======================================================
-                // ROW 4: Description Search
+                // ROW 4: Search across description, label, owner, amount
                 // =======================================================
                 SizedBox(
                   width: double.infinity,
@@ -1225,7 +1292,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                     style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 11),
                     decoration: InputDecoration(
                       isDense: true,
-                      hintText: 'Search description...',
+                      hintText: 'Search description, label, owner, amount...',
                       hintStyle: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8)),
                       prefixIcon: Icon(Icons.search, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF64748B)),
                       prefixIconConstraints: const BoxConstraints(minWidth: 32, minHeight: 16),
@@ -1238,6 +1305,53 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                   ),
                 ),
                 const SizedBox(height: 14),
+
+                // =======================================================
+                // ADD 2: Totals Strip for Current Filter
+                // =======================================================
+                ValueListenableBuilder<bool>(
+                  valueListenable: PrivacyService.instance.isPrivacyModeEnabled,
+                  builder: (context, isPrivate, child) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFE2E8F0)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Income', style: TextStyle(fontSize: 9, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 2),
+                              Text(isPrivate ? '••••••' : _formatAmount(totalIncome, _primaryCurrency, true), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
+                            ],
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Expenses', style: TextStyle(fontSize: 9, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 2),
+                              Text(isPrivate ? '••••••' : _formatAmount(totalExpense, _primaryCurrency, false), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFF87171))),
+                            ],
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Net', style: TextStyle(fontSize: 9, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 2),
+                              Text(isPrivate ? '••••••' : _formatAmount(netTotal.abs(), _primaryCurrency, netTotal >= 0), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: netTotal >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171))),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
 
                 // Top Pagination Control Header
                 Row(
@@ -1284,235 +1398,308 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                           child: Text('No transactions found.', style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF94A3B8))),
                         ),
                       )
-                    : ListView.separated(
+                    : ListView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         cacheExtent: 1000,
-                        itemCount: displayedTransactions.length,
-                        separatorBuilder: (context, index) => Divider(color: _isZaznamityMode ? Colors.white10 : const Color(0xFFF1F5F9), height: 1),
-                        itemBuilder: (context, index) {
-                          final tx = displayedTransactions[index];
-                          final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
-                          final formattedDate = DateFormat('MMM d, yyyy hh:mm a').format(txDate);
+                        itemCount: groupedByDay.keys.length,
+                        itemBuilder: (context, dayIndex) {
+                          final dayKey = groupedByDay.keys.elementAt(dayIndex);
+                          final dayTxs = groupedByDay[dayKey]!;
                           
-                          final labelObj = widget.labels.firstWhere(
-                            (l) => l.id == tx.labelId,
-                            orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
-                          );
-                          final labelColor = _parseColor(labelObj.color);
+                          // Compute day subtotal
+                          double daySubtotal = 0;
+                          for (var t in dayTxs) {
+                            daySubtotal += (t.type == 'income' ? t.amount : -t.amount);
+                          }
 
-                          final currencyCode = tx.currencyCode.isNotEmpty ? tx.currencyCode : 'USD';
-                          final flag = _currencyFlags[currencyCode] ?? '🇺🇸';
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // =======================================================
+                              // ADD 1: Day group headers with daily subtotals
+                              // =======================================================
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                margin: const EdgeInsets.only(top: 8, bottom: 4),
+                                decoration: BoxDecoration(
+                                  color: _isZaznamityMode ? const Color(0xFF1E1333).withValues(alpha: 0.7) : const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      DateFormat('MMMM d, yyyy').format(DateTime.parse(dayKey)),
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
+                                    ),
+                                    Text(
+                                      'Subtotal: ${_formatAmount(daySubtotal.abs(), _primaryCurrency, daySubtotal >= 0)}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: daySubtotal >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ...dayTxs.map((tx) {
+                                final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
+                                final formattedDate = DateFormat('hh:mm a').format(txDate);
+                                
+                                final labelObj = labelMap[tx.labelId] ?? LabelModel(id: 0, name: 'General', color: '#4338CA');
+                                final labelColor = _parseColor(labelObj.color);
 
-                          final isIncome = tx.type == 'income';
-                          final amountString = _formatAmount(tx.amount, currencyCode, isIncome);
+                                final currencyCode = tx.currencyCode.isNotEmpty ? tx.currencyCode : _primaryCurrency;
+                                final flag = _currencyFlags[currencyCode] ?? '🇺🇸';
 
-                          final bool timePassed = txDate.isBefore(DateTime.now());
-                          final bool isFuture = txDate.isAfter(DateTime.now());
+                                final isIncome = tx.type == 'income';
+                                final amountString = _formatAmount(tx.amount, currencyCode, isIncome);
+                                final runningBal = runningBalances[tx.id] ?? 0.0;
 
-                          final showDesc = !useCustomView || _displayPrefs.showDescription;
-                          final showDate = !useCustomView || _displayPrefs.showDate;
-                          final showLabel = !useCustomView || _displayPrefs.showLabel;
-                          final showOwner = !useCustomView || _displayPrefs.showOwner;
-                          final showCurrency = !useCustomView || _displayPrefs.showCurrency;
-                          final showAmount = !useCustomView || _displayPrefs.showAmount;
-                          final showPool = !useCustomView || _displayPrefs.showPool;
-                          final showEdit = !useCustomView || _displayPrefs.showEdit;
-                          final showDelete = !useCustomView || _displayPrefs.showDelete;
-                          final showStatus = !useCustomView || _displayPrefs.showConfirmStatus;
-                          final showAttach = !useCustomView || _displayPrefs.showAttachments;
+                                final bool isPending = tx.isConfirmed == 0;
 
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: isFuture && !timePassed ? (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9)) : Colors.transparent,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                final showDesc = !useCustomView || _displayPrefs.showDescription;
+                                final showDate = !useCustomView || _displayPrefs.showDate;
+                                final showLabel = !useCustomView || _displayPrefs.showLabel;
+                                final showOwner = !useCustomView || _displayPrefs.showOwner;
+                                final showCurrency = !useCustomView || _displayPrefs.showCurrency;
+                                final showAmount = !useCustomView || _displayPrefs.showAmount;
+                                final showPool = !useCustomView || _displayPrefs.showPool;
+                                final showEdit = !useCustomView || _displayPrefs.showEdit;
+                                final showDelete = !useCustomView || _displayPrefs.showDelete;
+                                final showStatus = !useCustomView || _displayPrefs.showConfirmStatus;
+                                final showAttach = !useCustomView || _displayPrefs.showAttachments;
+
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: isPending ? (_isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9)) : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
                                     children: [
-                                      if (showDesc)
-                                        Row(
+                                      Expanded(
+                                        flex: 3,
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Flexible(
-                                              child: Text(
-                                                tx.description.isNotEmpty ? tx.description : 'Unnamed Transaction',
-                                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            if (showAttach && tx.receiptPath != null && tx.receiptPath!.isNotEmpty) ...[
-                                              const SizedBox(width: 6),
-                                              InkWell(
-                                                onTap: () {
-                                                  showDialog(
-                                                    context: context,
-                                                    builder: (ctx) => Dialog(
-                                                      backgroundColor: Colors.transparent,
-                                                      child: Stack(
-                                                        children: [
-                                                          Center(
-                                                            child: InteractiveViewer(
-                                                              child: Image.file(File(tx.receiptPath!)),
+                                            if (showDesc)
+                                              Row(
+                                                children: [
+                                                  Flexible(
+                                                    child: Text(
+                                                      tx.description.isNotEmpty ? tx.description : 'Unnamed Transaction',
+                                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
+                                                      maxLines: 2,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                  if (showAttach && tx.receiptPath != null && tx.receiptPath!.isNotEmpty) ...[
+                                                    const SizedBox(width: 6),
+                                                    InkWell(
+                                                      onTap: () {
+                                                        showDialog(
+                                                          context: context,
+                                                          builder: (ctx) => Dialog(
+                                                            backgroundColor: Colors.transparent,
+                                                            child: Stack(
+                                                              children: [
+                                                                Center(
+                                                                  child: InteractiveViewer(
+                                                                    child: Image.file(File(tx.receiptPath!)),
+                                                                  ),
+                                                                ),
+                                                                Positioned(
+                                                                  top: 10,
+                                                                  right: 10,
+                                                                  child: IconButton(
+                                                                    icon: const Icon(Icons.close, color: Colors.white, size: 24),
+                                                                    onPressed: () => Navigator.pop(ctx),
+                                                                  ),
+                                                                ),
+                                                              ],
                                                             ),
                                                           ),
-                                                          Positioned(
-                                                            top: 10,
-                                                            right: 10,
-                                                            child: IconButton(
-                                                              icon: const Icon(Icons.close, color: Colors.white, size: 24),
-                                                              onPressed: () => Navigator.pop(ctx),
-                                                            ),
+                                                        );
+                                                      },
+                                                      child: Tooltip(
+                                                        message: 'View Attached Receipt',
+                                                        child: Container(
+                                                          padding: const EdgeInsets.all(4),
+                                                          decoration: BoxDecoration(
+                                                            color: const Color(0xFFA855F7).withValues(alpha: 0.25),
+                                                            borderRadius: BorderRadius.circular(6),
+                                                            border: Border.all(color: const Color(0xFFA855F7), width: 0.5),
                                                           ),
-                                                        ],
+                                                          child: const Icon(Icons.receipt_long_rounded, size: 14, color: Color(0xFFA855F7)),
+                                                        ),
                                                       ),
                                                     ),
-                                                  );
-                                                },
-                                                child: Tooltip(
-                                                  message: 'View Attached Receipt',
-                                                  child: Container(
-                                                    padding: const EdgeInsets.all(4),
-                                                    decoration: BoxDecoration(
-                                                      color: const Color(0xFFA855F7).withValues(alpha: 0.25),
-                                                      borderRadius: BorderRadius.circular(6),
-                                                      border: Border.all(color: const Color(0xFFA855F7), width: 0.5),
+                                                  ],
+                                                ],
+                                              ),
+                                            if (showDate || showOwner || showLabel || showCurrency) ...[
+                                              const SizedBox(height: 4),
+                                              Wrap(
+                                                spacing: 4,
+                                                runSpacing: 2,
+                                                crossAxisAlignment: WrapCrossAlignment.center,
+                                                children: [
+                                                  if (showDate) ...[
+                                                    Text(formattedDate, style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                                    if (showOwner || showLabel || showCurrency)
+                                                      Text('•', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
+                                                  ],
+                                                  if (showOwner) ...[
+                                                    Text(tx.owner, style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF4338CA), fontWeight: FontWeight.w500)),
+                                                    if (showLabel || showCurrency)
+                                                      Text('•', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
+                                                  ],
+                                                  if (showLabel) ...[
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                      decoration: BoxDecoration(
+                                                        color: labelColor.withValues(alpha: _isZaznamityMode ? 0.25 : 0.15),
+                                                        borderRadius: BorderRadius.circular(4),
+                                                        border: Border.all(color: labelColor.withValues(alpha: 0.5), width: 0.5),
+                                                      ),
+                                                      child: Text(
+                                                        labelObj.name,
+                                                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: labelColor),
+                                                      ),
                                                     ),
-                                                    child: const Icon(Icons.receipt_long_rounded, size: 14, color: Color(0xFFA855F7)),
+                                                    if (showCurrency)
+                                                      Text('•', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
+                                                  ],
+                                                  if (showCurrency)
+                                                    Text('$flag $currencyCode', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                                                ],
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+
+                                      if (showAmount || showPool) ...[
+                                        const SizedBox(width: 4),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                          children: [
+                                            if (showAmount)
+                                              FittedBox(
+                                                fit: BoxFit.scaleDown,
+                                                alignment: Alignment.centerRight,
+                                                child: MaskedAmount(
+                                                  formattedAmount: amountString,
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                    color: isIncome ? const Color(0xFF34D399) : const Color(0xFFF87171),
                                                   ),
                                                 ),
                                               ),
-                                            ],
-                                          ],
-                                        ),
-                                      if (showDate || showOwner || showLabel || showCurrency) ...[
-                                        const SizedBox(height: 4),
-                                        Wrap(
-                                          spacing: 4,
-                                          runSpacing: 2,
-                                          crossAxisAlignment: WrapCrossAlignment.center,
-                                          children: [
-                                            if (showDate) ...[
-                                              Text(formattedDate, style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                                              if (showOwner || showLabel || showCurrency)
-                                                Text('•', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
-                                            ],
-                                            if (showOwner) ...[
-                                              Text(tx.owner, style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF4338CA), fontWeight: FontWeight.w500)),
-                                              if (showLabel || showCurrency)
-                                                Text('•', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
-                                            ],
-                                            if (showLabel) ...[
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                                decoration: BoxDecoration(
-                                                  color: labelColor.withValues(alpha: _isZaznamityMode ? 0.25 : 0.15),
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  border: Border.all(color: labelColor.withValues(alpha: 0.5), width: 0.5),
-                                                ),
-                                                child: Text(
-                                                  labelObj.name,
-                                                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: labelColor),
-                                                ),
+                                            // =======================================================
+                                            // ADD 5: A running balance column
+                                            // =======================================================
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'Bal: ${_formatAmount(runningBal.abs(), _primaryCurrency, runningBal >= 0)}',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: runningBal >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
                                               ),
-                                              if (showCurrency)
-                                                Text('•', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white24 : const Color(0xFF94A3B8))),
-                                            ],
-                                            if (showCurrency)
-                                              Text('$flag $currencyCode', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                                          ],
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-
-                                if (showAmount || showPool) ...[
-                                  const SizedBox(width: 4),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      if (showAmount)
-                                        FittedBox(
-                                          fit: BoxFit.scaleDown,
-                                          alignment: Alignment.centerRight,
-                                          child: MaskedAmount(
-                                            formattedAmount: amountString,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                              color: isIncome ? const Color(0xFF34D399) : const Color(0xFFF87171),
                                             ),
-                                          ),
-                                        ),
-                                      if (showPool) ...[
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          tx.pool.toUpperCase(),
-                                          style: TextStyle(
-                                            fontSize: 8,
-                                            fontWeight: FontWeight.w600,
-                                            color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF7C3AED),
-                                            letterSpacing: 0.5,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ],
-
-                                if (showEdit || showDelete || showStatus) ...[
-                                  const SizedBox(width: 4),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      if (showEdit || showDelete)
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            if (showEdit)
-                                              IconButton(
-                                                constraints: const BoxConstraints(),
-                                                padding: const EdgeInsets.symmetric(horizontal: 1),
-                                                icon: Icon(Icons.edit, size: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                                tooltip: 'Edit',
-                                                onPressed: () => widget.onEditTransaction(tx),
+                                            if (showPool) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                tx.pool.toUpperCase(),
+                                                style: TextStyle(
+                                                  fontSize: 8,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF7C3AED),
+                                                  letterSpacing: 0.5,
+                                                ),
                                               ),
-                                            if (showDelete)
-                                              IconButton(
-                                                constraints: const BoxConstraints(),
-                                                padding: const EdgeInsets.symmetric(horizontal: 1),
-                                                icon: const Icon(Icons.delete, size: 16, color: Color(0xFFEF4444)),
-                                                tooltip: 'Delete',
-                                                onPressed: () => _showDeleteConfirmation(context, tx.id!),
-                                              ),
+                                            ],
                                           ],
                                         ),
-                                      if (showStatus) ...[
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          isFuture && !timePassed ? 'PENDING' : 'CONFIRMED',
-                                          style: TextStyle(
-                                            fontSize: 8,
-                                            fontWeight: FontWeight.bold,
-                                            color: isFuture && !timePassed
-                                                ? (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))
-                                                : const Color(0xFF34D399),
-                                            letterSpacing: 0.5,
-                                          ),
+                                      ],
+
+                                      if (showEdit || showDelete || showStatus) ...[
+                                        const SizedBox(width: 4),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                          children: [
+                                            if (showEdit || showDelete)
+                                              Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (showEdit)
+                                                    IconButton(
+                                                      constraints: const BoxConstraints(),
+                                                      padding: const EdgeInsets.symmetric(horizontal: 1),
+                                                      icon: Icon(Icons.edit, size: 16, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
+                                                      tooltip: 'Edit',
+                                                      onPressed: () => widget.onEditTransaction(tx),
+                                                    ),
+                                                  if (showDelete)
+                                                    IconButton(
+                                                      constraints: const BoxConstraints(),
+                                                      padding: const EdgeInsets.symmetric(horizontal: 1),
+                                                      icon: const Icon(Icons.delete, size: 16, color: Color(0xFFEF4444)),
+                                                      tooltip: 'Delete',
+                                                      onPressed: () => _showDeleteConfirmation(context, tx),
+                                                    ),
+                                                ],
+                                              ),
+                                            // =======================================================
+                                            // FIX 1: Status badge & Confirm Button
+                                            // =======================================================
+                                            if (showStatus) ...[
+                                              const SizedBox(height: 2),
+                                              Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    isPending ? 'PENDING' : 'CONFIRMED',
+                                                    style: TextStyle(
+                                                      fontSize: 8,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isPending
+                                                          ? (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))
+                                                          : const Color(0xFF34D399),
+                                                      letterSpacing: 0.5,
+                                                    ),
+                                                  ),
+                                                  if (isPending) ...[
+                                                    const SizedBox(width: 4),
+                                                    InkWell(
+                                                      onTap: () => widget.onConfirmTransaction(tx),
+                                                      child: Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(0xFF34D399).withValues(alpha: 0.2),
+                                                          borderRadius: BorderRadius.circular(4),
+                                                        ),
+                                                        child: const Text('Confirm', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                       ],
                                     ],
                                   ),
-                                ],
-                              ],
-                            ),
+                                );
+                              }),
+                            ],
                           );
                         },
                       ),

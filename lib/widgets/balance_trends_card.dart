@@ -74,7 +74,8 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
   List _cachedDailySeries = [];
   
   // Summary Metrics
-  double _cachedCurrentBalance = 0;
+  double _cachedInitialBalance = 0;
+  double _cachedEndBalance = 0;
   double _cachedChangeAmount = 0;
   double _cachedChangePct = 0;
   double _cachedLowestPoint = 0;
@@ -82,7 +83,8 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
   double _cachedHighestPoint = 0;
   DateTime? _cachedHighestDate;
   String _cachedExplanation = '';
-  bool _cachedBufferCrossed = false;
+  DateTime? _cachedEffectiveStartDate;
+  DateTime? _cachedEffectiveEndDate;
 
   String _currencyCode = 'USD';
   String _dateRangeSetting = '30 Days';
@@ -90,7 +92,6 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
   bool _isZaznamityMode = true;
   bool _isCollapsed = false;
   bool _includeLiabilities = false;
-  double _minimumBuffer = 0;
 
   @override
   void initState() {
@@ -119,7 +120,6 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
     final collapsed = prefs.getBool('set_balanceTrends_collapsed') ?? false;
     final rangeSetting = prefs.getString('set_balanceTrends_range') ?? '30 Days';
     final showFuturePref = prefs.getBool('set_balanceTrends_show_future') ?? false;
-    final bufferPref = prefs.getDouble('set_balanceTrends_min_buffer') ?? 0.0;
     final includeLiab = prefs.getBool('set_balanceTrends_include_liab') ?? false;
 
     if (mounted) {
@@ -127,7 +127,6 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
         _currencyCode = primary;
         _dateRangeSetting = rangeSetting;
         _showFuture = showFuturePref;
-        _minimumBuffer = bufferPref;
         _includeLiabilities = includeLiab;
         _isZaznamityMode = (savedTheme == 'zaznamity');
         _isCollapsed = collapsed;
@@ -139,7 +138,6 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('set_balanceTrends_range', _dateRangeSetting);
     await prefs.setBool('set_balanceTrends_show_future', _showFuture);
-    await prefs.setDouble('set_balanceTrends_min_buffer', _minimumBuffer);
     await prefs.setBool('set_balanceTrends_include_liab', _includeLiabilities);
   }
 
@@ -175,45 +173,6 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
       case 'JPY': return '¥';
       default: return '\$';
     }
-  }
-
-  void _showBufferConfigDialog() {
-    final controller = TextEditingController(text: _minimumBuffer > 0 ? _minimumBuffer.toString() : '');
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Configure Minimum Buffer', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
-        content: TextField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black),
-          decoration: InputDecoration(
-            labelText: 'Buffer Floor Amount',
-            labelStyle: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: _isZaznamityMode ? Colors.white24 : Colors.grey)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),
-            onPressed: () {
-              setState(() {
-                _minimumBuffer = double.tryParse(controller.text) ?? 0;
-              });
-              _savePrefs();
-              Navigator.pop(ctx);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _computeChartDataIfNeeded() {
@@ -264,6 +223,8 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
       txFilter = (tx) => tx.pool.toLowerCase() == targetPool;
     }
 
+    // Find earliest and latest transaction dates across filtered transactions
+    DateTime? earliestTxDate;
     DateTime? latestTxDate;
     for (var tx in widget.transactions) {
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && tx.owner != widget.selectedOwner) continue;
@@ -271,10 +232,17 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
       final dt = DateTime.tryParse(tx.createdAt);
       if (dt != null) {
         if (!_showFuture && dt.isAfter(now)) continue;
+        if (earliestTxDate == null || dt.isBefore(earliestTxDate)) {
+          earliestTxDate = dt;
+        }
         if (latestTxDate == null || dt.isAfter(latestTxDate)) {
           latestTxDate = dt;
         }
       }
+    }
+
+    if (_dateRangeSetting == 'All Time' && effectiveStartDate == null) {
+      effectiveStartDate = earliestTxDate;
     }
 
     DateTime effectiveEndDate = widget.endDate ?? (_showFuture ? now.add(const Duration(days: 30)) : (latestTxDate ?? now));
@@ -324,7 +292,7 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
 
     List dailySeries = [];
     double runningBalance = initialBalance;
-    DateTime timelineStart = effectiveStartDate ?? (widget.transactions.isNotEmpty ? DateTime.parse(widget.transactions.first.createdAt) : now.subtract(const Duration(days: 30)));
+    DateTime timelineStart = effectiveStartDate ?? (earliestTxDate ?? now.subtract(const Duration(days: 30)));
     DateTime timelineEnd = effectiveEndDate;
 
     DateTime current = DateTime(timelineStart.year, timelineStart.month, timelineStart.day);
@@ -347,7 +315,6 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
       dailySeries.add({'date': now, 'balance': 0.0, 'transactions': <TransactionModel>[]});
     }
 
-    // Build segments with proper coloring: Green for net positive daily change, Red for net negative daily change, Purple for future/pending (matching LiquidTrendChartCard logic)[cite: 20]
     List<LineChartBarData> lineBars = [];
     List<FlSpot> currentSegmentSpots = [];
     List<DateTime> spotDates = [];
@@ -377,9 +344,8 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
       final isFuture = dt.isAfter(now);
       Color targetColor;
       if (isFuture) {
-        targetColor = const Color.fromARGB(255, 147, 51, 234); // Purple for pending/future[cite: 19, 20]
+        targetColor = const Color.fromARGB(255, 147, 51, 234);
       } else {
-        // Calculate daily delta to color segment green for net income/increase, red for net expense/decrease
         double dailyNetDelta = 0;
         for (var tx in txs) {
           double amt = tx.amount;
@@ -390,7 +356,6 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
         }
 
         if (txs.isEmpty && i > 0) {
-          // If no transactions on this day, inherit color from previous day or default
           targetColor = currentSegmentColor ?? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95));
         } else {
           targetColor = dailyNetDelta >= 0 ? Colors.green.shade600 : Colors.red.shade600;
@@ -454,10 +419,10 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
       );
     }
 
-    double currentBal = dailySeries.isNotEmpty ? dailySeries.last['balance'] as double : 0;
-    double startBal = dailySeries.isNotEmpty ? dailySeries.first['balance'] as double : 0;
-    double changeAmt = currentBal - startBal;
-    double changePct = startBal != 0 ? (changeAmt / startBal.abs()) * 100 : 0;
+    double initialBal = dailySeries.isNotEmpty ? dailySeries.first['balance'] as double : 0;
+    double endBal = dailySeries.isNotEmpty ? dailySeries.last['balance'] as double : 0;
+    double changeAmt = endBal - initialBal;
+    double changePct = initialBal != 0 ? (changeAmt / initialBal.abs()) * 100 : 0;
 
     List<FlSpot> trendLineSpots = [];
     if (_trendLineOption != TrendLineOption.none && dailySeries.isNotEmpty) {
@@ -489,16 +454,6 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
       );
     }
 
-    bool bufferCrossed = false;
-    if (_minimumBuffer > 0) {
-      for (var item in dailySeries) {
-        if ((item['balance'] as double) < _minimumBuffer) {
-          bufferCrossed = true;
-          break;
-        }
-      }
-    }
-
     String explanation = _generateExplanation(dailySeries, changeAmt);
 
     final double yRange = highest - lowest;
@@ -509,7 +464,8 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
     _cachedMaxY = highest + yPadding;
     _cachedSpotDates = spotDates;
     _cachedDailySeries = dailySeries;
-    _cachedCurrentBalance = currentBal;
+    _cachedInitialBalance = initialBal;
+    _cachedEndBalance = endBal;
     _cachedChangeAmount = changeAmt;
     _cachedChangePct = changePct;
     _cachedLowestPoint = lowest;
@@ -517,7 +473,8 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
     _cachedHighestPoint = highest;
     _cachedHighestDate = highestDate;
     _cachedExplanation = explanation;
-    _cachedBufferCrossed = bufferCrossed;
+    _cachedEffectiveStartDate = timelineStart;
+    _cachedEffectiveEndDate = timelineEnd;
 
     _lastTxLength = widget.transactions.length;
     _lastLabelsLength = widget.labels.length;
@@ -605,13 +562,6 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
                             ),
                           ),
                         ),
-                        if (_cachedBufferCrossed) ...[
-                          const SizedBox(width: 8),
-                          Tooltip(
-                            message: 'Buffer threshold crossed!',
-                            child: Icon(Icons.warning_amber_rounded, size: 18, color: Colors.red.shade400),
-                          ),
-                        ],
                       ],
                     ),
                   ),
@@ -877,35 +827,11 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
                         _buildTrendLineChip('30D', TrendLineOption.days30),
                       ],
                     ),
-                    InkWell(
-                      onTap: _showBufferConfigDialog,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        height: 28,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.shield_outlined, size: 12, color: _minimumBuffer > 0 ? Colors.amber : Colors.grey),
-                            const SizedBox(width: 4),
-                            Text(
-                              _minimumBuffer > 0 ? 'Buffer: ${_formatCurrency(_minimumBuffer, includeDecimals: false)}' : 'Set Buffer',
-                              style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'PROJECTION WINDOW: ${widget.startDate != null && widget.endDate != null ? '${DateFormat('MMM dd, yyyy').format(widget.startDate!)} – ${DateFormat('MMM dd, yyyy').format(widget.endDate!)}' : 'Dynamic'}',
+                  'PROJECTION WINDOW: ${_cachedEffectiveStartDate != null && _cachedEffectiveEndDate != null ? '${DateFormat('MMM dd, yyyy').format(_cachedEffectiveStartDate!)} – ${DateFormat('MMM dd, yyyy').format(_cachedEffectiveEndDate!)}' : 'Dynamic'}',
                   style: TextStyle(
                     fontSize: 9.5,
                     fontWeight: FontWeight.w600,
@@ -927,23 +853,91 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Row 1: Subtitles in the same row
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              _buildSummaryItem('Current Balance', isPrivate ? '••••••' : _formatCurrency(_cachedCurrentBalance)),
-                              _buildSummaryItem(
-                                'Change', 
-                                isPrivate ? '••••••' : '${_cachedChangeAmount >= 0 ? '+' : ''}${_formatCurrency(_cachedChangeAmount)} (${_cachedChangePct.toStringAsFixed(1)}%)',
-                                color: _cachedChangeAmount >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text('Initial Balance', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.center,
+                                  child: Text('Change', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text('End Balance', style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                                ),
                               ),
                             ],
+                          ),
+                          const SizedBox(height: 4),
+                          // Row 2: Amounts in the same row
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    isPrivate ? '••••••' : _formatCurrency(_cachedInitialBalance),
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _cachedInitialBalance >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171)),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    isPrivate ? '••••••' : '${_cachedChangeAmount >= 0 ? '+' : ''}${_formatCurrency(_cachedChangeAmount)}',
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _cachedChangeAmount >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171)),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    isPrivate ? '••••••' : _formatCurrency(_cachedEndBalance),
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _cachedEndBalance >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          // Row 3: Percentage change of "Change" in a new row
+                          Center(
+                            child: Text(
+                              isPrivate ? '••••••' : '${_cachedChangePct >= 0 ? '+' : ''}${_cachedChangePct.toStringAsFixed(1)}%',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _cachedChangePct >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              _buildSummaryItem('Lowest', isPrivate ? '••••••' : '${_formatCurrency(_cachedLowestPoint)} (${_cachedLowestDate != null ? DateFormat('MMM d').format(_cachedLowestDate!) : ''})'),
-                              _buildSummaryItem('Highest', isPrivate ? '••••••' : '${_formatCurrency(_cachedHighestPoint)} (${_cachedHighestDate != null ? DateFormat('MMM d').format(_cachedHighestDate!) : ''})'),
+                              _buildSummaryItem(
+                                'Lowest', 
+                                isPrivate ? '••••••' : '${_formatCurrency(_cachedLowestPoint)} (${_cachedLowestDate != null ? DateFormat('MMM d').format(_cachedLowestDate!) : ''})',
+                                color: _cachedLowestPoint >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                              ),
+                              _buildSummaryItem(
+                                'Highest', 
+                                isPrivate ? '••••••' : '${_formatCurrency(_cachedHighestPoint)} (${_cachedHighestDate != null ? DateFormat('MMM d').format(_cachedHighestDate!) : ''})',
+                                color: _cachedHighestPoint >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                                align: CrossAxisAlignment.end,
+                              ),
                             ],
                           ),
                           const SizedBox(height: 8),
@@ -962,7 +956,10 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
                   child: ValueListenableBuilder<bool>(
                     valueListenable: PrivacyService.instance.isPrivacyModeEnabled,
                     builder: (context, isPrivate, child) {
-                      return LineChart(
+                      final bool isLongRange = _cachedDailySeries.length > 365;
+                      final double chartWidth = isLongRange ? _cachedDailySeries.length * 12.0 : constraints.maxWidth - 32;
+
+                      Widget chartWidget = LineChart(
                         LineChartData(
                           minY: _cachedMinY,
                           maxY: _cachedMaxY,
@@ -970,9 +967,6 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
                             show: true,
                             drawVerticalLine: false,
                             getDrawingHorizontalLine: (value) {
-                              if (_minimumBuffer > 0 && (value - _minimumBuffer).abs() < 100) {
-                                return FlLine(color: Colors.red.shade400, strokeWidth: 1.5, dashArray: [2, 2]);
-                              }
                               return FlLine(color: _isZaznamityMode ? Colors.white10 : const Color(0xFFF1F5F9), strokeWidth: 1);
                             },
                           ),
@@ -1047,6 +1041,22 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
                           lineBarsData: _cachedLineBars,
                         ),
                       );
+
+                      if (isLongRange) {
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SizedBox(
+                            width: chartWidth,
+                            height: 220,
+                            child: chartWidget,
+                          ),
+                        );
+                      } else {
+                        return SizedBox(
+                          height: 220,
+                          child: chartWidget,
+                        );
+                      }
                     },
                   ),
                 ),
@@ -1097,9 +1107,9 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
     );
   }
 
-  Widget _buildSummaryItem(String label, String value, {Color? color}) {
+  Widget _buildSummaryItem(String label, String value, {Color? color, CrossAxisAlignment align = CrossAxisAlignment.start}) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: align,
       children: [
         Text(label, style: TextStyle(fontSize: 9.5, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), fontWeight: FontWeight.bold)),
         const SizedBox(height: 2),

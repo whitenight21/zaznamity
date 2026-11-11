@@ -45,8 +45,7 @@ class SankeyFlowCard extends StatefulWidget {
 
 class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObserver {
   String _flowMode = 'Expenses';
-  String _tierMode = '2-tier'; // '2-tier' or '3-tier'
-  String _dateRangeSetting = '30 Days';
+  String _dateRangeSetting = 'Current Month'; // Default changed to Current Month
   bool _isZaznamityMode = true;
   bool _isCollapsed = false;
   String? _isolatedNode; // Interactive Node Isolation state
@@ -57,23 +56,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
   List<MapEntry<String, double>> _cachedSortedTargets = [];
   List _cachedFlows = [];
 
-  // Cache for 3-tier
-  List<MapEntry<String, double>> _cachedTier1 = [];
-  List<MapEntry<String, double>> _cachedTier2 = [];
-  List<MapEntry<String, double>> _cachedTier3 = [];
-  List _cachedFlowsA = []; // Tier 1 -> Tier 2
-  List _cachedFlowsB = []; // Tier 2 -> Tier 3
-
-  double _cachedDynamicHeight = 510.0;
-
-  int? _lastTxLength;
-  String? _lastOwner;
-  String? _lastPool;
-  DateTime? _lastStartDate;
-  DateTime? _lastEndDate;
-  String? _lastFlowMode;
-  String? _lastTierMode;
-  String? _lastCurrency;
+  double _cachedDynamicHeight = 408.0;
+  String _lastDataCacheKey = '';
 
   @override
   void initState() {
@@ -103,10 +87,9 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    final setting = prefs.getString('set_sankey_range') ?? '30 Days';
+    final setting = prefs.getString('set_sankey_range') ?? 'Current Month';
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     final collapsed = prefs.getBool('set_sankeyFlow_collapsed') ?? false;
-    final tier = prefs.getString('set_sankey_tier') ?? '2-tier';
     final primaryCurrency = prefs.getString('primaryCurrency') ?? 'USD';
     final newZaznamityMode = (savedTheme == 'zaznamity');
 
@@ -114,13 +97,11 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
       if (_isZaznamityMode != newZaznamityMode ||
           _dateRangeSetting != setting ||
           _isCollapsed != collapsed ||
-          _tierMode != tier ||
           _primaryCurrency != primaryCurrency) {
         setState(() {
           _dateRangeSetting = setting;
           _isZaznamityMode = newZaznamityMode;
           _isCollapsed = collapsed;
-          _tierMode = tier;
           _primaryCurrency = primaryCurrency;
         });
       }
@@ -135,13 +116,39 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
     await prefs.setBool('set_sankeyFlow_collapsed', _isCollapsed);
   }
 
-  Future<void> _setTierMode(String mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _tierMode = mode;
-      _isolatedNode = null;
-    });
-    await prefs.setString('set_sankey_tier', mode);
+  bool _isTransferTransaction(TransactionModel tx) {
+    final desc = tx.description.toLowerCase();
+    final pool = tx.pool.toLowerCase();
+    final labelObj = widget.labels.firstWhere(
+      (l) => l.id == tx.labelId,
+      orElse: () => LabelModel(id: 0, name: '', color: ''),
+    );
+    final labelName = labelObj.name.toLowerCase();
+    
+    return desc.contains('transfer to') ||
+           desc.contains('transfer from') ||
+           desc.contains('transfer fee') ||
+           desc.contains('goal contribution') ||
+           desc.contains('withdrawal from') ||
+           desc.contains('deposit into') ||
+           pool.contains('transfer') ||
+           pool.contains('goal') ||
+           labelName.contains('transfer') ||
+           tx.labelId == -999;
+  }
+
+  String _formatAmount(double amount) {
+    final symbol = _getCurrencySymbol(_primaryCurrency).trim();
+    const trailingSymbols = ['€', 'Ft', 'Kč', 'zł', 'CHF'];
+    bool isTrailing = trailingSymbols.any((s) => symbol.toLowerCase() == s.toLowerCase());
+
+    final formattedNumber = NumberFormat('#,##0.00', 'en_US').format(amount);
+
+    if (isTrailing) {
+      return '$formattedNumber $symbol';
+    } else {
+      return '$symbol$formattedNumber';
+    }
   }
 
   String _getCurrencySymbol(String code) {
@@ -160,40 +167,35 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
       case 'CHF': return 'CHF';
       case 'RUB': return '₽';
       case 'BRL': return 'R\$';
-      case 'MXN': 
-      case 'CLP': 
-      case 'COP': return '\$';
+      case 'MXN': return 'MX\$';
+      case 'CLP': return 'CLP\$';
+      case 'COP': return 'COL\$';
       default: return '\$';
     }
   }
 
-  String _formatCurrency(double amount) {
-    final symbol = _getCurrencySymbol(_primaryCurrency).trim();
-    const trailingSymbols = ['€', 'Ft', 'Kč', 'zł', 'CHF'];
-    bool isTrailing = trailingSymbols.any((s) => symbol.toLowerCase() == s.toLowerCase());
+  String _computeCacheKey(List<TransactionModel> txs) {
+    final txHash = txs.fold<int>(0, (acc, tx) => acc ^ tx.id.hashCode ^ tx.amount.hashCode ^ tx.isConfirmed.hashCode);
+    final labelHash = widget.labels.fold<int>(0, (acc, l) => acc ^ l.id.hashCode ^ l.name.hashCode);
+    return '${txs.length}-${widget.selectedOwner}-${widget.selectedPool}-${widget.startDate}-${widget.endDate}-$_dateRangeSetting-$_flowMode-$_primaryCurrency-$labelHash-$txHash';
+  }
 
-    final formattedNumber = NumberFormat('#,##0.00', 'en_US').format(amount);
+  List<MapEntry<String, double>> _applyTopNGroups(Map<String, double> totals, int maxItems) {
+    final sorted = totals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    if (sorted.length <= maxItems) return sorted;
 
-    if (isTrailing) {
-      return '$formattedNumber $symbol';
-    } else {
-      return '$symbol$formattedNumber';
-    }
+    final top = sorted.take(maxItems - 1).toList();
+    final others = sorted.skip(maxItems - 1);
+    double otherSum = others.fold(0.0, (sum, e) => sum + e.value);
+
+    top.add(MapEntry('Other', otherSum));
+    return top;
   }
 
   void _computeDataIfNeeded() {
-    _loadPrefs();
-
-    if (_lastTxLength == widget.transactions.length &&
-        _lastOwner == widget.selectedOwner &&
-        _lastPool == widget.selectedPool &&
-        _lastStartDate == widget.startDate &&
-        _lastEndDate == widget.endDate &&
-        _lastFlowMode == _flowMode &&
-        _lastTierMode == _tierMode &&
-        _lastCurrency == _primaryCurrency) {
-      return;
-    }
+    final currentKey = _computeCacheKey(widget.transactions);
+    if (currentKey == _lastDataCacheKey) return;
+    _lastDataCacheKey = currentKey;
 
     final now = DateTime.now();
     DateTime? effectiveStart = widget.startDate;
@@ -211,6 +213,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
 
     final filteredTransactions = widget.transactions.where((tx) {
       if (tx.isConfirmed != 1) return false;
+      if (_isTransferTransaction(tx)) return false;
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && tx.owner != widget.selectedOwner) {
         return false;
       }
@@ -224,128 +227,52 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
         return false;
       }
       if (effectiveEnd != null) {
-        final endOfDay = DateTime(
-          effectiveEnd.year,
-          effectiveEnd.month,
-          effectiveEnd.day,
-          23,
-          59,
-          59,
-        );
+        final endOfDay = DateTime(effectiveEnd.year, effectiveEnd.month, effectiveEnd.day, 23, 59, 59);
         if (txDate.isAfter(endOfDay)) return false;
       }
       return true;
     }).toList();
 
-    if (_tierMode == '2-tier') {
-      final Map<String, double> sourceTotals = {};
-      final Map<String, double> targetTotals = {};
-      final List flows = [];
+    final Map<String, double> sourceTotals = {};
+    final Map<String, double> targetTotals = {};
+    final List flows = [];
 
-      for (var tx in filteredTransactions) {
-        if (_flowMode == 'Expenses' && tx.type == 'expense') {
-          final labelObj = widget.labels.firstWhere(
-            (l) => l.id == tx.labelId,
-            orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
-          );
-          final source = tx.pool.isNotEmpty ? tx.pool.toUpperCase() : 'CHECKING';
-          final target = labelObj.name;
+    for (var tx in filteredTransactions) {
+      if (_flowMode == 'Expenses' && tx.type == 'expense') {
+        final labelObj = widget.labels.firstWhere(
+          (l) => l.id == tx.labelId,
+          orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
+        );
+        final source = tx.pool.isNotEmpty ? tx.pool.toUpperCase() : 'CHECKING';
+        final target = labelObj.name;
 
-          sourceTotals[source] = (sourceTotals[source] ?? 0) + tx.amount;
-          targetTotals[target] = (targetTotals[target] ?? 0) + tx.amount;
-          flows.add({'source': source, 'target': target, 'amount': tx.amount});
-        } else if (_flowMode == 'Income' && tx.type == 'income') {
-          final labelObj = widget.labels.firstWhere(
-            (l) => l.id == tx.labelId,
-            orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
-          );
-          final source = tx.owner.isNotEmpty ? tx.owner : 'INCOME';
-          final target = labelObj.name;
+        sourceTotals[source] = (sourceTotals[source] ?? 0) + tx.amount;
+        targetTotals[target] = (targetTotals[target] ?? 0) + tx.amount;
+        flows.add({'source': source, 'target': target, 'amount': tx.amount});
+      } else if (_flowMode == 'Income' && tx.type == 'income') {
+        final labelObj = widget.labels.firstWhere(
+          (l) => l.id == tx.labelId,
+          orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
+        );
+        final source = tx.owner.isNotEmpty ? tx.owner : 'INCOME';
+        final target = labelObj.name;
 
-          sourceTotals[source] = (sourceTotals[source] ?? 0) + tx.amount;
-          targetTotals[target] = (targetTotals[target] ?? 0) + tx.amount;
-          flows.add({'source': source, 'target': target, 'amount': tx.amount});
-        }
+        sourceTotals[source] = (sourceTotals[source] ?? 0) + tx.amount;
+        targetTotals[target] = (targetTotals[target] ?? 0) + tx.amount;
+        flows.add({'source': source, 'target': target, 'amount': tx.amount});
       }
-
-      final sortedSources = sourceTotals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-      final sortedTargets = targetTotals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-
-      int maxItems = sortedSources.length > sortedTargets.length ? sortedSources.length : sortedTargets.length;
-      
-      double dynamicHeight = (maxItems * 74.8 + 85.0);
-      if (dynamicHeight < 408.0) dynamicHeight = 408.0;
-
-      _cachedSortedSources = sortedSources;
-      _cachedSortedTargets = sortedTargets;
-      _cachedFlows = flows;
-      _cachedDynamicHeight = dynamicHeight;
-    } else {
-      final Map<String, double> t1Totals = {};
-      final Map<String, double> t2Totals = {};
-      final Map<String, double> t3Totals = {};
-      final List tempFlowsA = [];
-      final List tempFlowsB = [];
-
-      for (var tx in filteredTransactions) {
-        if (_flowMode == 'Expenses' && tx.type == 'expense') {
-          final labelObj = widget.labels.firstWhere(
-            (l) => l.id == tx.labelId,
-            orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
-          );
-          final t1 = tx.owner.isNotEmpty ? tx.owner : 'OWNER';
-          final t2 = tx.pool.isNotEmpty ? tx.pool.toUpperCase() : 'CHECKING';
-          final t3 = labelObj.name;
-
-          t1Totals[t1] = (t1Totals[t1] ?? 0) + tx.amount;
-          t2Totals[t2] = (t2Totals[t2] ?? 0) + tx.amount;
-          t3Totals[t3] = (t3Totals[t3] ?? 0) + tx.amount;
-
-          tempFlowsA.add({'source': t1, 'target': t2, 'amount': tx.amount});
-          tempFlowsB.add({'source': t2, 'target': t3, 'amount': tx.amount});
-        } else if (_flowMode == 'Income' && tx.type == 'income') {
-          final labelObj = widget.labels.firstWhere(
-            (l) => l.id == tx.labelId,
-            orElse: () => LabelModel(id: 0, name: 'General', color: '#4338CA'),
-          );
-          final t1 = labelObj.name;
-          final t2 = tx.pool.isNotEmpty ? tx.pool.toUpperCase() : 'CHECKING';
-          final t3 = tx.owner.isNotEmpty ? tx.owner : 'INCOME';
-
-          t1Totals[t1] = (t1Totals[t1] ?? 0) + tx.amount;
-          t2Totals[t2] = (t2Totals[t2] ?? 0) + tx.amount;
-          t3Totals[t3] = (t3Totals[t3] ?? 0) + tx.amount;
-
-          tempFlowsA.add({'source': t1, 'target': t2, 'amount': tx.amount});
-          tempFlowsB.add({'source': t2, 'target': t3, 'amount': tx.amount});
-        }
-      }
-
-      final sortedT1 = t1Totals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-      final sortedT2 = t2Totals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-      final sortedT3 = t3Totals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-
-      int maxItems = [sortedT1.length, sortedT2.length, sortedT3.length].reduce((a, b) => a > b ? a : b);
-      
-      double dynamicHeight = (maxItems * 74.8 + 85.0);
-      if (dynamicHeight < 442.0) dynamicHeight = 442.0;
-
-      _cachedTier1 = sortedT1;
-      _cachedTier2 = sortedT2;
-      _cachedTier3 = sortedT3;
-      _cachedFlowsA = tempFlowsA;
-      _cachedFlowsB = tempFlowsB;
-      _cachedDynamicHeight = dynamicHeight;
     }
 
-    _lastTxLength = widget.transactions.length;
-    _lastOwner = widget.selectedOwner;
-    _lastPool = widget.selectedPool;
-    _lastStartDate = widget.startDate;
-    _lastEndDate = widget.endDate;
-    _lastFlowMode = _flowMode;
-    _lastTierMode = _tierMode;
-    _lastCurrency = _primaryCurrency;
+    final sortedSources = _applyTopNGroups(sourceTotals, 6);
+    final sortedTargets = _applyTopNGroups(targetTotals, 8);
+
+    int maxItems = sortedSources.length > sortedTargets.length ? sortedSources.length : sortedTargets.length;
+    double dynamicHeight = (maxItems * 74.8 + 85.0).clamp(408.0, double.infinity);
+
+    _cachedSortedSources = sortedSources;
+    _cachedSortedTargets = sortedTargets;
+    _cachedFlows = flows;
+    _cachedDynamicHeight = dynamicHeight;
   }
 
   Future<void> _pickDateRange(BuildContext context) async {
@@ -398,8 +325,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
 
     final matchedTxs = widget.transactions.where((tx) {
       if (tx.isConfirmed != 1) return false;
-      if (_flowMode == 'Expenses' && tx.type != 'expense') return false;
-      if (_flowMode == 'Income' && tx.type != 'income') return false;
+      if (_isTransferTransaction(tx)) return false;
 
       final labelObj = widget.labels.firstWhere(
         (l) => l.id == tx.labelId,
@@ -470,7 +396,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                             title: Text(tx.description.isNotEmpty ? tx.description : labelObj.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
                             subtitle: Text('${tx.owner} • ${tx.pool.toUpperCase()} • ${tx.createdAt.substring(0, 10)}', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600)),
                             trailing: MaskedAmount(
-                              formattedAmount: '${tx.type == 'expense' ? '-' : '+'}${_formatCurrency(tx.amount)}',
+                              formattedAmount: '${tx.type == 'expense' ? '-' : '+'}${_formatAmount(tx.amount)}',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
@@ -587,13 +513,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                             context,
                             'Sankey Flow Trend',
                             'This card visualizes by color the flow of money between your financial pools and category labels over a selected date range.\n\n'
-                            '• Visualize money flows across the 2-tier or 3-tier lifecycle stages.\n'
-                            '• Toggle between pools to analyze your financial trends.\n'
-                            '• Toggle between Expense and Income flows to see how money is moving in and out of your accounts.\n'
-                            '• Use the date range picker to focus on specific periods, or clear the filter to view all historical data.\n'
-                            '• The width of the flow lines represents the relative amount of money moving between nodes, providing a clear visual representation of your financial activity.\n'
-                            '• Tap on any node to drill down and view the associated transactions for that pool, label, or owner.\n'
-                            '• Select the "View Zaznams:" option to inspect Income or Expense records for that label and date range.\n',
+                            '• Visualize money flows across 2-tier stages.\n'
+                            '• Toggle between pools and flows to analyze your financial trends.\n',
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(2.0),
@@ -814,74 +735,10 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                 ),
                 const SizedBox(height: 12),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     SizedBox(
-                      width: boxWidth,
-                      child: Container(
-                        height: 44,
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () => _setTierMode('2-tier'),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: _tierMode == '2-tier'
-                                        ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: Text(
-                                    '2-tier',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: _tierMode == '2-tier'
-                                          ? Colors.white
-                                          : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () => _setTierMode('3-tier'),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: _tierMode == '3-tier'
-                                        ? (_isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: Text(
-                                    '3-tier',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: _tierMode == '3-tier'
-                                          ? Colors.white
-                                          : (_isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: boxWidth,
+                      width: fullWidth,
                       child: Container(
                         height: 44,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -939,9 +796,17 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'Selected:  $_isolatedNode',
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFA855F7)),
+                        RichText(
+                          text: TextSpan(
+                            text: 'Selected:  ',
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFA855F7)),
+                            children: [
+                              TextSpan(
+                                text: _isolatedNode,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), // Label font is white
+                              ),
+                            ],
+                          ),
                         ),
                         Row(
                           children: [
@@ -957,7 +822,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                               onTap: () => setState(() => _isolatedNode = null),
                               child: const Text(
                                 'CLEAR',
-                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.red, decoration: TextDecoration.underline),
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.red), // Underline removed
                               ),
                             ),
                           ],
@@ -967,8 +832,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                   ),
                 ],
 
-                (_tierMode == '2-tier' && (_cachedSortedSources.isEmpty || _cachedSortedTargets.isEmpty)) ||
-                        (_tierMode == '3-tier' && (_cachedTier1.isEmpty || _cachedTier2.isEmpty || _cachedTier3.isEmpty))
+                _cachedSortedSources.isEmpty || _cachedSortedTargets.isEmpty
                     ? Center(
                         child: Padding(
                           padding: const EdgeInsets.all(32.0),
@@ -997,9 +861,8 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                                     final tappedNode = SankeyDiagramPainter.hitTestNode(
                                       localPos,
                                       Size(fullWidth, _cachedDynamicHeight),
-                                      _tierMode == '2-tier' ? _cachedSortedSources : _cachedTier1,
-                                      _tierMode == '2-tier' ? _cachedSortedTargets : _cachedTier3,
-                                      middleNodes: _tierMode == '3-tier' ? _cachedTier2 : null,
+                                      _cachedSortedSources,
+                                      _cachedSortedTargets,
                                     );
                                     if (tappedNode != null) {
                                       setState(() {
@@ -1014,16 +877,10 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                                   child: CustomPaint(
                                     size: Size(double.infinity, _cachedDynamicHeight),
                                     painter: SankeyDiagramPainter(
-                                      tierMode: _tierMode,
                                       sources: _cachedSortedSources,
                                       targets: _cachedSortedTargets,
-                                      tier1: _cachedTier1,
-                                      tier2: _cachedTier2,
-                                      tier3: _cachedTier3,
                                       flows: _cachedFlows,
-                                      flowsA: _cachedFlowsA,
-                                      flowsB: _cachedFlowsB,
-                                      formatCurrency: _formatCurrency,
+                                      formatCurrency: _formatAmount,
                                       isZaznamityMode: _isZaznamityMode,
                                       isolatedNode: _isolatedNode,
                                       isPrivate: isPrivate,
@@ -1045,15 +902,9 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
 }
 
 class SankeyDiagramPainter extends CustomPainter {
-  final String tierMode;
   final List<MapEntry<String, double>> sources;
   final List<MapEntry<String, double>> targets;
-  final List<MapEntry<String, double>> tier1;
-  final List<MapEntry<String, double>> tier2;
-  final List<MapEntry<String, double>> tier3;
   final List flows;
-  final List flowsA;
-  final List flowsB;
   final String Function(double) formatCurrency;
   final bool isZaznamityMode;
   final String? isolatedNode;
@@ -1062,22 +913,16 @@ class SankeyDiagramPainter extends CustomPainter {
   static final Map<String, Rect> _lastNodeRects = {};
 
   SankeyDiagramPainter({
-    required this.tierMode,
     required this.sources,
     required this.targets,
-    required this.tier1,
-    required this.tier2,
-    required this.tier3,
     required this.flows,
-    required this.flowsA,
-    required this.flowsB,
     required this.formatCurrency,
     required this.isZaznamityMode,
     this.isolatedNode,
     required this.isPrivate,
   });
 
-  static String? hitTestNode(Offset pos, Size size, List<MapEntry<String, double>> leftList, List<MapEntry<String, double>> rightList, {List<MapEntry<String, double>>? middleNodes}) {
+  static String? hitTestNode(Offset pos, Size size, List<MapEntry<String, double>> leftList, List<MapEntry<String, double>> rightList) {
     for (var entry in _lastNodeRects.entries) {
       final hitRect = entry.value.inflate(22.0);
       if (hitRect.contains(pos)) return entry.key;
@@ -1086,29 +931,55 @@ class SankeyDiagramPainter extends CustomPainter {
   }
 
   static const List<Color> _lightPalette = [
-    Color(0xFF2563EB), // Blue
-    Color(0xFFDC2626), // Red
-    Color(0xFF16A34A), // Green
-    Color(0xFFD97706), // Amber
-    Color(0xFF9333EA), // Purple
-    Color(0xFF0D9488), // Teal
-    Color(0xFFDB2777), // Pink
-    Color(0xFF4F46E5), // Indigo
+    Color(0xFF2563EB),
+    Color(0xFFDC2626),
+    Color(0xFF16A34A),
+    Color(0xFFD97706),
+    Color(0xFF9333EA),
+    Color(0xFF0D9488),
+    Color(0xFFDB2777),
+    Color(0xFF4F46E5),
   ];
 
-  Color _getNodeColor(String key, int index, bool isSource) {
+  Color _getSourceNodeColor(String key, int index) {
     if (isZaznamityMode) {
-      return isSource ? const Color(0xFFA855F7) : const Color(0xFF7C3AED);
+      return const Color(0xFFA855F7);
     }
     return _lightPalette[index % _lightPalette.length];
   }
 
-  Color _getPathColor(String tgtKey, List<MapEntry<String, double>> targetList, int defaultIndex, bool isConnected) {
+  Color _getTargetNodeColor(String tgtKey, int defaultIndex) {
+    int targetIdx = targets.indexWhere((e) => e.key == tgtKey);
+    if (targetIdx < 0) targetIdx = defaultIndex;
+
+    if (isZaznamityMode) {
+      const List<Color> ribbonColors = [
+        Color(0xFF2563EB),
+        Color(0xFFDC2626),
+        Color(0xFF16A34A),
+        Color(0xFFD97706),
+        Color(0xFF9333EA),
+        Color(0xFF0D9488),
+        Color(0xFFDB2777),
+        Color(0xFF4F46E5),
+      ];
+      Color baseRibbonColor = ribbonColors[targetIdx % ribboncolorsLength(ribbonColors.length)];
+      // Return a darker shade of the ribbon line color
+      return HSLColor.fromColor(baseRibbonColor).withLightness((HSLColor.fromColor(baseRibbonColor).lightness - 0.2).clamp(0.0, 1.0)).toColor();
+    } else {
+      Color baseColor = _lightPalette[targetIdx % _lightPalette.length];
+      return HSLColor.fromColor(baseColor).withLightness((HSLColor.fromColor(baseColor).lightness - 0.2).clamp(0.0, 1.0)).toColor();
+    }
+  }
+
+  int ribboncolorsLength(int len) => len;
+
+  Color _getPathColor(String tgtKey, int defaultIndex, bool isConnected) {
     if (!isConnected) {
       return isZaznamityMode ? Colors.white10 : Colors.black12;
     }
 
-    int targetIdx = targetList.indexWhere((e) => e.key == tgtKey);
+    int targetIdx = targets.indexWhere((e) => e.key == tgtKey);
     if (targetIdx < 0) targetIdx = defaultIndex;
 
     if (isZaznamityMode) {
@@ -1138,323 +1009,156 @@ class SankeyDiagramPainter extends CustomPainter {
     final paintRibbon = Paint()..style = PaintingStyle.fill;
     final paintNode = Paint()..style = PaintingStyle.fill;
 
-    if (tierMode == '2-tier') {
-      double totalSourceVal = sources.fold(0.0, (sum, e) => sum + e.value);
-      double totalTargetVal = targets.fold(0.0, (sum, e) => sum + e.value);
-      if (totalSourceVal <= 0 || totalTargetVal <= 0) return;
+    double totalSourceVal = sources.fold(0.0, (sum, e) => sum + e.value);
+    double totalTargetVal = targets.fold(0.0, (sum, e) => sum + e.value);
+    if (totalSourceVal <= 0 || totalTargetVal <= 0) return;
 
-      double nodeWidth = 6.0;
-      double leftX = 0.0;
-      double rightX = size.width - nodeWidth;
+    double nodeWidth = 6.0;
+    double leftX = 0.0;
+    double rightX = size.width - nodeWidth;
+    
+    double topPadding = 12.0;
+    double bottomPadding = 12.0 + (targets.length * 5.0);
+    double usableHeight = size.height - (topPadding + bottomPadding);
+
+    Map<String, Rect> sourceRects = {};
+    int srcCount = sources.length;
+    double sourceGap = srcCount > 1 ? (usableHeight * 0.04 / (srcCount - 1)).clamp(2.0, 6.0) : 0.0;
+    double totalSourceGaps = (srcCount > 1) ? (srcCount - 1) * sourceGap : 0.0;
+    
+    double maxAllowedSourceNodeSize = usableHeight * 0.45;
+    double availableSourceHeight = (usableHeight - totalSourceGaps).clamp(srcCount * 14.0, usableHeight);
+
+    double currentSourceY = topPadding;
+    for (var src in sources) {
+      double proportionHeight = (src.value / totalSourceVal) * availableSourceHeight;
+      if (proportionHeight > maxAllowedSourceNodeSize) proportionHeight = maxAllowedSourceNodeSize;
+      double nodeHeight = proportionHeight < 14.0 ? 14.0 : proportionHeight;
       
-      double topPadding = 12.0;
-      double bottomPadding = 12.0 + (targets.length * 5.0);
-      double usableHeight = size.height - (topPadding + bottomPadding);
+      sourceRects[src.key] = Rect.fromLTWH(leftX, currentSourceY, nodeWidth, nodeHeight);
+      _lastNodeRects[src.key] = sourceRects[src.key]!;
+      currentSourceY += nodeHeight + sourceGap;
+    }
 
-      Map<String, Rect> sourceRects = {};
-      int srcCount = sources.length;
-      double sourceGap = srcCount > 1 ? (usableHeight * 0.04 / (srcCount - 1)).clamp(2.0, 6.0) : 0.0;
-      double totalSourceGaps = (srcCount > 1) ? (srcCount - 1) * sourceGap : 0.0;
-      
-      double maxAllowedSourceNodeSize = usableHeight * 0.45;
-      double availableSourceHeight = (usableHeight - totalSourceGaps).clamp(srcCount * 14.0, usableHeight);
+    Map<String, Rect> targetRects = {};
+    int tgtCount = targets.length;
+    double targetGap = tgtCount > 1 ? (usableHeight * 0.04 / (tgtCount - 1)).clamp(2.0, 6.0) : 0.0;
+    double totalTargetGaps = (tgtCount > 1) ? (tgtCount - 1) * targetGap : 0.0;
+    
+    double maxAllowedTargetNodeSize = usableHeight * 0.35;
+    double availableTargetHeight = (usableHeight - totalTargetGaps).clamp(tgtCount * 14.0, usableHeight);
 
-      double currentSourceY = topPadding;
-      for (var src in sources) {
-        double proportionHeight = (src.value / totalSourceVal) * availableSourceHeight;
-        if (proportionHeight > maxAllowedSourceNodeSize) proportionHeight = maxAllowedSourceNodeSize;
-        double nodeHeight = proportionHeight < 14.0 ? 14.0 : proportionHeight;
-        
-        sourceRects[src.key] = Rect.fromLTWH(leftX, currentSourceY, nodeWidth, nodeHeight);
-        _lastNodeRects[src.key] = sourceRects[src.key]!;
-        currentSourceY += nodeHeight + sourceGap;
-      }
+    double currentTargetY = topPadding;
+    for (var tgt in targets) {
+      double proportionHeight = (tgt.value / totalTargetVal) * availableTargetHeight;
+      if (proportionHeight > maxAllowedTargetNodeSize) proportionHeight = maxAllowedTargetNodeSize;
+      double nodeHeight = proportionHeight < 14.0 ? 14.0 : proportionHeight;
 
-      Map<String, Rect> targetRects = {};
-      int tgtCount = targets.length;
-      double targetGap = tgtCount > 1 ? (usableHeight * 0.04 / (tgtCount - 1)).clamp(2.0, 6.0) : 0.0;
-      double totalTargetGaps = (tgtCount > 1) ? (tgtCount - 1) * targetGap : 0.0;
-      
-      double maxAllowedTargetNodeSize = usableHeight * 0.35;
-      double availableTargetHeight = (usableHeight - totalTargetGaps).clamp(tgtCount * 14.0, usableHeight);
+      targetRects[tgt.key] = Rect.fromLTWH(rightX, currentTargetY, nodeWidth, nodeHeight);
+      _lastNodeRects[tgt.key] = targetRects[tgt.key]!;
+      currentTargetY += nodeHeight + targetGap;
+    }
 
-      double currentTargetY = topPadding;
-      for (var tgt in targets) {
-        double proportionHeight = (tgt.value / totalTargetVal) * availableTargetHeight;
-        if (proportionHeight > maxAllowedTargetNodeSize) proportionHeight = maxAllowedTargetNodeSize;
-        double nodeHeight = proportionHeight < 14.0 ? 14.0 : proportionHeight;
+    Map<String, double> sourceOffsets = {for (var s in sources) s.key: sourceRects[s.key]!.top};
+    Map<String, double> targetOffsets = {for (var t in targets) t.key: targetRects[t.key]!.top};
 
-        targetRects[tgt.key] = Rect.fromLTWH(rightX, currentTargetY, nodeWidth, nodeHeight);
-        _lastNodeRects[tgt.key] = targetRects[tgt.key]!;
-        currentTargetY += nodeHeight + targetGap;
-      }
+    int colorIdx = 0;
+    for (var flow in flows) {
+      String srcKey = flow['source'];
+      String tgtKey = flow['target'];
+      double amount = flow['amount'];
 
-      Map<String, double> sourceOffsets = {for (var s in sources) s.key: sourceRects[s.key]!.top};
-      Map<String, double> targetOffsets = {for (var t in targets) t.key: targetRects[t.key]!.top};
+      Rect? sRect = sourceRects[srcKey];
+      Rect? tRect = targetRects[tgtKey];
+      if (sRect == null || tRect == null) continue;
 
-      int colorIdx = 0;
-      for (var flow in flows) {
-        String srcKey = flow['source'];
-        String tgtKey = flow['target'];
-        double amount = flow['amount'];
+      double srcTotal = sources.firstWhere((s) => s.key == srcKey, orElse: () => MapEntry(srcKey, 1.0)).value;
+      double tgtTotal = targets.firstWhere((t) => t.key == tgtKey, orElse: () => MapEntry(tgtKey, 1.0)).value;
 
-        Rect? sRect = sourceRects[srcKey];
-        Rect? tRect = targetRects[tgtKey];
-        if (sRect == null || tRect == null) continue;
+      double sH = (amount / srcTotal) * sRect.height;
+      double tgtH = (amount / tgtTotal) * tRect.height;
 
-        double sH = (amount / sources.firstWhere((s) => s.key == srcKey).value) * sRect.height;
-        double tgtH = (amount / targets.firstWhere((t) => t.key == tgtKey).value) * tRect.height;
+      double sTop = sourceOffsets[srcKey]!;
+      double tTop = targetOffsets[tgtKey]!;
 
-        double sTop = sourceOffsets[srcKey]!;
-        double tTop = targetOffsets[tgtKey]!;
+      sourceOffsets[srcKey] = sTop + sH;
+      targetOffsets[tgtKey] = tTop + tgtH;
 
-        sourceOffsets[srcKey] = sTop + sH;
-        targetOffsets[tgtKey] = tTop + tgtH;
+      bool isConnected = isolatedNode == null || isolatedNode == srcKey || isolatedNode == tgtKey;
+      Color ribbonColor = _getPathColor(tgtKey, colorIdx, isConnected);
 
-        bool isConnected = isolatedNode == null || isolatedNode == srcKey || isolatedNode == tgtKey;
-        Color ribbonColor = _getPathColor(tgtKey, targets, colorIdx, isConnected);
+      Path path = Path();
+      path.moveTo(sRect.right, sTop);
+      path.cubicTo((sRect.right + tRect.left) / 2, sTop, (sRect.right + tRect.left) / 2, tTop, tRect.left, tTop);
+      path.lineTo(tRect.left, tTop + tgtH);
+      path.cubicTo((sRect.right + tRect.left) / 2, tTop + tgtH, (sRect.right + tRect.left) / 2, sTop + sH, sRect.right, sTop + sH);
+      path.close();
 
-        Path path = Path();
-        path.moveTo(sRect.right, sTop);
-        path.cubicTo((sRect.right + tRect.left) / 2, sTop, (sRect.right + tRect.left) / 2, tTop, tRect.left, tTop);
-        path.lineTo(tRect.left, tTop + tgtH);
-        path.cubicTo((sRect.right + tRect.left) / 2, tTop + tgtH, (sRect.right + tRect.left) / 2, sTop + sH, sRect.right, sTop + sH);
-        path.close();
+      paintRibbon.color = ribbonColor;
+      canvas.drawPath(path, paintRibbon);
+      colorIdx++;
+    }
 
-        paintRibbon.color = ribbonColor;
-        canvas.drawPath(path, paintRibbon);
-        colorIdx++;
-      }
+    int srcIdx = 0;
+    for (var entry in sourceRects.entries) {
+      bool isSelected = isolatedNode == null || isolatedNode == entry.key;
+      Color nodeColor = _getSourceNodeColor(entry.key, srcIdx);
+      paintNode.color = isSelected ? nodeColor : (isZaznamityMode ? Colors.white24 : Colors.grey.shade400);
+      canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
 
-      int srcIdx = 0;
-      for (var entry in sourceRects.entries) {
-        bool isSelected = isolatedNode == null || isolatedNode == entry.key;
-        Color nodeColor = _getNodeColor(entry.key, srcIdx, true);
-        paintNode.color = isSelected ? nodeColor : (isZaznamityMode ? Colors.white24 : Colors.grey.shade400);
-        canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
-
-        double val = sources.firstWhere((s) => s.key == entry.key).value;
-        double pct = (val / totalSourceVal) * 100;
-        final amountText = isPrivate ? '••••••' : formatCurrency(val);
-        TextPainter tp = TextPainter(
-          text: TextSpan(
-            text: '${entry.key} - $amountText (${pct.toStringAsFixed(0)}%)',
-            style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-              color: isSelected ? (isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)) : (isZaznamityMode ? Colors.white38 : Colors.grey.shade500),
-            ),
+      double val = sources.firstWhere((s) => s.key == entry.key, orElse: () => MapEntry(entry.key, 0.0)).value;
+      double pct = totalSourceVal > 0 ? (val / totalSourceVal) * 100 : 0;
+      final amountText = isPrivate ? '••••••' : formatCurrency(val);
+      TextPainter tp = TextPainter(
+        text: TextSpan(
+          text: '${entry.key} - $amountText (${pct.toStringAsFixed(0)}%)',
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? (isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)) : (isZaznamityMode ? Colors.white38 : Colors.grey.shade500),
           ),
-          textDirection: ui.TextDirection.ltr,
-          textAlign: TextAlign.left,
-        );
-        tp.layout();
-        tp.paint(canvas, Offset(entry.value.right + 6, entry.value.top + (entry.value.height / 2) - 8));
-        srcIdx++;
-      }
+        ),
+        textDirection: ui.TextDirection.ltr,
+        textAlign: TextAlign.left,
+      );
+      tp.layout();
+      tp.paint(canvas, Offset(entry.value.right + 6, entry.value.top + (entry.value.height / 2) - 8));
+      srcIdx++;
+    }
 
-      int tgtIdx = 0;
-      for (var entry in targetRects.entries) {
-        bool isSelected = isolatedNode == null || isolatedNode == entry.key;
-        Color nodeColor = _getNodeColor(entry.key, tgtIdx, false);
-        paintNode.color = isSelected ? nodeColor : (isZaznamityMode ? Colors.white24 : Colors.grey.shade400);
-        canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
+    int tgtIdx = 0;
+    for (var entry in targetRects.entries) {
+      bool isSelected = isolatedNode == null || isolatedNode == entry.key;
+      Color nodeColor = _getTargetNodeColor(entry.key, tgtIdx); // Darker shade of line/flow color
+      paintNode.color = isSelected ? nodeColor : (isZaznamityMode ? Colors.white24 : Colors.grey.shade400);
+      canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
 
-        double val = targets.firstWhere((t) => t.key == entry.key).value;
-        double pct = (val / totalTargetVal) * 100;
-        final amountText = isPrivate ? '••••••' : formatCurrency(val);
-        TextPainter tp = TextPainter(
-          text: TextSpan(
-            text: '${entry.key} - $amountText (${pct.toStringAsFixed(0)}%)',
-            style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-              color: isSelected ? (isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)) : (isZaznamityMode ? Colors.white38 : Colors.grey.shade500),
-            ),
+      double val = targets.firstWhere((t) => t.key == entry.key, orElse: () => MapEntry(entry.key, 0.0)).value;
+      double pct = totalTargetVal > 0 ? (val / totalTargetVal) * 100 : 0;
+      final amountText = isPrivate ? '••••••' : formatCurrency(val);
+      TextPainter tp = TextPainter(
+        text: TextSpan(
+          text: '${entry.key} - $amountText (${pct.toStringAsFixed(0)}%)',
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? (isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)) : (isZaznamityMode ? Colors.white38 : Colors.grey.shade500),
           ),
-          textDirection: ui.TextDirection.ltr,
-          textAlign: TextAlign.right,
-        );
-        tp.layout();
-        tp.paint(canvas, Offset(entry.value.left - tp.width - 6, entry.value.top + (entry.value.height / 2) - 8));
-        tgtIdx++;
-      }
-    } else {
-      double totalT1 = tier1.fold(0.0, (sum, e) => sum + e.value);
-      double totalT2 = tier2.fold(0.0, (sum, e) => sum + e.value);
-      double totalT3 = tier3.fold(0.0, (sum, e) => sum + e.value);
-      if (totalT1 <= 0 || totalT2 <= 0 || totalT3 <= 0) return;
-
-      double nodeWidth = 6.0;
-      double col1X = 0.0;
-      double col2X = size.width / 2 - nodeWidth / 2;
-      double col3X = size.width - nodeWidth;
-      
-      double topPadding = 12.0;
-      double bottomPadding = 12.0 + (tier3.length * 5.0);
-      double usableHeight = size.height - (topPadding + bottomPadding);
-
-      Map<String, Rect> t1Rects = {};
-      double currentY1 = topPadding;
-      for (var item in tier1) {
-        double h = (item.value / totalT1) * (usableHeight - tier1.length * 4);
-        if (h < 14.0) h = 14.0;
-        t1Rects[item.key] = Rect.fromLTWH(col1X, currentY1, nodeWidth, h);
-        _lastNodeRects[item.key] = t1Rects[item.key]!;
-        currentY1 += h + 4;
-      }
-
-      Map<String, Rect> t2Rects = {};
-      double currentY2 = topPadding;
-      for (var item in tier2) {
-        double h = (item.value / totalT2) * (usableHeight - tier2.length * 4);
-        if (h < 14.0) h = 14.0;
-        t2Rects[item.key] = Rect.fromLTWH(col2X, currentY2, nodeWidth, h);
-        _lastNodeRects[item.key] = t2Rects[item.key]!;
-        currentY2 += h + 4;
-      }
-
-      Map<String, Rect> t3Rects = {};
-      double currentY3 = topPadding;
-      for (var item in tier3) {
-        double h = (item.value / totalT3) * (usableHeight - tier3.length * 4);
-        if (h < 14.0) h = 14.0;
-        t3Rects[item.key] = Rect.fromLTWH(col3X, currentY3, nodeWidth, h);
-        _lastNodeRects[item.key] = t3Rects[item.key]!;
-        currentY3 += h + 4;
-      }
-
-      Map<String, double> t1Off = {for (var i in tier1) i.key: t1Rects[i.key]!.top};
-      Map<String, double> t2OffA = {for (var i in tier2) i.key: t2Rects[i.key]!.top};
-      Map<String, double> t2OffB = {for (var i in tier2) i.key: t2Rects[i.key]!.top};
-      Map<String, double> t3Off = {for (var i in tier3) i.key: t3Rects[i.key]!.top};
-
-      int flowIdxA = 0;
-      for (var flow in flowsA) {
-        String src = flow['source'];
-        String tgt = flow['target'];
-        double amt = flow['amount'];
-        Rect? sR = t1Rects[src];
-        Rect? tR = t2Rects[tgt];
-        if (sR == null || tR == null) continue;
-
-        double sH = (amt / tier1.firstWhere((x) => x.key == src).value) * sR.height;
-        double tH = (amt / tier2.firstWhere((x) => x.key == tgt).value) * tR.height;
-        double sTop = t1Off[src]!;
-        double tTop = t2OffA[tgt]!;
-        t1Off[src] = sTop + sH;
-        t2OffA[tgt] = tTop + tH;
-
-        bool isConnected = isolatedNode == null || isolatedNode == src || isolatedNode == tgt;
-        paintRibbon.color = _getPathColor(tgt, tier2, flowIdxA, isConnected);
-
-        Path p = Path();
-        p.moveTo(sR.right, sTop);
-        p.cubicTo((sR.right + tR.left) / 2, sTop, (sR.right + tR.left) / 2, tTop, tR.left, tTop);
-        p.lineTo(tR.left, tTop + tH);
-        p.cubicTo((sR.right + tR.left) / 2, tTop + tH, (sR.right + tR.left) / 2, sTop + sH, sR.right, sTop + sH);
-        p.close();
-        canvas.drawPath(p, paintRibbon);
-        flowIdxA++;
-      }
-
-      int flowIdxB = 0;
-      for (var flow in flowsB) {
-        String src = flow['source'];
-        String tgt = flow['target'];
-        double amt = flow['amount'];
-        Rect? sR = t2Rects[src];
-        Rect? tR = t3Rects[tgt];
-        if (sR == null || tR == null) continue;
-
-        double sH = (amt / tier2.firstWhere((x) => x.key == src).value) * sR.height;
-        double tH = (amt / tier3.firstWhere((x) => x.key == tgt).value) * tR.height;
-        double sTop = t2OffB[src]!;
-        double tTop = t3Off[tgt]!;
-        t2OffB[src] = sTop + sH;
-        t3Off[tgt] = tTop + tH;
-
-        bool isConnected = isolatedNode == null || isolatedNode == src || isolatedNode == tgt;
-        paintRibbon.color = _getPathColor(tgt, tier3, flowIdxB, isConnected);
-
-        Path p = Path();
-        p.moveTo(sR.right, sTop);
-        p.cubicTo((sR.right + tR.left) / 2, sTop, (sR.right + tR.left) / 2, tTop, tR.left, tTop);
-        p.lineTo(tR.left, tTop + tH);
-        p.cubicTo((sR.right + tR.left) / 2, tTop + tH, (sR.right + tR.left) / 2, sTop + sH, sR.right, sTop + sH);
-        p.close();
-        canvas.drawPath(p, paintRibbon);
-        flowIdxB++;
-      }
-
-      int t1Idx = 0;
-      for (var entry in t1Rects.entries) {
-        paintNode.color = isZaznamityMode ? const Color(0xFFA855F7) : _lightPalette[t1Idx % _lightPalette.length];
-        canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
-        double val = tier1.firstWhere((x) => x.key == entry.key).value;
-        double pct = (val / totalT1) * 100;
-        TextPainter tp = TextPainter(
-          text: TextSpan(
-            text: '${entry.key} (${pct.toStringAsFixed(0)}%)',
-            style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.black87),
-          ),
-          textDirection: ui.TextDirection.ltr,
-        );
-        tp.layout();
-        tp.paint(canvas, Offset(entry.value.right + 4, entry.value.top + (entry.value.height / 2) - 6));
-        t1Idx++;
-      }
-
-      int t2Idx = 0;
-      for (var entry in t2Rects.entries) {
-        paintNode.color = isZaznamityMode ? const Color(0xFF9333EA) : _lightPalette[(t2Idx + 2) % _lightPalette.length];
-        canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
-        double val = tier2.firstWhere((x) => x.key == entry.key).value;
-        double pct = (val / totalT2) * 100;
-        TextPainter tp = TextPainter(
-          text: TextSpan(
-            text: '${entry.key} (${pct.toStringAsFixed(0)}%)',
-            style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.black87),
-          ),
-          textDirection: ui.TextDirection.ltr,
-          textAlign: TextAlign.right,
-        );
-        tp.layout();
-        tp.paint(canvas, Offset(entry.value.left - tp.width - 4, entry.value.top + (entry.value.height / 2) - 6));
-        t2Idx++;
-      }
-
-      int t3Idx = 0;
-      for (var entry in t3Rects.entries) {
-        paintNode.color = isZaznamityMode ? const Color(0xFF7C3AED) : _lightPalette[(t3Idx + 4) % _lightPalette.length];
-        canvas.drawRRect(RRect.fromRectAndRadius(entry.value, const Radius.circular(2)), paintNode);
-        double val = tier3.firstWhere((x) => x.key == entry.key).value;
-        double pct = (val / totalT3) * 100;
-        final amountText = isPrivate ? '••••••' : formatCurrency(val);
-        TextPainter tp = TextPainter(
-          text: TextSpan(
-            text: '${entry.key} - $amountText (${pct.toStringAsFixed(0)}%)',
-            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF334155)),
-          ),
-          textDirection: ui.TextDirection.ltr,
-          textAlign: TextAlign.right,
-        );
-        tp.layout();
-        tp.paint(canvas, Offset(entry.value.left - tp.width - 6, entry.value.top + (entry.value.height / 2) - 8));
-        t3Idx++;
-      }
+        ),
+        textDirection: ui.TextDirection.ltr,
+        textAlign: TextAlign.right,
+      );
+      tp.layout();
+      tp.paint(canvas, Offset(entry.value.left - tp.width - 6, entry.value.top + (entry.value.height / 2) - 8));
+      tgtIdx++;
     }
   }
 
   @override
   bool shouldRepaint(covariant SankeyDiagramPainter oldDelegate) {
     return oldDelegate.isolatedNode != isolatedNode ||
-        oldDelegate.tierMode != tierMode ||
         oldDelegate.sources != sources ||
         oldDelegate.targets != targets ||
-        oldDelegate.tier1 != tier1 ||
-        oldDelegate.tier2 != tier2 ||
-        oldDelegate.tier3 != tier3 ||
         oldDelegate.isZaznamityMode != isZaznamityMode ||
         oldDelegate.isPrivate != isPrivate;
   }

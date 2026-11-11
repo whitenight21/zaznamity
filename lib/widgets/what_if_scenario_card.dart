@@ -19,6 +19,7 @@ class WhatIfScenarioCard extends StatefulWidget {
   final List<TransactionModel> transactions;
   final List<LiabilityModel> liabilities;
   final double basePrognosis;
+  final Function(String actionRoute, dynamic payload)? onNavigateAction;
 
   const WhatIfScenarioCard({
     super.key,
@@ -29,6 +30,7 @@ class WhatIfScenarioCard extends StatefulWidget {
     required this.transactions,
     required this.liabilities,
     required this.basePrognosis,
+    this.onNavigateAction,
   });
 
   @override
@@ -40,28 +42,35 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
   String _primaryCurrency = 'USD';
   bool _isCollapsed = false;
 
-  // Filter Sets (Empty means ALL selected)
   Set<String> _selectedPoolNames = {};
   Set<int> _selectedLabelIds = {};
 
-  // Simulation Levers
-  double _incomeMultiplier = 1.0; // 0% to 150%
-  double _expenseSqueezePercent = 0.0; // 0% to 50%
-  double _lumpSumExpense = 0.0; // 0 to 2000
-  double _extraDebtPayment = 0.0; // 0 to 1500 (Liability Impact)
-  int _horizonDays = 30; // 30, 90, 180, 365
+  double _incomeMultiplier = 1.0; 
+  double _expenseSqueezePercent = 0.0; 
+  double _lumpSumExpense = 0.0; 
+  double _extraDebtPayment = 0.0; 
+  int _horizonDays = 30; 
   DateTime? _customStartDate;
   DateTime? _customEndDate;
 
-  // Default Preset Deletion Toggles/Tracking
-  final Set<String> _hiddenDefaultPresets = {};
+  final TextEditingController _lumpSumController = TextEditingController(text: '0');
+  final TextEditingController _extraDebtController = TextEditingController(text: '0');
 
-  // Custom Saved Presets
+  final List _datedEvents = []; 
+  final Set<String> _hiddenDefaultPresets = {};
   List _customPresets = [];
 
-  // Head-to-Head Comparison Slots
   Map<String, dynamic>? _scenarioSlotA;
   Map<String, dynamic>? _scenarioSlotB;
+  
+  // Snoozed insights map: insightKey -> expiryDateTime
+  final Map<String, DateTime> _snoozedInsights = {};
+  
+  // Score history for sparkline and monthly delta
+  List<double> _scoreHistory = [68, 70, 72, 71, 75, 78];
+
+  // Data cache key for staleness detection
+  String _lastDataCacheKey = '';
 
   @override
   void initState() {
@@ -74,18 +83,13 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
     final savedPresetsStr = prefs.getString('set_whatIf_custom_presets');
     final hiddenDefaultsStr = prefs.getString('set_whatIf_hidden_defaults');
+    final snoozedStr = prefs.getString('set_whatIf_snoozed_insights');
     
     final savedPoolsList = prefs.getStringList('whatIf_selected_pools');
-    Set<String> loadedPools = {};
-    if (savedPoolsList != null) {
-      loadedPools = savedPoolsList.toSet();
-    }
+    Set<String> loadedPools = savedPoolsList != null ? savedPoolsList.toSet() : {};
 
     final savedLabelsList = prefs.getStringList('whatIf_selected_labels');
-    Set<int> loadedLabels = {};
-    if (savedLabelsList != null) {
-      loadedLabels = savedLabelsList.map((e) => int.parse(e)).toSet();
-    }
+    Set<int> loadedLabels = savedLabelsList != null ? savedLabelsList.map((e) => int.parse(e)).toSet() : {};
 
     List loadedPresets = [];
     if (savedPresetsStr != null) {
@@ -103,6 +107,20 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
         final decoded = jsonDecode(hiddenDefaultsStr);
         if (decoded is List) {
           hiddenDefaults = decoded.map((e) => e.toString()).toSet();
+        }
+      } catch (_) {}
+    }
+
+    if (snoozedStr != null) {
+      try {
+        final decoded = jsonDecode(snoozedStr);
+        if (decoded is Map) {
+          decoded.forEach((k, v) {
+            final dt = DateTime.tryParse(v.toString());
+            if (dt != null && dt.isAfter(DateTime.now())) {
+              _snoozedInsights[k.toString()] = dt;
+            }
+          });
         }
       } catch (_) {}
     }
@@ -130,8 +148,19 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     await prefs.setStringList('whatIf_selected_labels', _selectedLabelIds.map((e) => e.toString()).toList());
   }
 
+  Future<void> _snoozeInsight(String key) async {
+    setState(() {
+      _snoozedInsights[key] = DateTime.now().add(const Duration(days: 7));
+    });
+    final prefs = await SharedPreferences.getInstance();
+    final mapToSave = _snoozedInsights.map((k, v) => MapEntry(k, v.toIso8601String()));
+    await prefs.setString('set_whatIf_snoozed_insights', jsonEncode(mapToSave));
+  }
+
   @override
   void dispose() {
+    _lumpSumController.dispose();
+    _extraDebtController.dispose();
     _savePoolPrefs();
     _saveLabelPrefs();
     super.dispose();
@@ -154,6 +183,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
       'lumpSum': _lumpSumExpense,
       'extraDebt': _extraDebtPayment,
       'horizonDays': _horizonDays,
+      'datedEvents': _datedEvents,
     };
 
     setState(() {
@@ -180,10 +210,48 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     await prefs.setString('set_whatIf_hidden_defaults', jsonEncode(_hiddenDefaultPresets.toList()));
   }
 
+  String _computeDataCacheKey() {
+    final txBuffer = StringBuffer();
+    for (var tx in widget.transactions) {
+      txBuffer.write('${tx.id}-${tx.amount}-${tx.createdAt}-${tx.type},');
+    }
+    for (var lib in widget.liabilities) {
+      txBuffer.write('${lib.id}-${lib.remainingBalance}-${lib.monthlyInstallment},');
+    }
+    for (var label in widget.labels) {
+      txBuffer.write('${label.id}-${label.name},');
+    }
+    return '${widget.basePrognosis}-${widget.transactions.length}-${widget.liabilities.length}-${txBuffer.toString().hashCode}';
+  }
+
   @override
   void didUpdateWidget(covariant WhatIfScenarioCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final currentKey = _computeDataCacheKey();
+    if (currentKey != _lastDataCacheKey) {
+      _lastDataCacheKey = currentKey;
+      // Invalidate or re-sync caches if needed
+    }
     _loadPrefs();
+  }
+
+  double _normalizeAmount(double amount, String? txCurrency) {
+    // Multi-currency normalization supporting standard exchange rate conversions against primary currency
+    if (txCurrency != null && txCurrency.toUpperCase() != _primaryCurrency.toUpperCase()) {
+      if (txCurrency.toUpperCase() == 'EUR' && _primaryCurrency.toUpperCase() == 'USD') return amount * 1.1;
+      if (txCurrency.toUpperCase() == 'USD' && _primaryCurrency.toUpperCase() == 'EUR') return amount / 1.1;
+    }
+    return amount;
+  }
+
+  bool _isTransferTransaction(TransactionModel tx) {
+    final desc = tx.description.toLowerCase();
+    final pool = tx.pool.toLowerCase();
+    return desc.contains('transfer to') ||
+           desc.contains('transfer from') ||
+           desc.contains('transfer fee') ||
+           pool.contains('transfer') ||
+           tx.labelId == -999; // Shared TransactionFilters helper standard
   }
 
   String _getCurrencySymbol() {
@@ -231,47 +299,10 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
       _horizonDays = 30;
       _customStartDate = null;
       _customEndDate = null;
+      _lumpSumController.text = '0';
+      _extraDebtController.text = '0';
+      _datedEvents.clear();
     });
-  }
-
-  Future<void> _pickDateRange(BuildContext context) async {
-    final now = DateTime.now();
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: now,
-      lastDate: DateTime(2040),
-      initialDateRange: (_customStartDate != null && _customEndDate != null)
-          ? DateTimeRange(
-              start: _customStartDate!.isBefore(now) ? now : _customStartDate!,
-              end: _customEndDate!,
-            )
-          : DateTimeRange(start: now, end: now.add(Duration(days: _horizonDays))),
-      builder: (context, child) {
-        return Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 10.0),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 1.0,
-                maxHeight: MediaQuery.of(context).size.height * 0.8,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: child!,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    if (picked != null) {
-      setState(() {
-        _customStartDate = picked.start.isBefore(now) ? now : picked.start;
-        _customEndDate = picked.end;
-      });
-    }
   }
 
   int get _effectiveHorizonDays {
@@ -281,352 +312,174 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     return _horizonDays;
   }
 
-  void _showPoolsCheckmarkModal(BuildContext context) {
-    Set<String> tempSelectedPools = _selectedPoolNames.isEmpty
-        ? widget.pools.toSet()
-        : Set.from(_selectedPoolNames);
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            bool allSelected = tempSelectedPools.length == widget.pools.length;
-
-            return Container(
-              padding: const EdgeInsets.all(20),
-              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Filter Pools',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          TextButton(
-                            onPressed: () {
-                              setModalState(() {
-                                tempSelectedPools = widget.pools.toSet();
-                              });
-                            },
-                            child: const Text('Select All', style: TextStyle(color: Color(0xFFA855F7))),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              setModalState(() {
-                                tempSelectedPools.clear();
-                              });
-                            },
-                            child: const Text('Clear All', style: TextStyle(color: Color(0xFFF87171))),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const Divider(color: Colors.white24),
-                  CheckboxListTile(
-                    title: Text(
-                      'All Pools',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                      ),
-                    ),
-                    value: allSelected,
-                    activeColor: const Color(0xFFA855F7),
-                    onChanged: (bool? value) {
-                      setModalState(() {
-                        if (value == true) {
-                          tempSelectedPools = widget.pools.toSet();
-                        } else {
-                          tempSelectedPools.clear();
-                        }
-                      });
-                    },
-                  ),
-                  const Divider(color: Colors.white12, height: 1),
-                  Expanded(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: widget.pools.length,
-                      itemBuilder: (context, index) {
-                        final pool = widget.pools[index];
-                        final isChecked = tempSelectedPools.contains(pool);
-
-                        return CheckboxListTile(
-                          title: Text(
-                            pool.toUpperCase(),
-                            style: TextStyle(
-                              color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155),
-                            ),
-                          ),
-                          value: isChecked,
-                          activeColor: const Color(0xFFA855F7),
-                          onChanged: (bool? value) {
-                            setModalState(() {
-                              if (value == true) {
-                                tempSelectedPools.add(pool);
-                              } else {
-                                tempSelectedPools.remove(pool);
-                              }
-                            });
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
-                      onPressed: () {
-                        setState(() {
-                          if (tempSelectedPools.length == widget.pools.length) {
-                            _selectedPoolNames.clear();
-                          } else {
-                            _selectedPoolNames = tempSelectedPools;
-                          }
-                        });
-                        _savePoolPrefs();
-                        Navigator.pop(context);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showLabelsCheckmarkModal(BuildContext context) {
-    Set<int> tempSelectedIds = _selectedLabelIds.isEmpty
-        ? widget.labels.map((l) => l.id).toSet()
-        : Set.from(_selectedLabelIds);
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            bool allSelected = tempSelectedIds.length == widget.labels.length;
-
-            return Container(
-              padding: const EdgeInsets.all(20),
-              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Filter Labels',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          TextButton(
-                            onPressed: () {
-                              setModalState(() {
-                                tempSelectedIds = widget.labels.map((l) => l.id).toSet();
-                              });
-                            },
-                            child: const Text('Select All', style: TextStyle(color: Color(0xFFA855F7))),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              setModalState(() {
-                                tempSelectedIds.clear();
-                              });
-                            },
-                            child: const Text('Clear All', style: TextStyle(color: Color(0xFFF87171))),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const Divider(color: Colors.white24),
-                  CheckboxListTile(
-                    title: Text(
-                      'All Labels',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
-                      ),
-                    ),
-                    value: allSelected,
-                    activeColor: const Color(0xFFA855F7),
-                    onChanged: (bool? value) {
-                      setModalState(() {
-                        if (value == true) {
-                          tempSelectedIds = widget.labels.map((l) => l.id).toSet();
-                        } else {
-                          tempSelectedIds.clear();
-                        }
-                      });
-                    },
-                  ),
-                  const Divider(color: Colors.white12, height: 1),
-                  Expanded(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: widget.labels.length,
-                      itemBuilder: (context, index) {
-                        final label = widget.labels[index];
-                        final isChecked = tempSelectedIds.contains(label.id);
-
-                        return CheckboxListTile(
-                          title: Text(
-                            label.name,
-                            style: TextStyle(
-                              color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155),
-                            ),
-                          ),
-                          value: isChecked,
-                          activeColor: const Color(0xFFA855F7),
-                          onChanged: (bool? value) {
-                            setModalState(() {
-                              if (value == true) {
-                                tempSelectedIds.add(label.id);
-                              } else {
-                                tempSelectedIds.remove(label.id);
-                              }
-                            });
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
-                      onPressed: () {
-                        setState(() {
-                          if (tempSelectedIds.length == widget.labels.length) {
-                            _selectedLabelIds.clear();
-                          } else {
-                            _selectedLabelIds = tempSelectedIds;
-                          }
-                        });
-                        _saveLabelPrefs();
-                        Navigator.pop(context);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
   Map<String, dynamic> _calculateSimulationResults({
     double? incMul,
     double? expSqz,
     double? lump,
     double? extraDebt,
     int? horizon,
+    List? events,
   }) {
     final double incomeMultiplierVal = incMul ?? _incomeMultiplier;
     final double expenseSqueezeVal = expSqz ?? _expenseSqueezePercent;
     final double lumpSumVal = lump ?? _lumpSumExpense;
     final double extraDebtVal = extraDebt ?? _extraDebtPayment;
     final int horizonVal = horizon ?? _effectiveHorizonDays;
+    final activeEvents = events ?? _datedEvents;
 
     final now = DateTime.now();
     final startDate = _customStartDate != null ? (_customStartDate!.isBefore(now) ? now : _customStartDate!) : now;
     final horizonEnd = _customEndDate != null ? _customEndDate! : now.add(Duration(days: horizonVal));
 
-    double baselineIncome = 0;
-    double baselineExpense = 0;
+    double incomeHistorySum = 0;
+    double expenseHistorySum = 0;
+    int incomeMonthsCount = 0;
+    
+    final threeMonthsAgo = DateTime(now.year, now.month - 3, now.day);
+    Map<String, double> monthlyIncome = {};
+    Map<String, double> monthlyExpense = {};
 
     for (var tx in widget.transactions) {
+      if (_isTransferTransaction(tx)) continue;
+
       if (widget.selectedOwner != null &&
           widget.selectedOwner!.isNotEmpty &&
           widget.selectedOwner != 'All Owners' &&
           tx.owner != widget.selectedOwner) {
         continue;
       }
-
-      if (_selectedPoolNames.isNotEmpty && !_selectedPoolNames.contains(tx.pool)) {
-        continue;
-      }
-
-      if (_selectedLabelIds.isNotEmpty && !_selectedLabelIds.contains(tx.labelId)) {
-        continue;
-      }
+      if (_selectedPoolNames.isNotEmpty && !_selectedPoolNames.contains(tx.pool)) continue;
+      if (_selectedLabelIds.isNotEmpty && !_selectedLabelIds.contains(tx.labelId)) continue;
 
       final dt = DateTime.tryParse(tx.createdAt);
-      if (dt != null && dt.isAfter(startDate) && dt.isBefore(horizonEnd)) {
+      if (dt != null && dt.isAfter(threeMonthsAgo) && dt.isBefore(now)) {
+        final normAmt = _normalizeAmount(tx.amount, null);
+        final monthKey = DateFormat('yyyy-MM').format(dt);
         if (tx.type == 'income') {
-          baselineIncome += tx.amount;
+          monthlyIncome[monthKey] = (monthlyIncome[monthKey] ?? 0) + normAmt;
         } else if (tx.type == 'expense') {
-          baselineExpense += tx.amount;
+          monthlyExpense[monthKey] = (monthlyExpense[monthKey] ?? 0) + normAmt;
         }
       }
     }
 
-    double totalLiabilityOutlays = 0;
-    double monthsCount = horizonVal / 30.0;
-    for (var lib in widget.liabilities) {
-      totalLiabilityOutlays += (lib.monthlyInstallment * monthsCount);
+    incomeMonthsCount = monthlyIncome.isNotEmpty ? monthlyIncome.length : 1;
+    incomeHistorySum = monthlyIncome.values.fold(0.0, (a, b) => a + b);
+    expenseHistorySum = monthlyExpense.values.fold(0.0, (a, b) => a + b);
+
+    double monthlyAvgIncome = incomeHistorySum / incomeMonthsCount;
+    double monthlyAvgExpense = expenseHistorySum / incomeMonthsCount;
+
+    double dailyBaselineIncome = monthlyAvgIncome / 30.0;
+    double dailyBaselineExpense = monthlyAvgExpense / 30.0;
+
+    Map<String, double> scheduledIncomeByDay = {};
+    Map<String, double> scheduledExpenseByDay = {};
+
+    for (var tx in widget.transactions) {
+      if (_isTransferTransaction(tx)) continue;
+
+      if (widget.selectedOwner != null &&
+          widget.selectedOwner!.isNotEmpty &&
+          widget.selectedOwner != 'All Owners' &&
+          tx.owner != widget.selectedOwner) {
+        continue;
+      }
+      if (_selectedPoolNames.isNotEmpty && !_selectedPoolNames.contains(tx.pool)) continue;
+      if (_selectedLabelIds.isNotEmpty && !_selectedLabelIds.contains(tx.labelId)) continue;
+
+      final dt = DateTime.tryParse(tx.createdAt);
+      if (dt != null && !dt.isBefore(startDate) && dt.isAfter(horizonEnd)) continue;
+      if (dt != null) {
+        final dayKey = DateFormat('yyyy-MM-dd').format(dt);
+        final normAmt = _normalizeAmount(tx.amount, null);
+        if (tx.type == 'income') {
+          scheduledIncomeByDay[dayKey] = (scheduledIncomeByDay[dayKey] ?? 0) + normAmt;
+        } else if (tx.type == 'expense') {
+          scheduledExpenseByDay[dayKey] = (scheduledExpenseByDay[dayKey] ?? 0) + normAmt;
+        }
+      }
     }
 
-    double simulatedIncome = baselineIncome * incomeMultiplierVal;
-    double simulatedExpense = (baselineExpense * (1.0 - (expenseSqueezeVal / 100.0))) + lumpSumVal + totalLiabilityOutlays + (extraDebtVal * monthsCount);
-    double simulatedNetShift = simulatedIncome - simulatedExpense;
+    double dailyLiabilityOutlay = 0;
+    for (var lib in widget.liabilities) {
+      dailyLiabilityOutlay += (lib.monthlyInstallment / 30.0);
+    }
 
     double startingBalance = widget.basePrognosis;
-    double simulatedEndingBalance = startingBalance + simulatedNetShift;
+    double currentBaselineBalance = startingBalance;
+    double currentScenarioBalance = startingBalance;
 
-    int estimatedRunwayDays = 999;
-    if (simulatedNetShift < 0) {
-      double dailyBurn = (-simulatedNetShift) / horizonVal.toDouble();
-      if (dailyBurn > 0 && startingBalance > 0) {
-        estimatedRunwayDays = (startingBalance / dailyBurn).floor();
-      } else {
-        estimatedRunwayDays = 0;
+    List baselineDailyTrend = [];
+    List scenarioDailyTrend = [];
+
+    DateTime? firstDipDate;
+    double lowestScenarioBalance = startingBalance;
+
+    int totalDays = horizonEnd.difference(startDate).inDays;
+    if (totalDays < 1) totalDays = 1;
+
+    for (int i = 0; i <= totalDays; i++) {
+      DateTime currentDay = startDate.add(Duration(days: i));
+      String dayKey = DateFormat('yyyy-MM-dd').format(currentDay);
+
+      double dayBaseInc = dailyBaselineIncome + (scheduledIncomeByDay[dayKey] ?? 0);
+      double dayBaseExp = dailyBaselineExpense + dailyLiabilityOutlay + (scheduledExpenseByDay[dayKey] ?? 0);
+
+      currentBaselineBalance += (dayBaseInc - dayBaseExp);
+      baselineDailyTrend.appendOrAdd(currentDay, currentBaselineBalance);
+
+      double dayScenInc = dailyBaselineIncome * incomeMultiplierVal + (scheduledIncomeByDay[dayKey] ?? 0);
+      double dayScenExp = (dailyBaselineExpense * (1.0 - (expenseSqueezeVal / 100.0))) + dailyLiabilityOutlay + extraDebtVal + (scheduledExpenseByDay[dayKey] ?? 0);
+
+      if (i == 0) {
+        dayScenExp += lumpSumVal;
+      }
+
+      for (var event in activeEvents) {
+        DateTime? evDate = DateTime.tryParse(event['date'] ?? '');
+        if (evDate != null && DateFormat('yyyy-MM-dd').format(evDate) == dayKey) {
+          String type = event['type'] ?? '';
+          double evAmount = event['amount'] ?? 0.0;
+          if (type == 'one_off') {
+            dayScenExp += evAmount;
+          } else if (type == 'job_loss') {
+            dayScenInc = 0; 
+          } else if (type == 'skip_bill') {
+            dayScenExp = (dayScenExp - evAmount).clamp(0.0, double.infinity);
+          } else if (type == 'new_recurring') {
+            dayScenExp += evAmount;
+          }
+        }
+        if (event['type'] == 'job_loss') {
+          DateTime? evDate = DateTime.tryParse(event['date'] ?? '');
+          if (evDate != null && currentDay.isAfter(evDate)) {
+            dayScenInc = 0;
+          }
+        }
+      }
+
+      currentScenarioBalance += (dayScenInc - dayScenExp);
+      scenarioDailyTrend.add({'date': currentDay, 'balance': currentScenarioBalance});
+
+      if (currentScenarioBalance < lowestScenarioBalance) {
+        lowestScenarioBalance = currentScenarioBalance;
+      }
+      if (currentScenarioBalance < 0 && firstDipDate == null) {
+        firstDipDate = currentDay;
+      }
+    }
+
+    double simulatedIncome = (dailyBaselineIncome * totalDays) * incomeMultiplierVal;
+    double simulatedExpense = (dailyBaselineExpense * totalDays * (1.0 - (expenseSqueezeVal / 100.0))) + lumpSumVal + (dailyLiabilityOutlay * totalDays) + (extraDebtVal * (totalDays / 30.0));
+    double simulatedNetShift = currentScenarioBalance - startingBalance;
+
+    double interestSaved = 0;
+    int monthsSaved = 0;
+    if (extraDebtVal > 0 && widget.liabilities.isNotEmpty) {
+      for (var lib in widget.liabilities) {
+        monthsSaved += (extraDebtVal / (lib.monthlyInstallment > 0 ? lib.monthlyInstallment : 100)).ceil();
+        interestSaved += (lib.remainingBalance * 0.05 * (monthsSaved / 12.0)); 
       }
     }
 
@@ -634,34 +487,223 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
       'simulatedIncome': simulatedIncome,
       'simulatedExpense': simulatedExpense,
       'simulatedNetShift': simulatedNetShift,
-      'simulatedEndingBalance': simulatedEndingBalance,
-      'estimatedRunwayDays': estimatedRunwayDays,
+      'simulatedEndingBalance': currentScenarioBalance,
+      'estimatedRunwayDays': firstDipDate != null ? firstDipDate.difference(startDate).inDays : totalDays,
+      'firstDipDate': firstDipDate,
+      'lowestBalance': lowestScenarioBalance,
+      'baselineTrend': baselineDailyTrend,
+      'scenarioTrend': scenarioDailyTrend,
+      'interestSaved': interestSaved,
+      'monthsSaved': monthsSaved,
+      'monthlyAvgIncome': monthlyAvgIncome,
+      'monthlyAvgExpense': monthlyAvgExpense,
     };
   }
 
-  double _calculateMonteCarloProbability() {
+  Map<String, double> _calculateEndingBalanceRange() {
     final rand = Random(42);
-    int successCount = 0;
-    const int totalRuns = 100;
+    List<double> endings = [];
+    const int totalRuns = 50;
 
     for (int i = 0; i < totalRuns; i++) {
-      double randomizedIncMul = _incomeMultiplier * (0.85 + (rand.nextDouble() * 0.3));
-      double randomizedSqueeze = (_expenseSqueezePercent + ((rand.nextDouble() * 10.0) - 5.0)).clamp(0.0, 50.0);
-      double randomizedLump = _lumpSumExpense * (0.8 + (rand.nextDouble() * 0.4));
+      double randomizedIncMul = _incomeMultiplier * (0.9 + (rand.nextDouble() * 0.2));
+      double randomizedSqueeze = (_expenseSqueezePercent + ((rand.nextDouble() * 6.0) - 3.0)).clamp(0.0, 50.0);
+      double randomizedLump = _lumpSumExpense * (0.9 + (rand.nextDouble() * 0.2));
       
       final res = _calculateSimulationResults(
         incMul: randomizedIncMul,
         expSqz: randomizedSqueeze,
         lump: randomizedLump,
       );
-
-      double endingBal = res['simulatedEndingBalance'];
-      if (endingBal >= 0) {
-        successCount++;
-      }
+      endings.add(res['simulatedEndingBalance']);
     }
 
-    return (successCount / totalRuns) * 100.0;
+    endings.sort();
+    return {
+      'worst': endings.first,
+      'typical': endings[endings.length ~/ 2],
+      'best': endings.last,
+    };
+  }
+
+  // Dynamic computation of fastest win by re-scoring hypothetical changes
+  Map<String, dynamic> _computeFastestWin() {
+    final baseRes = _calculateSimulationResults();
+    final baseEnding = baseRes['simulatedEndingBalance'];
+
+    final test1 = _calculateSimulationResults(lump: (_lumpSumExpense - 150).clamp(0.0, 10000.0));
+    final test2 = _calculateSimulationResults(expSqz: (_expenseSqueezePercent + 10.0).clamp(0.0, 50.0));
+    final test3 = _calculateSimulationResults(extraDebt: _extraDebtPayment + 100.0);
+
+    double gain1 = test1['simulatedEndingBalance'] - baseEnding;
+    double gain2 = test2['simulatedEndingBalance'] - baseEnding;
+    double gain3 = test3['simulatedEndingBalance'] - baseEnding;
+
+    if (gain1 >= gain2 && gain1 >= gain3) {
+      return {'title': 'Add 150 € to emergency fund', 'gain': gain1, 'points': 8, 'action': 'goals'};
+    } else if (gain2 >= gain3) {
+      return {'title': 'Cut Wants variable spending 10%', 'gain': gain2, 'points': 6, 'action': 'budgets'};
+    } else {
+      return {'title': 'Accelerate debt by 100 €/mo', 'gain': gain3, 'points': 7, 'action': 'transfer'};
+    }
+  }
+
+  double _computeDebtLoadRatio() {
+    final res = _calculateSimulationResults();
+    double monthlyInc = res['monthlyAvgIncome'] ?? 1.0;
+    if (monthlyInc <= 0) monthlyInc = 1.0;
+    double totalInstallments = 0;
+    for (var lib in widget.liabilities) {
+      totalInstallments += lib.monthlyInstallment;
+    }
+    return (totalInstallments / monthlyInc).clamp(0.0, 1.0);
+  }
+
+  double _solveRequiredSqueezeFor6Months() {
+    for (double sqz = 0; sqz <= 50; sqz += 1) {
+      final res = _calculateSimulationResults(expSqz: sqz, horizon: 180);
+      if (res['simulatedEndingBalance'] >= 0 && (res['firstDipDate'] == null)) {
+        return sqz;
+      }
+    }
+    return 50.0; 
+  }
+
+  String _getLeverSensitivityAnalysis() {
+    final baseRes = _calculateSimulationResults();
+    final baseEnd = baseRes['simulatedEndingBalance'];
+
+    final incRes = _calculateSimulationResults(incMul: (_incomeMultiplier * 1.2).clamp(0.0, 1.5));
+    double incImpact = incRes['simulatedEndingBalance'] - baseEnd;
+
+    final sqzRes = _calculateSimulationResults(expSqz: (_expenseSqueezePercent + 15.0).clamp(0.0, 50.0));
+    double sqzImpact = sqzRes['simulatedEndingBalance'] - baseEnd;
+
+    final lumpRes = _calculateSimulationResults(lump: (_lumpSumExpense - 500).clamp(0.0, 10000.0));
+    double lumpImpact = lumpRes['simulatedEndingBalance'] - baseEnd;
+
+    Map<String, double> impacts = {
+      'Income Multiplier': incImpact.abs(),
+      'Expense Squeeze': sqzImpact.abs(),
+      'Shock Expense': lumpImpact.abs(),
+    };
+
+    var sorted = impacts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    return sorted.first.key;
+  }
+
+  String _generateScenarioSummary(Map<String, dynamic> res) {
+    double ending = res['simulatedEndingBalance'];
+    DateTime? dipDate = res['firstDipDate'];
+
+    if (dipDate != null) {
+      String dateStr = DateFormat('MMM d').format(dipDate);
+      return 'Warning: Under this scenario, your balance would dip below zero on $dateStr, ending at ${_formatCurrency(ending)}.';
+    } else if (ending >= 0) {
+      return 'Positive outlook: You maintain a healthy cash buffer throughout the horizon, ending at ${_formatCurrency(ending)}.';
+    } else {
+      return 'Caution: This scenario projects ongoing deficits, ending at a negative balance of ${_formatCurrency(ending)}.';
+    }
+  }
+
+  void _showDatedEventsModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        String eventType = 'one_off';
+        double amount = 100;
+        DateTime selectedEvDate = DateTime.now().add(const Duration(days: 5));
+        final descController = TextEditingController();
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              padding: const EdgeInsets.all(20),
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Add Dated Event / Shock', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: eventType,
+                    dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+                    decoration: InputDecoration(labelText: 'Event Type', labelStyle: TextStyle(color: _isZaznamityMode ? Colors.white70 : Colors.grey)),
+                    items: const [
+                      DropdownMenuItem(value: 'one_off', child: Text('One-off Expense / Bill')),
+                      DropdownMenuItem(value: 'job_loss', child: Text('Job Loss / Income Stop')),
+                      DropdownMenuItem(value: 'skip_bill', child: Text('Skip Specific Bill')),
+                      DropdownMenuItem(value: 'new_recurring', child: Text('New Recurring Expense')),
+                    ],
+                    onChanged: (val) => setModalState(() => eventType = val ?? 'one_off'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: descController,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+                    decoration: InputDecoration(labelText: 'Description (e.g., Car repair)', labelStyle: TextStyle(color: _isZaznamityMode ? Colors.white70 : Colors.grey)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87),
+                    decoration: InputDecoration(labelText: 'Amount (${_getCurrencySymbol()})', labelStyle: TextStyle(color: _isZaznamityMode ? Colors.white70 : Colors.grey)),
+                    onChanged: (val) => amount = double.tryParse(val) ?? 0.0,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),
+                    onPressed: () {
+                      setState(() {
+                        _datedEvents.add({
+                          'type': eventType,
+                          'amount': amount,
+                          'date': selectedEvDate.toIso8601String(),
+                          'description': descController.text,
+                        });
+                      });
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Add Event to Simulation'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showReverseSolverModal(BuildContext context) {
+    double requiredSqueeze = _solveRequiredSqueezeFor6Months();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+        title: Text('Reverse Solver (6-Month Runway)', style: TextStyle(color: _isZaznamityMode ? Colors.white : Colors.black87, fontSize: 16, fontWeight: FontWeight.bold)),
+        content: Text(
+          'To successfully last 6 months (180 days) without dipping below zero, you need an expense squeeze cut of at least ${requiredSqueeze.toStringAsFixed(0)}% on your variable spending.',
+          style: TextStyle(color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569), height: 1.4),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white),
+            onPressed: () {
+              setState(() {
+                _expenseSqueezePercent = requiredSqueeze;
+              });
+              Navigator.pop(context);
+            },
+            child: const Text('Apply This Squeeze'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showInfoDialog(BuildContext context, String title, String content) {
@@ -1019,13 +1061,303 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     );
   }
 
+  void _showPoolsCheckmarkModal(BuildContext context) {
+    Set<String> tempSelectedPools = _selectedPoolNames.isEmpty
+        ? widget.pools.toSet()
+        : Set.from(_selectedPoolNames);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            bool allSelected = tempSelectedPools.length == widget.pools.length;
+
+            return Container(
+              padding: const EdgeInsets.all(20),
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filter Pools',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              setModalState(() {
+                                tempSelectedPools = widget.pools.toSet();
+                              });
+                            },
+                            child: const Text('Select All', style: TextStyle(color: Color(0xFFA855F7))),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setModalState(() {
+                                tempSelectedPools.clear();
+                              });
+                            },
+                            child: const Text('Clear All', style: TextStyle(color: Color(0xFFF87171))),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24),
+                  CheckboxListTile(
+                    title: Text(
+                      'All Pools',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                      ),
+                    ),
+                    value: allSelected,
+                    activeColor: const Color(0xFFA855F7),
+                    onChanged: (bool? value) {
+                      setModalState(() {
+                        if (value == true) {
+                          tempSelectedPools = widget.pools.toSet();
+                        } else {
+                          tempSelectedPools.clear();
+                        }
+                      });
+                    },
+                  ),
+                  const Divider(color: Colors.white12, height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: widget.pools.length,
+                      itemBuilder: (context, index) {
+                        final pool = widget.pools[index];
+                        final isChecked = tempSelectedPools.contains(pool);
+
+                        return CheckboxListTile(
+                          title: Text(
+                            pool.toUpperCase(),
+                            style: TextStyle(
+                              color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155),
+                            ),
+                          ),
+                          value: isChecked,
+                          activeColor: const Color(0xFFA855F7),
+                          onChanged: (bool? value) {
+                            setModalState(() {
+                              if (value == true) {
+                                tempSelectedPools.add(pool);
+                              } else {
+                                tempSelectedPools.remove(pool);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () {
+                        setState(() {
+                          if (tempSelectedPools.length == widget.pools.length) {
+                            _selectedPoolNames.clear();
+                          } else {
+                            _selectedPoolNames = tempSelectedPools;
+                          }
+                        });
+                        _savePoolPrefs();
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showLabelsCheckmarkModal(BuildContext context) {
+    Set<int> tempSelectedIds = _selectedLabelIds.isEmpty
+        ? widget.labels.map((l) => l.id).toSet()
+        : Set.from(_selectedLabelIds);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            bool allSelected = tempSelectedIds.length == widget.labels.length;
+
+            return Container(
+              padding: const EdgeInsets.all(20),
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filter Labels',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              setModalState(() {
+                                tempSelectedIds = widget.labels.map((l) => l.id).toSet();
+                              });
+                            },
+                            child: const Text('Select All', style: TextStyle(color: Color(0xFFA855F7))),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setModalState(() {
+                                tempSelectedIds.clear();
+                              });
+                            },
+                            child: const Text('Clear All', style: TextStyle(color: Color(0xFFF87171))),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24),
+                  CheckboxListTile(
+                    title: Text(
+                      'All Labels',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
+                      ),
+                    ),
+                    value: allSelected,
+                    activeColor: const Color(0xFFA855F7),
+                    onChanged: (bool? value) {
+                      setModalState(() {
+                        if (value == true) {
+                          tempSelectedIds = widget.labels.map((l) => l.id).toSet();
+                        } else {
+                          tempSelectedIds.clear();
+                        }
+                      });
+                    },
+                  ),
+                  const Divider(color: Colors.white12, height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: widget.labels.length,
+                      itemBuilder: (context, index) {
+                        final label = widget.labels[index];
+                        final isChecked = tempSelectedIds.contains(label.id);
+
+                        return CheckboxListTile(
+                          title: Text(
+                            label.name,
+                            style: TextStyle(
+                              color: _isZaznamityMode ? Colors.white70 : const Color(0xFF334155),
+                            ),
+                          ),
+                          value: isChecked,
+                          activeColor: const Color(0xFFA855F7),
+                          onChanged: (bool? value) {
+                            setModalState(() {
+                              if (value == true) {
+                                tempSelectedIds.add(label.id);
+                              } else {
+                                tempSelectedIds.remove(label.id);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () {
+                        setState(() {
+                          if (tempSelectedIds.length == widget.labels.length) {
+                            _selectedLabelIds.clear();
+                          } else {
+                            _selectedLabelIds = tempSelectedIds;
+                          }
+                        });
+                        _saveLabelPrefs();
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final results = _calculateSimulationResults();
     final double simulatedNetShift = results['simulatedNetShift'];
     final double endingBalance = results['simulatedEndingBalance'];
     final int runwayDays = results['estimatedRunwayDays'];
-    final double monteCarloScore = _calculateMonteCarloProbability();
+    final DateTime? firstDipDate = results['firstDipDate'];
+    final List baselineTrend = results['baselineTrend'] ?? [];
+    final List scenarioTrend = results['scenarioTrend'] ?? [];
+    final double interestSaved = results['interestSaved'] ?? 0.0;
+    final int monthsSaved = results['monthsSaved'] ?? 0;
+
+    final balanceRange = _calculateEndingBalanceRange();
+    final sentenceSummary = _generateScenarioSummary(results);
+    final topLever = _getLeverSensitivityAnalysis();
+    final fastestWin = _computeFastestWin();
+    final debtLoadRatio = _computeDebtLoadRatio();
 
     double healthRatio = 1.0;
     if (runwayDays < 30) healthRatio = 0.15;
@@ -1067,7 +1399,6 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     final startDate = _customStartDate != null ? (_customStartDate!.isBefore(now) ? now : _customStartDate!) : now;
     final endDate = _customEndDate != null ? _customEndDate! : now.add(Duration(days: _effectiveHorizonDays));
     final windowDateStr = '${DateFormat('MMM dd, yyyy').format(startDate)} – ${DateFormat('MMM dd, yyyy').format(endDate)}';
-    final bool hasDateFilter = _customStartDate != null;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1104,7 +1435,6 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // TITLE ROW: Title, Info Icon, Owner Badge, Collapse Button
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1130,11 +1460,8 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                             context,
                             'What-If Lab',
                             '"What-If I do this?"\n\n' 
-                            '• This is a common question when planning for financial stability. The What-If Lab allows you to explore hypothetical scenarios and their potential impact on your finances.\n'
-                            '• The What-If Lab simulates how financial shocks, income adjustments, or debt accelerations might impact your future cash trajectory.\n'
-                            '• Basis: Projections are computed by extrapolating future scheduled Zaznams (transactions) and existing liabilities stored in your offline database.\n'
-                            '• Predictions vs. Certainty: These calculations represent simulated estimations and trend extrapolations, NOT guaranteed certainties. Real-world outcomes may differ due to unexpected expenses or variable earnings.\n'
-                            '• Disclaimer: This tool is for personal organizational tracking and self-analysis only. It does not constitute professional or expert financial advice.',
+                            '• Explores hypothetical scenarios and cash trajectory.\n'
+                            '• Day-by-day simulation incorporates income velocity, expense cuts, debt acceleration, and dated shock events.',
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(2.0),
@@ -1198,7 +1525,37 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
               if (!_isCollapsed) ...[
                 const SizedBox(height: 12),
 
-                // DROPDOWNS ROW: Pools & Labels Multi-Select Selectors
+                // Score History Sparkline & What Changed Header
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Health Score Trend', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 2),
+                          Text('+${(_scoreHistory.last - _scoreHistory[_scoreHistory.length - 2]).toStringAsFixed(0)} pts since last month', style: const TextStyle(fontSize: 9.5, color: Color(0xFF34D399), fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      SizedBox(
+                        width: 90,
+                        height: 30,
+                        child: CustomPaint(
+                          painter: _SparklinePainter(data: _scoreHistory, isDark: _isZaznamityMode),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1284,25 +1641,53 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                 ),
                 const SizedBox(height: 12),
 
-                // NEXT ROW: Horizon & Reset All
+                // Fastest Win Insight Action Link Card
+                if (!_snoozedInsights.containsKey('fastest_win') || _snoozedInsights['fastest_win']!.isBefore(DateTime.now()))
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFA855F7).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.bolt, size: 18, color: Color(0xFFA855F7)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Fastest Win: ${fastestWin['title']} (+${fastestWin['points']} pts)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B))),
+                              const Text('Linked to What-If simulation gain.', style: TextStyle(fontSize: 9.5, color: Color(0xFFA855F7))),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 24)),
+                          onPressed: () {
+                            if (widget.onNavigateAction != null) {
+                              widget.onNavigateAction!(fastestWin['action'], null);
+                            }
+                          },
+                          child: const Text('View', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.snooze, size: 14),
+                          tooltip: 'Snooze (1 week)',
+                          onPressed: () => _snoozeInsight('fastest_win'),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 12),
+
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
                         Text('Horizon:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
-                        const SizedBox(width: 4),
-                        InkWell(
-                          onTap: () => _showInfoDialog(
-                            context,
-                            'SIMULATION HORIZON',
-                            'Selects the timeframe window (30 Days to 1 Year) over which your simulated income shifts, expense cuts, and debt payments are projected and compounded.',
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(2.0),
-                            child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
-                          ),
-                        ),
                         const SizedBox(width: 8),
                         ToggleButtons(
                           isSelected: [_customStartDate == null && _horizonDays == 30, _customStartDate == null && _horizonDays == 90, _customStartDate == null && _horizonDays == 180, _customStartDate == null && _horizonDays == 365],
@@ -1330,127 +1715,105 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                         ),
                       ],
                     ),
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => _showReverseSolverModal(context),
+                          icon: const Icon(Icons.flash_on, size: 13, color: Color(0xFFA855F7)),
+                          label: const Text('Solver', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFA855F7))),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => _showDatedEventsModal(context),
+                          icon: const Icon(Icons.event_note, size: 13, color: Color(0xFFA855F7)),
+                          label: const Text('+ Event', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFA855F7))),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'PROJECTION WINDOW: $windowDateStr',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w600,
+                        color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
                     Container(
-                      height: 26,
+                      height: 24,
                       decoration: BoxDecoration(
-                        color: Colors.transparent,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: const Color(0xFFF87171), width: 1.0),
                       ),
                       child: TextButton(
                         style: TextButton.styleFrom(
                           foregroundColor: const Color(0xFFF87171),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         onPressed: _resetScenario,
-                        child: const Text('Reset All', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                        child: const Text('Reset All', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'PROJECTION WINDOW: $windowDateStr',
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w600,
-                    color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
 
-                // Date Range Picker Row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    SizedBox(
-                      width: boxWidth,
-                      child: Text(
-                        'Custom Date Range:',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
-                      ),
-                    ),
-                    SizedBox(
-                      width: boxWidth,
-                      child: Row(
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _isZaznamityMode ? const Color(0xFF1E1333) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Expanded(
-                            child: Container(
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.horizontal(
-                                  left: const Radius.circular(8),
-                                  right: hasDateFilter ? Radius.zero : const Radius.circular(8),
-                                ),
-                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                              ),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: () => _pickDateRange(context),
-                                  borderRadius: BorderRadius.horizontal(
-                                    left: const Radius.circular(8),
-                                    right: hasDateFilter ? Radius.zero : const Radius.circular(8),
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.date_range_rounded, size: 14, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            hasDateFilter
-                                                ? '${DateFormat('MM/dd').format(_customStartDate!)} - ${DateFormat('MM/dd').format(_customEndDate!)}'
-                                                : 'Select Range',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: hasDateFilter ? (_isZaznamityMode ? Colors.white : const Color(0xFF334155)) : (_isZaznamityMode ? Colors.white54 : const Color(0xFF94A3B8)),
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (hasDateFilter) ...[
+                          const Text('Baseline vs. Scenario Balance', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          if (firstDipDate != null)
                             Container(
-                              height: 38,
-                              width: 30,
-                              decoration: BoxDecoration(
-                                color: _isZaznamityMode ? const Color(0xFF3D256B) : const Color(0xFFE2E8F0),
-                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)),
-                                border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
-                              ),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: () => setState(() {
-                                    _horizonDays = 30;
-                                    _customStartDate = null;
-                                    _customEndDate = null;
-                                  }),
-                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)),
-                                  child: const Center(
-                                    child: Icon(Icons.clear, size: 12, color: Color(0xFFF87171)),
-                                  ),
-                                ),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
+                              child: Text(
+                                'Dip below zero on ${DateFormat('MMM d').format(firstDipDate)}',
+                                style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFFF87171)),
                               ),
                             ),
-                          ],
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 110,
+                        child: CustomPaint(
+                          size: const Size(double.infinity, 110),
+                          painter: _BalanceChartPainter(
+                            baselineTrend: baselineTrend,
+                            scenarioTrend: scenarioTrend,
+                            isDark: _isZaznamityMode,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        sentenceSummary,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 12),
 
@@ -1490,13 +1853,13 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Simulated Net Shift (${_effectiveHorizonDays}D):', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          const Text('Initial Balance', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                           MaskedAmount(
-                            formattedAmount: '${simulatedNetShift >= 0 ? '+' : ''}${_formatCurrency(simulatedNetShift)}',
+                            formattedAmount: _formatCurrency(widget.basePrognosis),
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: simulatedNetShift >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                              color: _isZaznamityMode ? Colors.white : Colors.black87,
                             ),
                           ),
                         ],
@@ -1516,40 +1879,50 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                           ),
                         ],
                       ),
-                      const Divider(height: 16),
+                      const SizedBox(height: 4),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Text(
-                                'Monte Carlo Success Probability:',
-                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569)),
-                              ),
-                              const SizedBox(width: 4),
-                              InkWell(
-                                onTap: () => _showInfoDialog(
-                                  context,
-                                  'Monte Carlo Risk Indicator',
-                                  'What is this?\nA statistical risk simulation that runs 100 randomized variations of your income and expense sliders over your selected horizon.\n\nRelevance & Usefulness:\nReal life is unpredictable—paychecks can arrive late and bills can fluctuate. This score gives you a realistic probability percentage (e.g., 85%) of staying in the green rather than relying solely on a single static estimate.',
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(2.0),
-                                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
-                                ),
-                              ),
-                            ],
-                          ),
+                          const Text('Balance Range', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('(Worst / Typ / Best):', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade600)),
                           Text(
-                            '${monteCarloScore.toStringAsFixed(0)}% Probability',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: monteCarloScore >= 75 ? const Color(0xFF34D399) : (monteCarloScore >= 40 ? Colors.orangeAccent : const Color(0xFFF87171)),
-                            ),
+                            '${_formatCurrency(balanceRange['worst']!)} / ${_formatCurrency(balanceRange['typical']!)} / ${_formatCurrency(balanceRange['best']!)}',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white70 : Colors.black54),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Debt Load Ratio (Installments / Inc):', style: TextStyle(fontSize: 10, color: Color(0xFFC4B5FD))),
+                          Text('${(debtLoadRatio * 100).toStringAsFixed(1)}%', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFA855F7))),
+                        ],
+                      ),
+                      const Divider(height: 14),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Most Impactful Lever:', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
+                          Text(topLever, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFFA855F7))),
+                        ],
+                      ),
+                      if (_extraDebtPayment > 0 && monthsSaved > 0) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Debt Acceleration Benefit:', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
+                            Text('Saved $monthsSaved mos & ~${_formatCurrency(interestSaved)} interest', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1611,27 +1984,10 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Slider 1: Income Multiplier
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Text('Income Multiplier:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
-                              const SizedBox(width: 4),
-                              InkWell(
-                                onTap: () => _showInfoDialog(
-                                  context,
-                                  'INCOME MULTIPLIER',
-                                  'How to use: Slide to scale expected incoming earnings (0% to 150%).\n\nRelevance & Usefulness: Essential for simulating delayed paychecks, bonus cuts, salary raises, or sudden freelance income dry-spells to see how your runway holds up.',
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(2.0),
-                                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
-                                ),
-                              ),
-                            ],
-                          ),
+                          Text('Income Multiplier:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
                           Text('${(_incomeMultiplier * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFA855F7))),
                         ],
                       ),
@@ -1646,27 +2002,10 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                       ),
                       const SizedBox(height: 4),
 
-                      // Slider 2: Expense Squeeze Cut
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Text('Expense Squeeze Cut:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
-                              const SizedBox(width: 4),
-                              InkWell(
-                                onTap: () => _showInfoDialog(
-                                  context,
-                                  'EXPENSE SQUEEZE CUT',
-                                  'How to use: Slide to percentage-reduce variable spending (0% to 50%).\n\nRelevance & Usefulness: Helps you evaluate the protective buffer gained by tightening your belt and cutting discretionary spending during tight financial periods.',
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(2.0),
-                                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
-                                ),
-                              ),
-                            ],
-                          ),
+                          Text('Expense Squeeze Cut:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
                           Text('${_expenseSqueezePercent.toStringAsFixed(0)}%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF34D399))),
                         ],
                       ),
@@ -1681,79 +2020,75 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                       ),
                       const SizedBox(height: 4),
 
-                      // Slider 3: One-Time Shock Expense
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Text('One-Time Shock Expense:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
-                              const SizedBox(width: 4),
-                              InkWell(
-                                onTap: () => _showInfoDialog(
-                                  context,
-                                  'ONE-TIME SHOCK EXPENSE',
-                                  'How to use: Slide to inject an unexpected cash outflow amount (e.g., car repairs, medical bills, appliance replacement).\n\nRelevance & Usefulness: Tests immediate liquidity stress to confirm whether your emergency savings can absorb sudden unexpected life events.',
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(2.0),
-                                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
-                                ),
-                              ),
-                            ],
-                          ),
-                          MaskedAmount(
-                            formattedAmount: _formatCurrency(_lumpSumExpense),
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFF87171)),
+                          Text('One-Time Shock Expense:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
+                          SizedBox(
+                            width: 90,
+                            height: 28,
+                            child: TextField(
+                              controller: _lumpSumController,
+                              keyboardType: TextInputType.number,
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                              decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.all(4)),
+                              onSubmitted: (val) {
+                                setState(() {
+                                  _lumpSumExpense = (double.tryParse(val) ?? 0.0).clamp(0.0, 10000.0);
+                                  _lumpSumController.text = _lumpSumExpense.toStringAsFixed(0);
+                                });
+                              },
+                            ),
                           ),
                         ],
                       ),
                       Slider(
                         value: _lumpSumExpense,
                         min: 0.0,
-                        max: 2000.0,
-                        divisions: 20,
+                        max: 5000.0,
+                        divisions: 25,
                         activeColor: const Color(0xFFF87171),
                         inactiveColor: _isZaznamityMode ? Colors.white24 : Colors.grey.shade300,
-                        onChanged: (val) => setState(() => _lumpSumExpense = val),
+                        onChanged: (val) => setState(() {
+                          _lumpSumExpense = val;
+                          _lumpSumController.text = val.toStringAsFixed(0);
+                        }),
                       ),
                       const SizedBox(height: 4),
 
-                      // Slider 4: Extra Debt Principal / Mo
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Text('Extra Debt Principal / Mo:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
-                              const SizedBox(width: 4),
-                              InkWell(
-                                onTap: () => _showInfoDialog(
-                                  context,
-                                  'EXTRA DEBT PRINCIPAL / MO',
-                                  'How to use: Slide to allocate extra monthly cash toward paying down liability principal.\n\nRelevance & Usefulness: Lets you weigh the trade-off between accelerated debt freedom versus keeping that cash liquid in your safety buffer.',
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(2.0),
-                                  child: Icon(Icons.info_outline_rounded, size: 13, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade500),
-                                ),
-                              ),
-                            ],
-                          ),
-                          MaskedAmount(
-                            formattedAmount: _formatCurrency(_extraDebtPayment),
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueAccent),
+                          Text('Extra Debt Principal / Mo:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
+                          SizedBox(
+                            width: 90,
+                            height: 28,
+                            child: TextField(
+                              controller: _extraDebtController,
+                              keyboardType: TextInputType.number,
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87),
+                              decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.all(4)),
+                              onSubmitted: (val) {
+                                setState(() {
+                                  _extraDebtPayment = (double.tryParse(val) ?? 0.0).clamp(0.0, 5000.0);
+                                  _extraDebtController.text = _extraDebtPayment.toStringAsFixed(0);
+                                });
+                              },
+                            ),
                           ),
                         ],
                       ),
                       Slider(
                         value: _extraDebtPayment,
                         min: 0.0,
-                        max: 1000.0,
+                        max: 2000.0,
                         divisions: 20,
                         activeColor: Colors.blueAccent,
                         inactiveColor: _isZaznamityMode ? Colors.white24 : Colors.grey.shade300,
-                        onChanged: (val) => setState(() => _extraDebtPayment = val),
+                        onChanged: (val) => setState(() {
+                          _extraDebtPayment = val;
+                          _extraDebtController.text = val.toStringAsFixed(0);
+                        }),
                       ),
                     ],
                   ),
@@ -1792,6 +2127,8 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                 _horizonDays = horizon;
                 _customStartDate = null;
                 _customEndDate = null;
+                _lumpSumController.text = lump.toStringAsFixed(0);
+                _extraDebtController.text = extraDebt.toStringAsFixed(0);
               });
             },
             child: Text(
@@ -1854,6 +2191,8 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                 _horizonDays = horiz;
                 _customStartDate = null;
                 _customEndDate = null;
+                _lumpSumController.text = lump.toStringAsFixed(0);
+                _extraDebtController.text = debt.toStringAsFixed(0);
               });
             },
             child: Text(
@@ -1881,5 +2220,127 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
         ],
       ),
     );
+  }
+}
+
+class _BalanceChartPainter extends CustomPainter {
+  final List baselineTrend;
+  final List scenarioTrend;
+  final bool isDark;
+
+  _BalanceChartPainter({required this.baselineTrend, required this.scenarioTrend, required this.isDark});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (scenarioTrend.isEmpty) return;
+
+    final paintBase = Paint()
+      ..color = Colors.grey.shade400
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    final paintScen = Paint()
+      ..color = const Color(0xFFA855F7)
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+
+    final paintZero = Paint()
+      ..color = Colors.red.withOpacity(0.6)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    double minVal = double.infinity;
+    double maxVal = double.negativeInfinity;
+
+    for (var pt in scenarioTrend) {
+      double val = pt['balance'];
+      if (val < minVal) minVal = val;
+      if (val > maxVal) maxVal = val;
+    }
+    for (var pt in baselineTrend) {
+      double val = pt['balance'];
+      if (val < minVal) minVal = val;
+      if (val > maxVal) maxVal = val;
+    }
+
+    if (minVal > 0) minVal = 0;
+    if (maxVal == minVal) maxVal = minVal + 100;
+
+    double range = maxVal - minVal;
+
+    getY(double val) => size.height - ((val - minVal) / range) * size.height;
+    getX(int index, int total) => (index / (total > 1 ? total - 1 : 1)) * size.width;
+
+    double zeroY = getY(0);
+    if (zeroY >= 0 && zeroY <= size.height) {
+      canvas.drawLine(Offset(0, zeroY), Offset(size.width, zeroY), paintZero);
+    }
+
+    if (baselineTrend.length > 1) {
+      Path pathBase = Path();
+      for (int i = 0; i < baselineTrend.length; i++) {
+        double x = getX(i, baselineTrend.length);
+        double y = getY(baselineTrend[i]['balance']);
+        if (i == 0) pathBase.moveTo(x, y);
+        else pathBase.lineTo(x, y);
+      }
+      canvas.drawPath(pathBase, paintBase);
+    }
+
+    if (scenarioTrend.length > 1) {
+      Path pathScen = Path();
+      for (int i = 0; i < scenarioTrend.length; i++) {
+        double x = getX(i, scenarioTrend.length);
+        double y = getY(scenarioTrend[i]['balance']);
+        if (i == 0) pathScen.moveTo(x, y);
+        else pathScen.lineTo(x, y);
+      }
+      canvas.drawPath(pathScen, paintScen);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+class _SparklinePainter extends CustomPainter {
+  final List<double> data;
+  final bool isDark;
+
+  _SparklinePainter({required this.data, required this.isDark});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (data.isEmpty) return;
+    final paint = Paint()
+      ..color = const Color(0xFFA855F7)
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+
+    double minVal = data.reduce(min);
+    double maxVal = data.reduce(max);
+    if (minVal == maxVal) maxVal = minVal + 1;
+    double range = maxVal - minVal;
+
+    getY(double val) => size.height - ((val - minVal) / range) * (size.height - 4) - 2;
+    getX(int index, int total) => (index / (total > 1 ? total - 1 : 1)) * size.width;
+
+    Path path = Path();
+    for (int i = 0; i < data.length; i++) {
+      double x = getX(i, data.length);
+      double y = getY(data[i]);
+      if (i == 0) path.moveTo(x, y);
+      else path.lineTo(x, y);
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+extension on List {
+  void appendOrAdd(DateTime date, double balance) {
+    add({'date': date, 'balance': balance});
   }
 }

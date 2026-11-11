@@ -104,7 +104,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   DateTime? _futureMetricsStartDate;
   DateTime? _futureMetricsEndDate;
-  String? _futureMetricsSelectedOwner;
+  //String? _futureMetricsSelectedOwner;
 
   String? _calendarSelectedOwner;
   String? _budgetSelectedOwner;
@@ -223,13 +223,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     CardConfig(id: 'settings', title: 'Settings', key: GlobalKey(), isVisible: false),
     CardConfig(id: 'metrics', title: 'Metrics', key: GlobalKey()),
     CardConfig(id: 'smart_insights', title: 'Health & Insights', key: GlobalKey()),
-    CardConfig(id: 'future_metrics', title: 'Future Outlook', key: GlobalKey()),
+    CardConfig(id: 'future_metrics', title: 'Pending Outlook', key: GlobalKey()),
     CardConfig(id: 'liabilities_card', title: 'Liabilities', key: GlobalKey()),    
     CardConfig(id: 'savings_goals', title: 'Savings Goals', key: GlobalKey()),
     CardConfig(id: 'what_if_scenario', title: 'What-If Lab', key: GlobalKey()),
     CardConfig(id: 'label_focus', title: 'Label Focus', key: GlobalKey()),
     CardConfig(id: 'income_expenses_labels', title: 'Money Breakdown', key: GlobalKey()),
-    CardConfig(id: 'future_analytics', title: 'Future Breakdown', key: GlobalKey()),
+    CardConfig(id: 'future_analytics', title: 'Pending Breakdown', key: GlobalKey()),
     CardConfig(id: 'new_entry', title: 'New Zaznam', key: GlobalKey()),
     CardConfig(id: 'transfer', title: 'Transfer Funds', key: GlobalKey()),
     CardConfig(id: 'budget', title: 'Budgets', key: GlobalKey()),
@@ -1605,65 +1605,79 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     return false;
   }
 
-  Future<void> _handleTransferFunds({
+  void _handleTransferFunds({
     required String fromPool,
     required String toPool,
     required String fromOwner,
     required String toOwner,
     required double amount,
+    required double fee,
     required String description,
     required DateTime date,
     required String fromCurrency,
     required String toCurrency,
     required double exchangeRate,
-  }) async {
-    if (amount <= 0) return;
-
-    int transferLabelId = _labels.isNotEmpty ? _labels.first.id : 1;
-    for (var label in _labels) {
-      if (label.name.toLowerCase() == 'transfer') {
-        transferLabelId = label.id;
-        break;
-      }
-    }
-
-    final outbound = TransactionModel(
-      createdAt: date.toIso8601String(),
+    required String transferGroupId,
+  }) {
+    // 1. Withdrawal leg from source pool
+    final withdrawalTx = TransactionModel(
+      id: null,
       description: description.isNotEmpty 
-          ? 'Withdrawal: $description' 
-          : 'Withdrawal',
+          ? 'Transfer to $toPool ($description)' 
+          : 'Transfer to $toPool',
       amount: amount,
       type: 'expense',
-      labelId: transferLabelId,
-      owner: fromOwner,
       pool: fromPool,
-      isConfirmed: 1,
-      isSavings: 0,
+      owner: fromOwner,
       currencyCode: fromCurrency,
+      createdAt: date.toIso8601String(),
+      labelId: 0, // Adjust to your default transfer label ID if needed
+      isSavings: 0,
     );
 
+    // 2. Deposit leg into destination pool (converted amount)
     final convertedAmount = amount * exchangeRate;
-    final inbound = TransactionModel(
-      createdAt: date.add(const Duration(seconds: 5)).toIso8601String(),
+    final depositTx = TransactionModel(
+      id: null,
       description: description.isNotEmpty 
-          ? 'Deposit $description' 
-          : 'Deposit',
+          ? 'Transfer from $fromPool ($description)' 
+          : 'Transfer from $fromPool',
       amount: convertedAmount,
       type: 'income',
-      labelId: transferLabelId,
-      owner: toOwner,
       pool: toPool,
-      isConfirmed: 1,
-      isSavings: 0,
+      owner: toOwner,
       currencyCode: toCurrency,
+      createdAt: date.toIso8601String(),
+      labelId: 0,
+      isSavings: 0,
     );
 
-    await DatabaseHelper.instance.insertTransaction(outbound);
-    await DatabaseHelper.instance.insertTransaction(inbound);
+    setState(() {
+      _transactions.add(withdrawalTx);
+      _transactions.add(depositTx);
 
-    await loadData();
-    if (!mounted) return;
-    showSnackbarNotification(context, 'Transfer recorded with pool details!');
+      // 3. Record the fee as a separate expense entry if fee > 0
+      if (fee > 0) {
+        final feeTx = TransactionModel(
+          id: null,
+          description: description.isNotEmpty 
+              ? 'Transfer Fee ($description)' 
+              : 'Transfer Fee',
+          amount: fee,
+          type: 'expense',
+          pool: fromPool,
+          owner: fromOwner,
+          currencyCode: fromCurrency,
+          createdAt: date.toIso8601String(),
+          labelId: 0,
+          isSavings: 0,
+        );
+        _transactions.add(feeTx);
+      }
+    });
+
+    // If you have a specific save method in your dashboard, call it here (e.g. _saveData() or remove if not needed)
+    // _saveData(); 
   }
 
   Future<void> _addLabel(String name) async {
@@ -2304,18 +2318,20 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             setState(() => card.isVisible = false);
             _saveCardLayoutPreferences();
           },
-          onTransfer: (fromPool, toPool, fromOwner, toOwner, amount, description, date, fromCurrency, toCurrency, exchangeRate) {
+          onTransfer: (fromPool, toPool, fromOwner, toOwner, amount, fee, description, date, fromCurrency, toCurrency, exchangeRate, transferGroupId) {
             _handleTransferFunds(
               fromPool: fromPool,
               toPool: toPool,
               fromOwner: fromOwner,
               toOwner: toOwner,
               amount: amount,
+              fee: fee,
               description: description,
               date: date,
               fromCurrency: fromCurrency,
               toCurrency: toCurrency,
               exchangeRate: exchangeRate,
+              transferGroupId: transferGroupId,
             );
           },
         );

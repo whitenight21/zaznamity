@@ -1,14 +1,11 @@
 // ignore_for_file: unnecessary_this, deprecated_member_use
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:share_plus/share_plus.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:open_file/open_file.dart';
 import 'package:intl/intl.dart';
 import 'package:zaznamity/models/card_config.dart';
@@ -25,6 +22,8 @@ import 'package:zaznamity/models/transaction_model.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:zaznamity/services/snackbar_notification.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:zaznamity/services/report_service.dart';
+import 'package:zaznamity/widgets/settings/report_config_dialog.dart';
 
 /// Shared helper to determine if a transaction is an internal transfer, goal, savings, or pool move.
 bool isExcludedTransferOrSavings(TransactionModel tx, List<LabelModel> labels) {
@@ -192,7 +191,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   int _notifyHoursBefore = 9;
   
   bool _biometricsEnabled = false;
-  String _biometricType = 'PIN';
   String _savedPin = "1234";
   bool _isPinVisible = false;
   final LocalAuthentication _localAuth = LocalAuthentication();
@@ -222,6 +220,63 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       hasReceipt: false,
     ),
   ];
+
+  Future<void> _saveFileToUserChoice(String fileName, String fileContent, String extension) async {
+    try {
+      File? savedFile;
+
+      // 1. Desktop handling: Use native save dialog
+      if (!Platform.isAndroid && !Platform.isIOS) {
+        try {
+          final FileSaveLocation? location = await getSaveLocation(
+            suggestedName: fileName,
+            acceptedTypeGroups: [
+              XTypeGroup(
+                label: extension.toUpperCase(),
+                extensions: [extension],
+              ),
+            ],
+          );
+
+          if (location != null) {
+            savedFile = File(location.path);
+            await savedFile.writeAsString(fileContent, encoding: utf8);
+          }
+        } catch (_) {}
+      }
+
+      // 2. Mobile handling (Android & iOS): Use native directory picker (No permissions required)
+      if (savedFile == null && (Platform.isAndroid || Platform.isIOS)) {
+        // Opens a native folder picker dialog so the user chooses the destination folder
+        final String? directoryPath = await getDirectoryPath();
+
+        if (directoryPath != null) {
+          final String separator = Platform.pathSeparator;
+          savedFile = File('$directoryPath$separator$fileName');
+          await savedFile.writeAsString(fileContent, encoding: utf8);
+        }
+      }
+
+      // If user cancelled the directory picker, abort safely
+      if (savedFile == null) {
+        return;
+      }
+
+      // 3. Record in informational log history
+      await _saveInfoLog(
+        'zaznamity_exports_log', 
+        fileName, 
+        DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+      );
+      setState(() {});
+
+      if (!mounted) return;
+      showSnackbarNotification(context, 'Saved successfully: $fileName');
+    } catch (e) {
+      if (!mounted) return;
+      showSnackbarNotification(context, 'Save failed: $e');
+    }
+  }
 
   Future<void> _importFullSystemBackup() async {
     try {
@@ -378,8 +433,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
   final Map<String, bool> _multiLabelFixedCategories = {};
 
-  bool _liquidTrendShowFuture = false;
-  bool _poolsTrendsShowFuture = false;
   final Map<String, bool> _poolsTrendsVisibility = {};
 
   bool _budgetRolloverEnabled = false;
@@ -436,6 +489,38 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   
   final TextEditingController _newLabelController = TextEditingController();
   final TextEditingController _pinController = TextEditingController();
+
+  // Informational Log Helpers (No file system permissions needed)
+  Future<List> _loadInfoLogs(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? jsonStr = prefs.getString(key);
+    if (jsonStr == null) return [];
+    try {
+      final List decoded = jsonDecode(jsonStr);
+      return decoded.cast();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveInfoLog(String key, String title, String timestamp) async {
+    final prefs = await SharedPreferences.getInstance();
+    final logs = await _loadInfoLogs(key);
+    logs.insert(0, {
+      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'title': title,
+      'timestamp': timestamp,
+    });
+    if (logs.length > 50) logs.removeLast();
+    await prefs.setString(key, jsonEncode(logs));
+  }
+
+  Future<void> _removeInfoLog(String key, String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final logs = await _loadInfoLogs(key);
+    logs.removeWhere((item) => item['id'] == id);
+    await prefs.setString(key, jsonEncode(logs));
+  }
 
   @override
   void initState() {
@@ -500,7 +585,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       _notifyDaysBefore = prefs.getInt('notifyDaysBefore') ?? 1;
       _notifyHoursBefore = prefs.getInt('notifyHoursBefore') ?? 9;
       _biometricsEnabled = prefs.getBool('biometricsEnabled') ?? false;
-      _biometricType = prefs.getString('biometricType') ?? 'PIN';
       _savedPin = prefs.getString('savedPin') ?? "1234";
       _pinController.text = _savedPin;
       _isCollapsed = prefs.getBool('set_appsettings_collapsed') ?? false; // Fixed persistence
@@ -533,8 +617,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
         _liquidNetPools[poolKey] = prefs.getBool('set_liquidNet_pool_$poolKey') ?? true;
       }
 
-      _liquidTrendShowFuture = prefs.getBool('set_liquidTrend_show_future') ?? false;
-      _poolsTrendsShowFuture = prefs.getBool('set_poolsTrends_show_future') ?? false;
       _budgetRolloverEnabled = prefs.getBool('set_budget_rollover') ?? false;
 
       final leftSaved = prefs.getStringList('leftNavItems');
@@ -574,6 +656,32 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     } catch (_) {}
   }
 
+/*   Future<void> _saveAndShareFileWithUserPrompt(String fileName, String fileContent, String logKey, String logType) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/$fileName');
+      await file.writeAsString(fileContent, encoding: utf8);
+
+      // Record in informational log
+      await _saveInfoLog(
+        logKey, 
+        fileName, 
+        logType, 
+        DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+      );
+      setState(() {});
+
+      // Trigger OS "Save to Phone" / Share Sheet dialog
+      await Share.shareXFiles(
+        [XFile(file.path)], 
+        text: 'Zaznamity $logType - Save to Phone / Files',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showSnackbarNotification(context, 'Save failed: $e');
+    }
+  } */
+
   Future<void> _loadSavedReports() async {
     try {
       Directory? directory;
@@ -598,7 +706,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
             final lowerPath = path.toLowerCase();
             final fileName = entity.uri.pathSegments.last;
             
-            if (lowerPath.endsWith('.pdf') && fileName.startsWith('ZaznamityReport')) {
+            if (lowerPath.endsWith('.pdf') && fileName.startsWith('Z_Report')) {
               pdfFiles.add(entity);
             } else if ((lowerPath.endsWith('.csv') || lowerPath.endsWith('.json')) && 
                       (fileName.startsWith('Z_ExportZaznams') || fileName.startsWith('Z_FullSystemBackup'))) {
@@ -1010,10 +1118,13 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
   Future<void> _shareFile(File file) async {
     try {
-      await Share.shareXFiles([XFile(file.path)], text: 'Zaznamity Backup File');
+      final fileName = file.uri.pathSegments.last;
+      final content = await file.readAsString(encoding: utf8);
+      final ext = fileName.split('.').last;
+      await _saveFileToUserChoice(fileName, content, ext);
     } catch (e) {
       if (!mounted) return;
-      showSnackbarNotification(context, 'Sharing failed: $e');
+      showSnackbarNotification(context, 'Save failed: $e');
     }
   }
 
@@ -1490,7 +1601,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
   ) async {
     try {
       final allTxs = await DatabaseHelper.instance.getTransactions();
-      
       final filteredTxs = allTxs.where((tx) {
         final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
         if (rangeMode == 'month') {
@@ -1507,41 +1617,15 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
 
       String fileContent = '';
       String extension = format.toLowerCase();
-      
-      final Map<int, String> labelMap = {
-        for (var l in widget.labels) l.id: l.name
-      };
+      final Map<int, String> labelMap = {for (var l in widget.labels) l.id: l.name};
 
       if (extension == 'csv') {
         final buffer = StringBuffer();
         buffer.writeln('ID,CreatedAt,Type,Amount,Description,Owner,Pool,CurrencyCode,LabelId,LabelName,IsConfirmed');
-        
         for (var tx in filteredTxs) {
-          final safeDescription = tx.description.replaceAll('"', '""');
-          final safeOwner = tx.owner.replaceAll('"', '""');
-          final safePool = tx.pool.replaceAll('"', '""');
-          final safeCurrency = tx.currencyCode.replaceAll('"', '""');
-          
-          final double exportAmount = (tx.type.toLowerCase() == 'expense') 
-              ? -tx.amount.abs() 
-              : tx.amount.abs();
-          
+          final double exportAmount = (tx.type.toLowerCase() == 'expense') ? -tx.amount.abs() : tx.amount.abs();
           final labelName = labelMap[tx.labelId] ?? 'General';
-          final safeLabelName = labelName.replaceAll('"', '""');
-
-          buffer.writeln(
-            '${tx.id},'
-            '"${tx.createdAt}",'
-            '"${tx.type}",'
-            '$exportAmount,'
-            '"$safeDescription",'
-            '"$safeOwner",'
-            '"$safePool",'
-            '"$safeCurrency",'
-            '${tx.labelId},'
-            '"$safeLabelName",'
-            '${tx.isConfirmed}'
-          );
+          buffer.writeln('${tx.id},"${tx.createdAt}","${tx.type}",$exportAmount,"${tx.description}","${tx.owner}","${tx.pool}","${tx.currencyCode}",${tx.labelId},"$labelName",${tx.isConfirmed}');
         }
         fileContent = buffer.toString();
       } else {
@@ -1558,31 +1642,23 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
           'labelName': labelMap[tx.labelId] ?? 'General',
           'isConfirmed': tx.isConfirmed,
         }).toList();
-        
         fileContent = jsonEncode(txMaps);
       }
 
-      final timestamp = DateFormat('yyyyMMdd_HHmmss');
-      final fileName = 'Z_ExportZaznams_$timestamp.$extension';
+      final timestampStr = DateFormat('dd-MM-yyyy').format(DateTime.now());
+      final fileName = 'Z_ExportZaznams_$timestampStr.$extension';
 
-      // Target public Downloads folder directly on Android
-      Directory? directory;
-      if (Platform.isAndroid) {
-        directory = Directory('/storage/emulated/0/Download');
-        if (!await directory.exists()) {
-          directory = await getExternalStorageDirectory();
-        }
-      } else {
-        directory = await getApplicationDocumentsDirectory();
-      }
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/$fileName');
+      await tempFile.writeAsString(fileContent, encoding: utf8);
 
-      final savedFile = File('${directory!.path}/$fileName');
-      await savedFile.writeAsString(fileContent, encoding: utf8);
-      
-      await _loadSavedReports();
+      await _saveInfoLog('zaznamity_exports_log', fileName, DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()));
+      setState(() {});
+
+      await _saveFileToUserChoice(fileName, fileContent, extension);
 
       if (!mounted) return;
-      showSnackbarNotification(context, 'Export saved to Downloads: $fileName');
+      showSnackbarNotification(context, 'Export generated: $fileName');
     } catch (e) {
       if (!mounted) return;
       showSnackbarNotification(context, 'Export failed: $e');
@@ -1628,29 +1704,54 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
       };
 
       final jsonString = jsonEncode(fullBackup);
-      final timestamp = DateFormat('yyyyMMdd_HHmmss');
-      final fileName = 'Z_FullSystemBackup_$timestamp.json';
+      final timestampStr = DateFormat('dd-MM-yyyy').format(DateTime.now());
+      final fileName = 'Z_Backup_$timestampStr.json';
 
-      Directory? directory;
-      if (Platform.isAndroid) {
-        directory = Directory('/storage/emulated/0/Download');
-        if (!await directory.exists()) {
-          directory = await getExternalStorageDirectory();
-        }
-      } else {
-        directory = await getApplicationDocumentsDirectory();
-      }
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/$fileName');
+      await tempFile.writeAsString(jsonString, encoding: utf8);
 
-      final savedFile = File('${directory!.path}/$fileName');
-      await savedFile.writeAsString(jsonString, encoding: utf8);
+      await _saveInfoLog('zaznamity_exports_log', fileName, DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()));
+      setState(() {});
 
-      await _loadSavedReports();
+      await _saveFileToUserChoice(fileName, jsonString, 'json');
 
       if (!mounted) return;
-      showSnackbarNotification(context, 'Full-System Backup saved successfully: $fileName');
+      showSnackbarNotification(context, 'Full-System Backup generated: $fileName');
     } catch (e) {
       if (!mounted) return;
-      showSnackbarNotification(context, 'Full backup failed: $e');
+      showSnackbarNotification(context, 'Full-System Backup failed: $e');
+    }
+  }
+
+  Future<void> _showReportConfigModal() async {
+    final options = await showReportConfigDialog(
+      context,
+      labels: widget.labels,
+      owners: _owners,
+      pools: _pools.keys.toList(),
+      isZaznamityMode: _isZaznamityMode,
+      primaryCurrency: _primaryCurrency,
+    );
+
+    if (options == null) return;
+    if (!mounted) return;
+
+    final reportService = ReportService();
+    try {
+      showSnackbarNotification(context, 'Generating report...');
+      final file = await reportService.generateAndSave(options, widget.labels, primaryCurrency: _primaryCurrency);
+      if (file != null) {
+        final fileName = file.uri.pathSegments.last;
+        await _saveInfoLog('zaznamity_reports_log', fileName, DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()));
+        setState(() {});
+        if (!mounted) return;
+        showSnackbarNotification(context, 'Report generated successfully!');
+        await reportService.openOrShareFile(file);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showSnackbarNotification(context, 'Error generating report: $e');
     }
   }
 
@@ -1790,7 +1891,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     );
   }
 
-  void _showEditLiabilityDialog(LiabilityModel liability) {
+  /* void _showEditLiabilityDialog(LiabilityModel liability) {
     final nameController = TextEditingController(text: liability.name);
     final balanceController = TextEditingController(text: liability.remainingBalance.toString());
     final installmentController = TextEditingController(text: liability.monthlyInstallment.toString());
@@ -1967,7 +2068,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
         ),
       ),
     );
-  }
+  } */
 
   void _showEditSavingsGoalDialog(SavingsGoalModel goal) {
     final nameController = TextEditingController(text: goal.name);
@@ -2065,7 +2166,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
     );
   }
 
-  void _showConfigureBudgetsDialog() async {
+/*   void _showConfigureBudgetsDialog() async {
     List<Map<String, dynamic>> budgets = [];
     try {
       budgets = await DatabaseHelper.instance.getBudgets();
@@ -2183,7 +2284,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
         ),
       ),
     );
-  }
+  } */
 
   void _showEditSingleBudgetDialog(Map<String, dynamic> budgetMap, VoidCallback onUpdated) {
     final budgetId = budgetMap['id'] as int;
@@ -2287,472 +2388,6 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                 }
               },
               child: const Text('Save Changes'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showReportConfigModal() {
-    DateTime customStartDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
-    DateTime customEndDate = DateTime.now();
-    
-    String selectedOwnerFilter = 'All';
-    String selectedPoolFilter = 'All';
-    String selectedLabelFilter = 'All';
-    String selectedCurrencyFilter = 'All';
-
-    bool includeSummaryCard = true;
-    bool includeFutureMetricsCard = true;
-    bool includeSavingsGoalsCard = true;
-    bool includeBudgetCard = true;
-
-    bool includeBarChart = true;
-    bool includePieChart = false;
-    bool includeLineChart = false;
-
-    bool includeTransactionTableHistory = true;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setStateModal) => AlertDialog(
-          title: Text('Configure Zaznamity Report', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-          content: SizedBox(
-            width: 480,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('1. SELECT CUSTOM DATE RANGE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton.icon(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: customStartDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2030),
-                            );
-                            if (picked != null) setStateModal(() => customStartDate = picked);
-                          },
-                          icon: const Icon(Icons.calendar_today, size: 14),
-                          label: Text('Start: ${DateFormat('dd/MM/yyyy').format(customStartDate)}', style: const TextStyle(fontSize: 12)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextButton.icon(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: customEndDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2030),
-                            );
-                            if (picked != null) setStateModal(() => customEndDate = picked);
-                          },
-                          icon: const Icon(Icons.calendar_today, size: 14),
-                          label: Text('End: ${DateFormat('dd/MM/yyyy').format(customEndDate)}', style: const TextStyle(fontSize: 12)),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  Text('2. FLEXIBLE DRILL-DOWN FILTERS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: selectedOwnerFilter,
-                          decoration: const InputDecoration(labelText: 'Owner', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)))),
-                          items: [
-                            const DropdownMenuItem(value: 'All', child: Text('All Owners')),
-                            ..._owners.map((o) => DropdownMenuItem(value: o, child: Text(o))),
-                          ],
-                          onChanged: (val) => setStateModal(() => selectedOwnerFilter = val ?? 'All'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: selectedPoolFilter,
-                          decoration: const InputDecoration(labelText: 'Pool', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)))),
-                          items: [
-                            const DropdownMenuItem(value: 'All', child: Text('All Pools')),
-                            ..._pools.keys.map((p) => DropdownMenuItem(value: p, child: Text(p.toUpperCase()))),
-                          ],
-                          onChanged: (val) => setStateModal(() => selectedPoolFilter = val ?? 'All'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: selectedLabelFilter,
-                          decoration: const InputDecoration(labelText: 'Label', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)))),
-                          items: [
-                            const DropdownMenuItem(value: 'All', child: Text('All Labels')),
-                            ...widget.labels.map((l) => DropdownMenuItem(value: l.name, child: Text(l.name))),
-                          ],
-                          onChanged: (val) => setStateModal(() => selectedLabelFilter = val ?? 'All'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: selectedCurrencyFilter,
-                          decoration: const InputDecoration(labelText: 'Currency', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)))),
-                          items: [
-                            const DropdownMenuItem<String>(value: 'All', child: Text('All Currencies')),
-                            if (_secondaryCurrency1 != null) DropdownMenuItem<String>(value: _secondaryCurrency1!, child: Text(_secondaryCurrency1!)),
-                            if (_secondaryCurrency2 != null) DropdownMenuItem<String>(value: _secondaryCurrency2!, child: Text(_secondaryCurrency2!)),
-                            if (_secondaryCurrency3 != null) DropdownMenuItem<String>(value: _secondaryCurrency3!, child: Text(_secondaryCurrency3!)),
-                            DropdownMenuItem<String>(value: _primaryCurrency, child: Text(_primaryCurrency)),
-                          ],
-                          onChanged: (val) => setStateModal(() => selectedCurrencyFilter = val ?? 'All'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  Text('3. CARD PARAMETERS & METRICS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                  const SizedBox(height: 4),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Include Metrics', style: TextStyle(fontSize: 12)),
-                    value: includeSummaryCard,
-                    onChanged: (val) => setStateModal(() => includeSummaryCard = val ?? true),
-                  ),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Include Future Metrics', style: TextStyle(fontSize: 12)),
-                    value: includeFutureMetricsCard,
-                    onChanged: (val) => setStateModal(() => includeFutureMetricsCard = val ?? true),
-                  ),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Include Savings Goals', style: TextStyle(fontSize: 12)),
-                    value: includeSavingsGoalsCard,
-                    onChanged: (val) => setStateModal(() => includeSavingsGoalsCard = val ?? true),
-                  ),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Include Budgets', style: TextStyle(fontSize: 12)),
-                    value: includeBudgetCard,
-                    onChanged: (val) => setStateModal(() => includeBudgetCard = val ?? true),
-                  ),
-                  const SizedBox(height: 14),
-
-                  Text('4. CHART VISUALIZATIONS (Checkmark Select)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                  const SizedBox(height: 4),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Bar Chart (Multi-Label Analytics)', style: TextStyle(fontSize: 12)),
-                    value: includeBarChart,
-                    onChanged: (val) => setStateModal(() => includeBarChart = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Pie Chart (Multi-Label Analytics)', style: TextStyle(fontSize: 12)),
-                    value: includePieChart,
-                    onChanged: (val) => setStateModal(() => includePieChart = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Liquid Trend', style: TextStyle(fontSize: 12)),
-                    value: includeLineChart,
-                    onChanged: (val) => setStateModal(() => includeLineChart = val ?? false),
-                  ),
-                  const SizedBox(height: 14),
-
-                  Text('5. DATA GROUPING & HISTORY TABLE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
-                  const SizedBox(height: 4),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('List Zaznam history as last parameter (Full Zaznams table)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    value: includeTransactionTableHistory,
-                    onChanged: (val) => setStateModal(() => includeTransactionTableHistory = val ?? true),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95), foregroundColor: Colors.white),
-              onPressed: () async {
-                Navigator.pop(ctx);
-                
-                try {
-                  final allTxs = await DatabaseHelper.instance.getTransactions();
-                  
-                  final startOfDay = DateTime(customStartDate.year, customStartDate.month, customStartDate.day);
-                  final endOfDay = DateTime(customEndDate.year, customEndDate.month, customEndDate.day, 23, 59, 59);
-
-                  final filteredTxs = allTxs.where((tx) {
-                    final txDate = DateTime.tryParse(tx.createdAt) ?? DateTime.now();
-                    if (txDate.isBefore(startOfDay) || txDate.isAfter(endOfDay)) return false;
-
-                    if (selectedOwnerFilter != 'All' && tx.owner != selectedOwnerFilter) return false;
-                    if (selectedPoolFilter != 'All' && tx.pool != selectedPoolFilter) return false;
-                    if (selectedCurrencyFilter != 'All' && tx.currencyCode != selectedCurrencyFilter) return false;
-
-                    if (selectedLabelFilter != 'All') {
-                      final labelObj = widget.labels.firstWhere(
-                        (l) => l.name == selectedLabelFilter,
-                        orElse: () => LabelModel(id: -999, name: '', color: '582F95'),
-                      );
-                      if (tx.labelId != labelObj.id) return false;
-                    }
-
-                    return true;
-                  }).toList();
-
-                  double totalIncome = 0;
-                  double totalExpense = 0;
-                  for (var tx in filteredTxs) {
-                    if (tx.type == 'income') {
-                      totalIncome += tx.amount;
-                    } else {
-                      totalExpense += tx.amount;
-                    }
-                  }
-                  final netBalance = totalIncome - totalExpense;
-
-                  final pdfDoc = pw.Document();
-                  final logoImage = pw.MemoryImage(
-                    (await rootBundle.load('assets/ZaznamityLogo_onlyZwhite.png'))
-                        .buffer
-                        .asUint8List(),
-                  );
-                  
-                  final formattedDateRange = '${DateFormat('dd/MM/yyyy').format(customStartDate)} - ${DateFormat('dd/MM/yyyy').format(customEndDate)}';
-
-                  pdfDoc.addPage(
-                    pw.MultiPage(
-                      pageFormat: PdfPageFormat.a4,
-                      margin: const pw.EdgeInsets.all(32),
-                      header: (pw.Context context) {
-                        return pw.Container(
-                          alignment: pw.Alignment.centerRight,
-                          margin: const pw.EdgeInsets.only(bottom: 16),
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.end,
-                            children: [
-                              pw.SizedBox(height: 4),
-                              pw.Text(
-                                'Zaznamity Financial Statement',
-                                style: pw.TextStyle(
-                                  fontSize: 12,
-                                  color: PdfColors.grey600,
-                                  fontWeight: pw.FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      footer: (pw.Context context) {
-                        return pw.Container(
-                          alignment: pw.Alignment.center,
-                          margin: const pw.EdgeInsets.only(top: 16),
-                          child: pw.Text(
-                            'Page ${context.pageNumber} of ${context.pagesCount} — Secure Local Ledger',
-                            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey500),
-                          ),
-                        );
-                      },
-                      build: (pw.Context context) {
-                        List<pw.Widget> childrenWidgets = [
-                          pw.Container(
-                            padding: const pw.EdgeInsets.all(16),
-                            decoration: pw.BoxDecoration(
-                              color: PdfColor.fromInt(_isZaznamityMode ? 0xFFA855F7 : 0xFF582F95),
-                              borderRadius: pw.BorderRadius.circular(8),
-                            ),
-                            child: pw.Row(
-                              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: pw.CrossAxisAlignment.center,
-                              children: [
-                                pw.Row(
-                                  crossAxisAlignment: pw.CrossAxisAlignment.center,
-                                  children: [
-                                    pw.Image(
-                                      logoImage,
-                                      width: 50,
-                                      height: 50,
-                                      fit: pw.BoxFit.cover,
-                                    ),
-                                    pw.SizedBox(width: 12),
-                                    pw.Column(
-                                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                                      children: [
-                                        pw.Text(
-                                          'ZAZNAMITY REPORT',
-                                          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                                        ),
-                                        pw.SizedBox(height: 4),
-                                        pw.Text(
-                                          'Timeframe: $formattedDateRange | Owner: $selectedOwnerFilter',
-                                          style: pw.TextStyle(fontSize: 10, color: PdfColors.white),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                pw.Text(
-                                  'Generated: ${DateTime.now().toLocal().toString().split(' ')[0]}',
-                                  style: const pw.TextStyle(fontSize: 10, color: PdfColors.white),
-                                ),
-                              ],
-                            ),
-                          ),
-                          pw.SizedBox(height: 20),
-                        ];
-
-                        if (includeSummaryCard) {
-                          childrenWidgets.add(pw.Text('• Summary Metrics & Assets Overview', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(_isZaznamityMode ? 0xFFE2E8F0 : 0xFF1E293B))));
-                          childrenWidgets.add(pw.SizedBox(height: 6));
-                          childrenWidgets.add(pw.Container(
-                            padding: const pw.EdgeInsets.all(10),
-                            decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(6)),
-                            child: pw.Column(
-                              crossAxisAlignment: pw.CrossAxisAlignment.start,
-                              children: [
-                                pw.Text('Filters — Pool: $selectedPoolFilter | Currency: $selectedCurrencyFilter | Label: $selectedLabelFilter', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
-                                pw.SizedBox(height: 6),
-                                pw.Row(
-                                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    pw.Text('Total Income: \$${totalIncome.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
-                                    pw.Text('Total Expenses: \$${totalExpense.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
-                                    pw.Text('Net Balance: \$${netBalance.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(_isZaznamityMode ? 0xFFA855F7 : 0xFF582F95))),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ));
-                          childrenWidgets.add(pw.SizedBox(height: 14));
-                        }
-
-                        if (includeFutureMetricsCard) {
-                          childrenWidgets.add(pw.Text('• Future Metrics & Scheduled Flow', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(_isZaznamityMode ? 0xFFE2E8F0 : 0xFF1E293B))));
-                          childrenWidgets.add(pw.SizedBox(height: 6));
-                          childrenWidgets.add(pw.Container(height: 25, alignment: pw.Alignment.centerLeft, child: pw.Text('[Future metrics parameters and prognosis included]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
-                          childrenWidgets.add(pw.SizedBox(height: 14));
-                        }
-
-                        if (includeSavingsGoalsCard || includeBudgetCard) {
-                          childrenWidgets.add(pw.Text('• Savings Goals & Budget Status', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(_isZaznamityMode ? 0xFFE2E8F0 : 0xFF1E293B))));
-                          childrenWidgets.add(pw.SizedBox(height: 6));
-                          childrenWidgets.add(pw.Container(height: 25, alignment: pw.Alignment.centerLeft, child: pw.Text('[Goals and budget parameters included]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
-                          childrenWidgets.add(pw.SizedBox(height: 14));
-                        }
-
-                        if (includeBarChart) {
-                          childrenWidgets.add(pw.Text('• Visual Chart: Bar Chart', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(_isZaznamityMode ? 0xFFE2E8F0 : 0xFF1E293B))));
-                          childrenWidgets.add(pw.SizedBox(height: 4));
-                          childrenWidgets.add(pw.Container(height: 45, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.circular(6)), child: pw.Text('[Bar Chart Rendering]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
-                          childrenWidgets.add(pw.SizedBox(height: 10));
-                        }
-
-                        if (includePieChart) {
-                          childrenWidgets.add(pw.Text('• Visual Chart: Pie Chart', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(_isZaznamityMode ? 0xFFE2E8F0 : 0xFF1E293B))));
-                          childrenWidgets.add(pw.SizedBox(height: 4));
-                          childrenWidgets.add(pw.Container(height: 45, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.circular(6)), child: pw.Text('[Pie Chart Rendering]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
-                          childrenWidgets.add(pw.SizedBox(height: 10));
-                        }
-
-                        if (includeLineChart) {
-                          childrenWidgets.add(pw.Text('• Visual Chart: Liquid Trend', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(_isZaznamityMode ? 0xFFE2E8F0 : 0xFF1E293B))));
-                          childrenWidgets.add(pw.SizedBox(height: 4));
-                          childrenWidgets.add(pw.Container(height: 45, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.circular(6)), child: pw.Text('[Line Chart Rendering]', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))));
-                          childrenWidgets.add(pw.SizedBox(height: 10));
-                        }
-
-                        if (includeTransactionTableHistory) {
-                          childrenWidgets.add(pw.SizedBox(height: 6));
-                          childrenWidgets.add(pw.Text('• All Zaznams (${filteredTxs.length})', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(_isZaznamityMode ? 0xFFE2E8F0 : 0xFF1E293B))));
-                          childrenWidgets.add(pw.SizedBox(height: 6));
-                          
-                          if (filteredTxs.isEmpty) {
-                            childrenWidgets.add(pw.Text('No Zaznams found for the selected timeframe and filters.', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)));
-                          } else {
-                            childrenWidgets.add(pw.Table(
-                              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-                              children: [
-                                pw.TableRow(
-                                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                                  children: [
-                                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Date', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
-                                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Description', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
-                                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Owner', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
-                                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Pool', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
-                                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Amount', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
-                                  ],
-                                ),
-                                ...filteredTxs.map((tx) {
-                                  final dateStr = tx.createdAt.split('T')[0];
-                                  return pw.TableRow(
-                                    children: [
-                                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(dateStr, style: const pw.TextStyle(fontSize: 8))),
-                                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(tx.description, style: const pw.TextStyle(fontSize: 8))),
-                                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(tx.owner, style: const pw.TextStyle(fontSize: 8))),
-                                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(tx.pool, style: const pw.TextStyle(fontSize: 8))),
-                                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('${tx.type == 'expense' ? '-' : '+'}\$${tx.amount.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 8, color: tx.type == 'expense' ? PdfColors.red700 : PdfColors.green700))),
-                                    ],
-                                  );
-                                }),
-                              ],
-                            ));
-                          }
-                        }
-
-                        return childrenWidgets;
-                      },
-                    ),
-                  );
-
-                  final dateStamp = '${customStartDate.year}${customStartDate.month.toString().padLeft(2, '0')}${customStartDate.day.toString().padLeft(2, '0')}_to_${customEndDate.year}${customEndDate.month.toString().padLeft(2, '0')}${customEndDate.day.toString().padLeft(2, '0')}';
-                  final fileName = 'ZaznamityReport_$dateStamp.pdf';
-
-                  Directory? directory;
-                  if (Platform.isAndroid) {
-                    directory = Directory('/storage/emulated/0/Download');
-                    if (!await directory.exists()) {
-                      directory = await getExternalStorageDirectory();
-                    }
-                  } else {
-                    directory = await getApplicationDocumentsDirectory();
-                  }
-
-                  final savedFile = File('${directory!.path}/$fileName');
-                  await savedFile.writeAsBytes(await pdfDoc.save());
-
-                  await _loadSavedReports();
-
-                  if (!context.mounted) return;
-                  showSnackbarNotification(context, 'Report saved to Downloads & Log: $fileName (${filteredTxs.length} Zaznams included)');
-
-                } catch (e) {
-                  if (!context.mounted) return;
-                  showSnackbarNotification(context, 'Error saving PDF report: $e');
-                }
-              },
-              child: const Text('Generate & Save PDF'),
             ),
           ],
         ),
@@ -2974,7 +2609,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   children: [
                     _buildSubSectionCard(
                       title: 'Zaznamity Theme',
-                      subtitle: 'Toggle: White (light) or Zaznamity (dark)',
+                      subtitle: 'Toggle: Zaznamity (dark) or White (light)',
                       children: [
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
@@ -3182,8 +2817,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       }).toList(),
                     ),
                     _buildSubSectionCard(
-                      title: 'Future Outlook',
-                      subtitle: 'Select which pools update future outlook projections (liabilities excluded)',
+                      title: 'Pending Outlook',
+                      subtitle: 'Select which pools update pending outlook projections (liabilities excluded)',
                       children: [
                         ..._pools.keys.map((poolKey) {
                           return CheckboxListTile(
@@ -3484,7 +3119,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         ),
                       ],
                     ),
-                    _buildSubSectionCard(
+                    /* _buildSubSectionCard(
                       title: 'Liquid Trend',
                       subtitle: 'Toggle visibility of Future Zaznams in chart',
                       children: [
@@ -3499,8 +3134,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           },
                         ),
                       ],
-                    ),
-                    _buildSubSectionCard(
+                    ), */
+                    /* _buildSubSectionCard(
                       title: 'Pools Trends',
                       subtitle: 'Toggle Future Zaznams and individual pool visibility',
                       children: [
@@ -3533,7 +3168,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           );
                         }),
                       ],
-                    ),
+                    ), */
                     _buildSubSectionCard(
                       title: 'Calendar',
                       subtitle: 'Start the week with Sunday or Monday',
@@ -4142,11 +3777,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   children: [
                     _buildSubSectionCard(
                       title: 'Zaznamity Reports',
-                      subtitle: 'Generate PDF reports and manage created reports',
+                      subtitle: 'Generate PDF reports and view report history log',
                       children: [
                         Text(
-                          'Generate flexible customized PDF reports with custom date ranges, filters (owners, pools, labels, currencies), custom card metrics, chart selections, and full Zaznams history lists.\n\n'
-                          'Previously generated PDF Zaznamity Reports are logged below and can be opened or deleted directly.',
+                          'Generate flexible customized PDF reports with custom date ranges, filters, custom card metrics, chart selections, and full Zaznams history lists.\n\n'
+                          'Previously generated Zaznamity Reports are logged below as an informational record.',
                           style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
                         ),
                         const SizedBox(height: 16),
@@ -4154,7 +3789,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                              backgroundColor: const Color(0xFF582F95),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -4166,97 +3801,66 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Created Zaznamity Reports',
+                          'Created Reports Log',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                         ),
                         const SizedBox(height: 4),
-                        _savedReportsList.isEmpty
-                            ? Padding(
+                        FutureBuilder<List>(
+                          future: _loadInfoLogs('zaznamity_reports_log'),
+                          builder: (context, snapshot) {
+                            final logs = snapshot.data ?? [];
+                            if (logs.isEmpty) {
+                              return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                child: Text('No saved reports found in local storage.', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8))),
-                              )
-                            : ConstrainedBox(
-                                constraints: const BoxConstraints(maxHeight: 180),
-                                child: ListView.builder(
-                                  shrinkWrap: true,
-                                  itemCount: _savedReportsList.length,
-                                  itemBuilder: (context, index) {
-                                    final file = _savedReportsList[index];
-                                    final fileName = file.uri.pathSegments.last;
-                                    return ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      dense: true,
-                                      leading: Icon(Icons.description, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                                      title: Text(fileName, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)), overflow: TextOverflow.ellipsis),
-                                      trailing: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          TextButton(
-                                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 24)),
-                                            onPressed: () => _openReportFile(file),
-                                            child: Text('Open', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          IconButton(
-                                            constraints: const BoxConstraints(),
-                                            padding: EdgeInsets.zero,
-                                            icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFDC2626)),
-                                            tooltip: 'Delete report',
-                                            onPressed: () => _deleteReportFile(file),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
+                                child: Text('No report records in history.', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8))),
+                              );
+                            }
+                            return ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 180),
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: logs.length,
+                                itemBuilder: (context, index) {
+                                  final item = logs[index];
+                                  return ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    dense: true,
+                                    leading: Icon(Icons.description, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
+                                    title: Text(item['title'], style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)), overflow: TextOverflow.ellipsis),
+                                    subtitle: Text(item['timestamp'], style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                    trailing: IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: EdgeInsets.zero,
+                                      icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFDC2626)),
+                                      tooltip: 'Remove log entry',
+                                      onPressed: () async {
+                                        await _removeInfoLog('zaznamity_reports_log', item['id']);
+                                        setState(() {});
+                                      },
+                                    ),
+                                  );
+                                },
                               ),
-                      ],
-                    ),
-                    _buildSubSectionCard(
-                      title: 'Delete Manager',
-                      subtitle: 'Manage deletion of labels, owners, pools, zaznams, or full data wipe',
-                      children: [
-                        Text(
-                          'Centralized Delete Manager to safely remove all labels, owners, pools, zaznams, or perform a complete phone data wipe in one streamlined tool.',
-                          style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFDC2626),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                            onPressed: _showDeleteManagerDialog,
-                            icon: const Icon(Icons.delete_sweep_rounded, size: 18),
-                            label: const Text('Open Delete Manager', style: TextStyle(fontWeight: FontWeight.bold)),
-                          ),
+                            );
+                          },
                         ),
                       ],
                     ),
                     _buildSubSectionCard(
                       title: 'Data Export / Backup',
-                      subtitle: 'One-click export of Zaznams or complete system backups',
+                      subtitle: 'Export Zaznams or full-system backups with Save to Phone choice',
                       children: [
                         Text(
-                          'Securely export your data for backups or to migrate between devices. Export All Zaznams history to CSV or JSON, or Import/Export a Full-System Backup (Owner, Pools, All Zaznams, Liabilities, Budgets, Savings Goals, Settings & Saved Preferences)',
+                          'Securely export your data for backups or to migrate between devices. Choose "Save to Phone" when prompted to store your backup files anywhere on your device or cloud storage.',
                           style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
                         ),
                         const SizedBox(height: 12),
-                        Text(
-                          'Export All Zaznams only (ledger history)',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                        ),
-                        const SizedBox(height: 6),
                         Row(
                           children: [
                             Expanded(
                               child: ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                                  backgroundColor: const Color(0xFF582F95),
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(vertical: 10),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -4270,7 +3874,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             Expanded(
                               child: ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                                  backgroundColor: const Color(0xFF582F95),
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(vertical: 10),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -4282,16 +3886,12 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Import and Export Full Zaznamity Backup',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
-                        ),
+                        const SizedBox(height: 10),
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                              backgroundColor: const Color(0xFF582F95),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 10),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -4306,7 +3906,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                              backgroundColor: const Color(0xFF582F95),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 10),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -4318,61 +3918,53 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Created Exports / Backups',
+                          'Created Exports Log',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                         ),
                         const SizedBox(height: 4),
-                        _savedExportsList.isEmpty
-                            ? Padding(
+                        FutureBuilder<List>(
+                          future: _loadInfoLogs('zaznamity_exports_log'),
+                          builder: (context, snapshot) {
+                            final logs = snapshot.data ?? [];
+                            if (logs.isEmpty) {
+                              return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                child: Text(
-                                  'No saved backups found in local storage.',
-                                  style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8)),
-                                ),
-                              )
-                            : ConstrainedBox(
-                                constraints: const BoxConstraints(maxHeight: 180),
-                                child: ListView.builder(
-                                  shrinkWrap: true,
-                                  itemCount: _savedExportsList.length,
-                                  itemBuilder: (context, index) {
-                                    final file = _savedExportsList[index];
-                                    final fileName = file.uri.pathSegments.last;
-                                    return ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      dense: true,
-                                      leading: Icon(
-                                        fileName.endsWith('.csv') ? Icons.table_view : Icons.data_object,
-                                        size: 16,
-                                        color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
-                                      ),
-                                      title: Text(
-                                        fileName,
-                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      trailing: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          TextButton(
-                                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 24)),
-                                            onPressed: () => _openReportFile(file),
-                                            child: Text('Open', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          IconButton(
-                                            constraints: const BoxConstraints(),
-                                            padding: EdgeInsets.zero,
-                                            icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFDC2626)),
-                                            tooltip: 'Delete export',
-                                            onPressed: () => _deleteReportFile(file),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
+                                child: Text('No backup/export records in history.', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8))),
+                              );
+                            }
+                            return ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 180),
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: logs.length,
+                                itemBuilder: (context, index) {
+                                  final item = logs[index];
+                                  return ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    dense: true,
+                                    leading: Icon(
+                                      item['title'].toString().endsWith('.csv') ? Icons.table_view : Icons.data_object,
+                                      size: 16,
+                                      color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95),
+                                    ),
+                                    title: Text(item['title'], style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B)), overflow: TextOverflow.ellipsis),
+                                    subtitle: Text(item['timestamp'], style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B))),
+                                    trailing: IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: EdgeInsets.zero,
+                                      icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFDC2626)),
+                                      tooltip: 'Remove log entry',
+                                      onPressed: () async {
+                                        await _removeInfoLog('zaznamity_exports_log', item['id']);
+                                        setState(() {});
+                                      },
+                                    ),
+                                  );
+                                },
                               ),
+                            );
+                          },
+                        ),
                       ],
                     ),
                     _buildSubSectionCard(
@@ -4417,6 +4009,31 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       ],
                     ),
                     _buildSubSectionCard(
+                      title: 'Delete Manager',
+                      subtitle: 'Manage deletion of labels, owners, pools, zaznams, or full data wipe',
+                      children: [
+                        Text(
+                          'Centralized Delete Manager to safely remove all labels, owners, pools, zaznams, or perform a complete phone data wipe in one streamlined tool.',
+                          style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFDC2626),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed: _showDeleteManagerDialog,
+                            icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+                            label: const Text('Open Delete Manager', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    _buildSubSectionCard(
                       title: 'About Zaznamity',
                       subtitle: 'App version, credits, and details',
                       children: [
@@ -4434,11 +4051,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     ),
                   ],
                 ),
-              ],
+              ]
             ],
-          ),
+          )
         );
-      },
+      }
     );
   }
 
