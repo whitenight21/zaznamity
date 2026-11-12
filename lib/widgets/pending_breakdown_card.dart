@@ -396,6 +396,7 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
   @override
   void didUpdateWidget(covariant FutureAnalyticsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _loadPrefs();
     _rebuildLabelNames();
     if (widget.selectedOwner != oldWidget.selectedOwner) {
       setState(() => _selectedOwner = widget.selectedOwner ?? 'All Owners');
@@ -932,13 +933,13 @@ class _FutureAnalyticsCardState extends State<FutureAnalyticsCard> {
               children: [
                 Expanded(
                   child: Text(
-                    'UPCOMING INCOME LABELS',
+                    'UPCOMING INCOME',
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700, letterSpacing: 0.6),
                   ),
                 ),
                 Expanded(
                   child: Text(
-                    'UPCOMING EXPENSE LABELS',
+                    'UPCOMING EXPENSES',
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : Colors.grey.shade700, letterSpacing: 0.6),
                   ),
                 ),

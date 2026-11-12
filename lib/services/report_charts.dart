@@ -5,14 +5,6 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../models/report_options.dart';
 
-/// Real vector charts for the PDF report.
-///
-/// Everything is drawn with plain PDF graphics (lines, rectangles, bezier
-/// curves), so it runs inside the report isolate, stays sharp when zoomed, and
-/// does not depend on any particular version of the pdf package's chart widgets.
-///
-/// All builders take a `fmt` function (already mask-aware) for amounts, and a
-/// `mask` flag that hides axis numbers when "Mask Confidential Amounts" is on.
 class ReportCharts {
   ReportCharts._();
 

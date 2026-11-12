@@ -92,6 +92,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
   @override
   void didUpdateWidget(covariant SelectedLabelFocusCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _loadPrefs();
     if (widget.selectedLabelId != oldWidget.selectedLabelId) {
       _localSelectedLabelId = widget.selectedLabelId;
     }
@@ -488,9 +489,9 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double fullWidth = constraints.maxWidth - 32;
+        final double availableWidth = constraints.maxWidth;
+        final double fullWidth = availableWidth - 32;
         final double boxWidth = (fullWidth - 12) / 2;
-        final double halfWidth = boxWidth;
 
         return Container(
           padding: EdgeInsets.all(_isCollapsed ? 12 : 16),
@@ -598,7 +599,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                                   decoration: BoxDecoration(
                                     color: isSelected 
                                         ? const Color(0xFF582F95) 
-                                        : (_isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC)),
+                                        : (_isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC)),
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                                   ),
@@ -631,7 +632,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                             child: Container(
                               height: 44,
                               decoration: BoxDecoration(
-                                color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                                color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
                                 borderRadius: BorderRadius.horizontal(
                                   left: const Radius.circular(10),
                                   right: hasDateFilter ? Radius.zero : const Radius.circular(10),
@@ -708,12 +709,12 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
 
                 // Label Picker
                 SizedBox(
-                  width: halfWidth,
+                  width: availableWidth,
                   child: Container(
                     height: 44,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
-                      color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                      color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                     ),
@@ -725,7 +726,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<int?>(
                               value: _localSelectedLabelId,
-                              dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
+                              dropdownColor: _isZaznamityMode ? const Color(0xFF160D25) : Colors.white,
                               isDense: true,
                               isExpanded: true,
                               style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
@@ -796,7 +797,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                   ),
@@ -876,7 +877,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                   ),
@@ -921,7 +922,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                   ),
@@ -946,7 +947,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                   ),
@@ -995,7 +996,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                   ),
@@ -1039,7 +1040,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                      color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                     ),
@@ -1133,7 +1134,7 @@ class _SelectedLabelFocusCardState extends State<SelectedLabelFocusCard> {
                 // Last 5 Zaznams Box
                 Container(
                   decoration: BoxDecoration(
-                    color: _isZaznamityMode ? const Color(0xFF2D1B4E) : const Color(0xFFF8FAFC),
+                    color: _isZaznamityMode ? const Color(0xFF160D25) : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: _isZaznamityMode ? Colors.white12 : const Color(0xFFCBD5E1)),
                   ),

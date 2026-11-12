@@ -7,13 +7,12 @@ import '../models/transaction_model.dart';
 import '../models/label.dart';
 import '../models/savings_goal_model.dart';
 import '../widgets/masked_amount.dart';
-import '../services/privacy_service.dart';
 
 class SmartInsightsCard extends StatefulWidget {
   final List<TransactionModel> transactions;
   final List<LabelModel> labels;
   final List<dynamic> budgets;
-  final List<dynamic> liabilities; // Accepts LiabilityItem or map list
+  final List<dynamic> liabilities;
   final List<SavingsGoalModel> savingsGoals;
   final Map<String, double> futureFlowByOwner;
   final Map<String, double> prognosisByOwner;
@@ -60,8 +59,10 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
   String _primaryCurrency = 'USD';
   final Map<String, bool> _multiLabelFixedCategories = {};
   
-  // Selected pools normalized to lowercase
   Set<String> _selectedRunwayPools = {'checking', 'cash', 'savings'};
+  bool _runwayExcludeTransfers = true;
+  Set<String> _selectedRunwayLabels = {};
+  bool _runwayIncludeAllLabels = true;
 
   final Set<String> _dismissedInsights = {};
   Map<String, dynamic>? _cachedAnalysis;
@@ -77,6 +78,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
   @override
   void didUpdateWidget(covariant SmartInsightsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _loadPrefs();
     if (oldWidget.selectedOwner != widget.selectedOwner ||
         oldWidget.transactions.length != widget.transactions.length ||
         oldWidget.budgets.length != widget.budgets.length ||
@@ -93,6 +95,8 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     final primary = prefs.getString('primaryCurrency') ?? 'USD';
     final collapsed = prefs.getBool('set_smartInsights_collapsed') ?? false;
     final savedPoolsStr = prefs.getString('smart_insights_runway_pools');
+    final savedExcludeTransfers = prefs.getBool('smart_insights_runway_exclude_transfers') ?? true;
+    final savedLabelsStr = prefs.getString('smart_insights_runway_labels');
     
     if (savedPoolsStr != null) {
       _selectedRunwayPools = savedPoolsStr
@@ -101,9 +105,15 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           .where((p) => p.isNotEmpty)
           .toSet();
     } else {
-      final oldInc = prefs.getBool('include_savings_emergency') ?? false;
-      _selectedRunwayPools = {'checking', 'cash'};
-      if (oldInc) _selectedRunwayPools.add('savings');
+      _selectedRunwayPools = {'checking', 'cash', 'savings'};
+    }
+
+    if (savedLabelsStr != null && savedLabelsStr.isNotEmpty) {
+      _selectedRunwayLabels = savedLabelsStr.split(',').map((l) => l.trim()).toSet();
+      _runwayIncludeAllLabels = false;
+    } else {
+      _selectedRunwayLabels = {};
+      _runwayIncludeAllLabels = true;
     }
     
     _multiLabelFixedCategories.clear();
@@ -116,6 +126,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
         _isZaznamityMode = (savedTheme == 'zaznamity');
         _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
         _excludeTransfersForBalance = prefs.getBool('exclude_transfers_balance') ?? false;
+        _runwayExcludeTransfers = savedExcludeTransfers;
         _primaryCurrency = primary;
         _isCollapsed = collapsed;
       });
@@ -131,11 +142,16 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     await prefs.setBool('set_smartInsights_collapsed', _isCollapsed);
   }
 
-  Future<void> _saveRunwayPools(Set<String> pools) async {
+  Future<void> _saveRunwayConfig(Set<String> pools, bool excludeTransfers, bool includeAllLabels, Set<String> labels) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('smart_insights_runway_pools', pools.join(','));
+    await prefs.setBool('smart_insights_runway_exclude_transfers', excludeTransfers);
+    await prefs.setString('smart_insights_runway_labels', includeAllLabels ? '' : labels.join(','));
     setState(() {
       _selectedRunwayPools = Set.from(pools);
+      _runwayExcludeTransfers = excludeTransfers;
+      _runwayIncludeAllLabels = includeAllLabels;
+      _selectedRunwayLabels = Set.from(labels);
       _computeDataIfNeeded(force: true);
     });
   }
@@ -145,12 +161,15 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     
     final Set<String> availablePools = {'checking', 'cash', 'savings'};
     for (var tx in widget.transactions) {
-      if (tx.pool != null && tx.pool!.trim().isNotEmpty) {
-        availablePools.add(tx.pool!.trim().toLowerCase());
+      if (tx.pool.trim().isNotEmpty) {
+        availablePools.add(tx.pool.trim().toLowerCase());
       }
     }
 
-    final Set<String> tempSelected = Set.from(_selectedRunwayPools);
+    final Set<String> tempSelectedPools = Set.from(_selectedRunwayPools);
+    bool tempExcludeTransfers = _runwayExcludeTransfers;
+    bool tempIncludeAllLabels = _runwayIncludeAllLabels;
+    final Set<String> tempSelectedLabels = Set.from(_selectedRunwayLabels);
 
     showDialog(
       context: context,
@@ -159,33 +178,91 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
           backgroundColor: theme.dialogBackground,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text(
-            'Select Runway Pools',
+            'Configure Runway Settings',
             style: TextStyle(color: theme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
           ),
           content: SizedBox(
-            width: 300,
-            child: ListView(
-              shrinkWrap: true,
-              children: availablePools.map((pool) {
-                final isSelected = tempSelected.contains(pool);
-                return CheckboxListTile(
-                  title: Text(
-                    pool.toUpperCase(),
-                    style: TextStyle(color: theme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+            width: 320,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Included Pools', style: TextStyle(color: theme.accent, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  ...availablePools.map((pool) {
+                    final isSelected = tempSelectedPools.contains(pool);
+                    return CheckboxListTile(
+                      dense: true,
+                      title: Text(pool.toUpperCase(), style: TextStyle(color: theme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+                      value: isSelected,
+                      activeColor: theme.accent,
+                      onChanged: (val) {
+                        setDialogState(() {
+                          if (val == true) {
+                            tempSelectedPools.add(pool);
+                          } else {
+                            tempSelectedPools.remove(pool);
+                          }
+                        });
+                      },
+                    );
+                  }),
+                  const Divider(height: 20),
+                  Text('Transfer Settings', style: TextStyle(color: theme.accent, fontSize: 12, fontWeight: FontWeight.bold)),
+                  CheckboxListTile(
+                    dense: true,
+                    title: Text('Exclude Transfers from Trailing Average', style: TextStyle(color: theme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    value: tempExcludeTransfers,
+                    activeColor: theme.accent,
+                    onChanged: (val) {
+                      setDialogState(() {
+                        tempExcludeTransfers = val ?? true;
+                      });
+                    },
                   ),
-                  value: isSelected,
-                  activeColor: theme.accent,
-                  onChanged: (val) {
-                    setDialogState(() {
-                      if (val == true) {
-                        tempSelected.add(pool);
-                      } else {
-                        tempSelected.remove(pool);
-                      }
-                    });
-                  },
-                );
-              }).toList(),
+                  const Divider(height: 20),
+                  Text('Label Filtering', style: TextStyle(color: theme.accent, fontSize: 12, fontWeight: FontWeight.bold)),
+                  CheckboxListTile(
+                    dense: true,
+                    title: Text('Include All Labels', style: TextStyle(color: theme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    value: tempIncludeAllLabels,
+                    activeColor: theme.accent,
+                    onChanged: (val) {
+                      setDialogState(() {
+                        tempIncludeAllLabels = val ?? true;
+                      });
+                    },
+                  ),
+                  if (!tempIncludeAllLabels) ...[
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      height: 150,
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: widget.labels.map((lbl) {
+                          final isSelected = tempSelectedLabels.contains(lbl.name);
+                          return CheckboxListTile(
+                            dense: true,
+                            title: Text(lbl.name, style: TextStyle(color: theme.textPrimary, fontSize: 11)),
+                            value: isSelected,
+                            activeColor: theme.accent,
+                            onChanged: (val) {
+                              setDialogState(() {
+                                if (val == true) {
+                                  tempSelectedLabels.add(lbl.name);
+                                } else {
+                                  tempSelectedLabels.remove(lbl.name);
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
           actions: [
@@ -200,7 +277,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               onPressed: () {
-                _saveRunwayPools(tempSelected);
+                _saveRunwayConfig(tempSelectedPools, tempExcludeTransfers, tempIncludeAllLabels, tempSelectedLabels);
                 Navigator.pop(ctx);
               },
               child: const Text('Save'),
@@ -340,11 +417,11 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
         hasFixedCategoriesConfigured = true;
       }
 
-      final String poolLower = (tx.pool ?? '').toLowerCase().trim();
-      bool isTransfer = labelName == 'transfer';
+      final String poolLower = tx.pool.toLowerCase().trim();
+      bool isTransfer = labelName == 'transfer' || labelName.contains('transfer');
       double normalizedAmount = _normalizeAmount(tx.amount, null);
 
-      if (dt != null && !dt.isAfter(now)) {
+      if (dt != null && !dt.isAfter(now) && tx.isConfirmed == 1) {
         if (!(_excludeTransfersForBalance && isTransfer)) {
           double signedAmt = tx.type == 'income' ? normalizedAmount : -normalizedAmount;
           if (_selectedRunwayPools.contains(poolLower) || (_selectedRunwayPools.contains('savings') && _isSavingsLabel(labelName))) {
@@ -359,8 +436,10 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
 
       if (tx.isConfirmed != 1) {
         if (dt != null && dt.year == currentYear && dt.month == currentMonth && dt.isAfter(now)) {
-          double signedAmt = tx.type == 'income' ? normalizedAmount : -normalizedAmount;
-          scheduledNetRestOfMonth += signedAmt;
+          if (!(_runwayExcludeTransfers && isTransfer)) {
+            double signedAmt = tx.type == 'income' ? normalizedAmount : -normalizedAmount;
+            scheduledNetRestOfMonth += signedAmt;
+          }
         }
         continue;
       }
@@ -376,7 +455,13 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
 
       if (!dt.isBefore(threeMonthsAgo) && dt.isBefore(DateTime(currentYear, currentMonth, 1))) {
         if (tx.type == 'income') trailing3MIncome += normalizedAmount;
-        if (tx.type == 'expense') trailing3MExpense += normalizedAmount;
+        if (tx.type == 'expense') {
+          if (!(_runwayExcludeTransfers && isTransfer)) {
+            if (_runwayIncludeAllLabels || _selectedRunwayLabels.contains(matchLbl.name)) {
+              trailing3MExpense += normalizedAmount;
+            }
+          }
+        }
       }
 
       if (dt.year == currentYear && dt.month == currentMonth) {
@@ -418,14 +503,16 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       }
     }
 
-    // --- COMMITTED THIS MONTH CALCULATION ---
     double totalBudgetsCommitted = 0;
     for (var b in widget.budgets) {
       if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners') {
         final ownerField = b['owner']?.toString().trim() ?? '';
         if (ownerField.toLowerCase() != widget.selectedOwner!.trim().toLowerCase()) continue;
       }
-      totalBudgetsCommitted += ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
+      double limitAmt = ((b['limit_amount'] ?? b['limitAmount'] ?? 0) as num).toDouble();
+      double spentAmt = ((b['spent_amount'] ?? b['spentAmount'] ?? 0) as num).toDouble();
+      double unspentBudget = (limitAmt - spentAmt).clamp(0.0, double.infinity);
+      totalBudgetsCommitted += unspentBudget;
     }
 
     double totalLiabilitiesCommitted = 0;
@@ -455,8 +542,8 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     }
 
     double totalCommittedThisMonth = totalBudgetsCommitted + totalLiabilitiesCommitted + totalSavingsCommitted;
-    double effectiveIncomeForCommitment = currentMonthIncome > 0 ? currentMonthIncome : (trailing3MIncome > 0 ? (trailing3MIncome / 3.0) : totalCommittedThisMonth);
-    double freeToSpend = effectiveIncomeForCommitment - totalCommittedThisMonth;
+    double expectedIncome = currentMonthIncome > 0 ? currentMonthIncome : (trailing3MIncome > 0 ? (trailing3MIncome / 3.0) : 0.0);
+    double freeToSpend = totalLiquidChecking + expectedIncome - totalCommittedThisMonth;
 
     if (!hasFixedCategoriesConfigured && currentMonthExpense > 0) {
       needsExpense = 0;
@@ -474,15 +561,56 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
         ? ((trailing3MIncome - trailing3MExpense) / trailing3MIncome) * 100
         : (currentMonthIncome > 0 ? ((currentMonthIncome - currentMonthExpense) / currentMonthIncome) * 100 : 0.0);
 
-    double monthlyBurnBaseline = prevMonthExpense > 0 ? prevMonthExpense : (currentMonthExpense > 0 ? currentMonthExpense : 1.0);
-    double emergencyRunwayMonths = totalLiquidChecking > 0 ? (totalLiquidChecking / monthlyBurnBaseline) : 0.0;
+    double trailing3MBurnMonthly = trailing3MExpense > 0 ? (trailing3MExpense / 3.0) : (prevMonthExpense > 0 ? prevMonthExpense : (currentMonthExpense > 0 ? currentMonthExpense : 1.0));
+    double emergencyRunwayMonths = totalLiquidChecking > 0 ? (totalLiquidChecking / trailing3MBurnMonthly) : 0.0;
 
     final double daysLeft = (daysInMonth - currentDay + 1).clamp(1, 31).toDouble();
     final double spendable = (totalLiquidChecking + scheduledNetRestOfMonth) * 0.8;
     double targetBufferAllowance = spendable.clamp(0.0, double.infinity) / daysLeft;
 
-    double dailyAverageBurn = monthlyBurnBaseline / 30.0;
+    double dailyAverageBurn = trailing3MBurnMonthly / 30.0;
     double moneyRunwayDays = dailyAverageBurn > 0 ? (totalLiquidChecking / dailyAverageBurn) : (totalLiquidChecking > 0 ? 999.0 : 0.0);
+
+    final horizon = now.add(const Duration(days: 365));
+    final scheduled = <({DateTime date, double net})>[];
+    for (final tx in widget.transactions) {
+      if (widget.selectedOwner != null && widget.selectedOwner!.isNotEmpty && widget.selectedOwner != 'All Owners' && tx.owner != widget.selectedOwner) continue;
+      final dt = DateTime.tryParse(tx.createdAt);
+      if (dt == null || !dt.isAfter(now) || dt.isAfter(horizon)) continue;
+      final LabelModel matchLbl = labelMap[tx.labelId] ?? fallbackLabel;
+      final String labelName = matchLbl.name.toLowerCase();
+      bool isTransfer = labelName == 'transfer' || labelName.contains('transfer');
+      if (_runwayExcludeTransfers && isTransfer) continue;
+
+      final net = tx.type == 'income' ? tx.amount : -tx.amount;
+      if (net != 0) scheduled.add((date: dt, net: net));
+    }
+    scheduled.sort((a, b) => a.date.compareTo(b.date));
+
+    double runningBalance = totalLiquidChecking;
+    DateTime cursor = now;
+    DateTime? deficitDate;
+
+    if (runningBalance < 0) {
+      deficitDate = now;
+    } else {
+      for (final item in scheduled) {
+        runningBalance += item.net;
+        cursor = item.date;
+        if (runningBalance < 0) {
+          deficitDate = item.date;
+          break;
+        }
+      }
+    }
+
+    if (deficitDate == null) {
+      if (dailyAverageBurn > 0) {
+        final daysLeftToDeplete = (runningBalance / dailyAverageBurn).floor();
+        final projected = cursor.add(Duration(days: daysLeftToDeplete));
+        if (projected.isBefore(horizon)) deficitDate = projected;
+      }
+    }
 
     double currentNetToDate = currentMonthIncome - currentMonthExpenseToDate;
     double prevNetToDate = prevMonthIncomeToDate - prevMonthExpenseToDate;
@@ -664,6 +792,10 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
       'totalLiabilitiesCommitted': totalLiabilitiesCommitted,
       'totalSavingsCommitted': totalSavingsCommitted,
       'freeToSpend': freeToSpend,
+      'trailing3MBurnMonthly': trailing3MBurnMonthly,
+      'deficitDate': deficitDate,
+      'expectedIncome': expectedIncome,
+      'currentMonthIncomeRaw': currentMonthIncome,
     };
   }
 
@@ -716,6 +848,150 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
             ),
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCommittedFormulaModal(BuildContext context, Map<String, dynamic> analysis) {
+    final theme = _AppThemeColors(_isZaznamityMode);
+    final double budgets = analysis['totalBudgetsCommitted'];
+    final double liabilities = analysis['totalLiabilitiesCommitted'];
+    final double goals = analysis['totalSavingsCommitted'];
+    final double totalCommitted = analysis['totalCommittedThisMonth'];
+    final double expectedIncome = analysis['expectedIncome'];
+    final double currentIncome = analysis['currentMonthIncomeRaw'];
+    final double freeToSpend = analysis['freeToSpend'];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.dialogBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.account_balance_wallet_rounded, color: theme.accent),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Committed This Month',
+                style: TextStyle(color: theme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Formula Explanation:', style: TextStyle(fontWeight: FontWeight.bold, color: theme.textPrimary, fontSize: 13)),
+              const SizedBox(height: 4),
+              Text(
+                'Committed This Month is the sum of three planned amounts:\n'
+                '1. Budgets: Monthly limits added together (not spent amounts).\n'
+                '2. Liabilities: Every active loan monthly installment.\n'
+                '3. Savings Goals: Every goal monthly contribution.',
+                style: TextStyle(color: theme.textSecondary, fontSize: 12, height: 1.4),
+              ),
+              const Divider(height: 20),
+              Text('Live Calculation:', style: TextStyle(fontWeight: FontWeight.bold, color: theme.textPrimary, fontSize: 13)),
+              const SizedBox(height: 6),
+              Text('• Unspent Budgets: ${_formatCurrency(budgets)}', style: TextStyle(color: theme.textSecondary, fontSize: 12)),
+              Text('• Liabilities: ${_formatCurrency(liabilities)}', style: TextStyle(color: theme.textSecondary, fontSize: 12)),
+              Text('• Savings Goals: ${_formatCurrency(goals)}', style: TextStyle(color: theme.textSecondary, fontSize: 12)),
+              const Divider(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Total Committed:', style: TextStyle(fontWeight: FontWeight.bold, color: theme.textPrimary, fontSize: 12)),
+                  Text(_formatCurrency(totalCommitted), style: TextStyle(fontWeight: FontWeight.w900, color: theme.accent, fontSize: 13)),
+                ],
+              ),
+              const Divider(height: 20),
+              Text('Free to Spend Formula:', style: TextStyle(fontWeight: FontWeight.bold, color: theme.textPrimary, fontSize: 13)),
+              const SizedBox(height: 4),
+              Text(
+                'Free to Spend = Expected Income − Total Committed\n'
+                '${currentIncome > 0 ? "• Using current month income: ${_formatCurrency(currentIncome)}" : "• No current income yet; using 3-month trailing average: ${_formatCurrency(expectedIncome)}"}\n'
+                '• Free to Spend Result: ${_formatCurrency(freeToSpend)}',
+                style: TextStyle(color: theme.textSecondary, fontSize: 12, height: 1.4),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRunwayFormulaModal(BuildContext context, Map<String, dynamic> analysis) {
+    final theme = _AppThemeColors(_isZaznamityMode);
+    final double liquid = analysis['totalLiquidChecking'];
+    final double burn = analysis['trailing3MBurnMonthly'];
+    final double months = analysis['emergencyRunway'];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.dialogBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.calculate_rounded, color: theme.accent),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Runway Formula Breakdown',
+                style: TextStyle(color: theme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('How long would my money last if no income arrives?'),
+            Text('Formula:', style: TextStyle(fontWeight: FontWeight.bold, color: theme.textPrimary, fontSize: 13)),
+            const SizedBox(height: 4),
+            Text('Current Liquid Balance ÷ (Trailing 3-Month Expense Total ÷ 3) = Runway Months', style: TextStyle(color: theme.textSecondary, fontSize: 12, height: 1.4)),
+            const Divider(height: 20),
+            Text('Calculation Steps:', style: TextStyle(fontWeight: FontWeight.bold, color: theme.textPrimary, fontSize: 13)),
+            const SizedBox(height: 6),
+            Text('• Liquid Balance: ${_formatCurrency(liquid)}', style: TextStyle(color: theme.textSecondary, fontSize: 12)),
+            Text('• Trailing 3-Month Monthly Burn: ${_formatCurrency(burn)} ${_runwayExcludeTransfers ? "(Transfers Excluded)" : "(Transfers Included)"}', style: TextStyle(color: theme.textSecondary, fontSize: 12)),
+            Text('• Label Filtering: ${_runwayIncludeAllLabels ? "All Labels" : "${_selectedRunwayLabels.length} Labels Selected"}', style: TextStyle(color: theme.textSecondary, fontSize: 12)),
+            const Divider(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Result:', style: TextStyle(fontWeight: FontWeight.bold, color: theme.textPrimary)),
+                Text('${months.toStringAsFixed(2)} months', style: TextStyle(fontWeight: FontWeight.w900, color: theme.accent, fontSize: 14)),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -817,8 +1093,8 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
     final double runway = analysis['emergencyRunway'];
     final double targetBufferAllowance = analysis['targetBufferAllowance'];
     final double moneyRunwayDays = analysis['moneyRunwayDays'];
-    final double totalLiquidChecking = analysis['totalLiquidChecking'];
     final double spentToday = analysis['spentToday'];
+    final DateTime? deficitDate = analysis['deficitDate'];
     
     final double totalCommitted = analysis['totalCommittedThisMonth'];
     final double budgetsCommitted = analysis['totalBudgetsCommitted'];
@@ -891,14 +1167,9 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                         'Health & Insights',
                         '"At a Glance" - Auto-generated actionable insights based on spending patterns, recurring payments, and runway health.\n\n'
                         '• Health Score: Weighted scoring based on savings rate, emergency runway, budget adherence, cashflow trend, and debt load.\n'
-                        '• Committed This Month: Automatically aggregates your budgets ceiling, active liability installments, and savings goal contributions, shown against your income as "Free to Spend".\n'
-                        '• Runway Health: Calculated based on liquid balances and average monthly burn rate, indicating how many months of expenses can be covered.\n'
+                        '• Committed This Month: The sum of three planned amounts: 1. Budgets: the monthly limits of all your budgets added together (not what you’ve spent). 2. Liabilities: every loan’s monthly installment. 3. Savings goals: every goal’s monthly contribution. 4. Free to spend = this month’s income − committed. If no income has arrived yet this month, it uses the average of the last 3 months instead.\n'
                         '• Target Buffer Allowance: Recommended daily spending limit to maintain runway health.\n'
-                        '• Money Runway Days: Estimated number of days before liquid balances are depleted based on current spending velocity.\n'
-                        '• Spent Today / Allowed: Total expenses recorded for the current day over the allowed limit.\n'
-                        '• Needs / Wants / Savings: Categorized expenses for the current month, distinguishing between essential needs, discretionary wants, and savings contributions.\n'
-                        '• Fixed / Variable: Breakdown of expenses into fixed overheads and variable spending, providing insight into controllable costs.\n'
-                        '• Suggestions & Actions: Curated list of top actionable insights, highlighting spending anomalies, budget adherence issues, and runway health alerts.',
+                        '• Spent Today / Allowed: Total expenses recorded for the current day over the allowed limit.',
                       ),
                       tooltip: 'At a Glance',
                       constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
@@ -994,7 +1265,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
             ),
             const SizedBox(height: 14),
 
-            // --- COMMITTED THIS MONTH CARD ---
+            // --- COMMITTED THIS MONTH CARD WITH TAP MODAL ---
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -1002,74 +1273,83 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.3)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.account_balance_wallet, color: theme.accent, size: 18),
-                          const SizedBox(width: 8),
-                          Text(
-                            'COMMITTED THIS MONTH',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: theme.accent, letterSpacing: 0.6),
-                          ),
-                        ],
-                      ),
-                      MaskedAmount(
-                        formattedAmount: _formatCurrency(totalCommitted),
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: theme.textPrimary),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text('• Budgets: ', style: TextStyle(fontSize: 10, color: theme.textSecondary)),
-                              MaskedAmount(formattedAmount: _formatCurrency(budgetsCommitted), style: TextStyle(fontSize: 10, color: theme.textSecondary)),
-                            ],
-                          ),
-                          Row(
-                            children: [
-                              Text('• Liabilities: ', style: TextStyle(fontSize: 10, color: theme.textSecondary)),
-                              MaskedAmount(formattedAmount: _formatCurrency(liabilitiesCommitted), style: TextStyle(fontSize: 10, color: theme.textSecondary)),
-                            ],
-                          ),
-                          Row(
-                            children: [
-                              Text('• Goals: ', style: TextStyle(fontSize: 10, color: theme.textSecondary)),
-                              MaskedAmount(formattedAmount: _formatCurrency(savingsCommitted), style: TextStyle(fontSize: 10, color: theme.textSecondary)),
-                            ],
-                          ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text('Free to Spend', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: theme.textSecondary)),
-                          const SizedBox(height: 2),
-                          MaskedAmount(
-                            formattedAmount: _formatCurrency(freeToSpend),
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                              color: freeToSpend >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+              child: InkWell(
+                onTap: () => _showCommittedFormulaModal(context, analysis),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.account_balance_wallet, color: theme.accent, size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              'COMMITTED THIS MONTH',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: theme.accent, letterSpacing: 0.6),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            MaskedAmount(
+                              formattedAmount: _formatCurrency(totalCommitted),
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: theme.textPrimary),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.info_outline_rounded, size: 14, color: theme.textSecondary),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text('• Unspent Budgets: ', style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                                MaskedAmount(formattedAmount: _formatCurrency(budgetsCommitted), style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                Text('• Liabilities: ', style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                                MaskedAmount(formattedAmount: _formatCurrency(liabilitiesCommitted), style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                Text('• Goals: ', style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                                MaskedAmount(formattedAmount: _formatCurrency(savingsCommitted), style: TextStyle(fontSize: 10, color: theme.textSecondary)),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text('Free to Spend:', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: theme.textSecondary)),
+                            const SizedBox(height: 2),
+                            MaskedAmount(
+                              formattedAmount: _formatCurrency(freeToSpend),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                                color: freeToSpend >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 14),
@@ -1090,46 +1370,37 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                         children: [
                           Icon(Icons.savings_rounded, color: _isZaznamityMode ? const Color(0xFF34D399) : Colors.green, size: 20),
                           const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'TARGET-BUFFER ALLOWANCE',
-                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: theme.textSecondary, letterSpacing: 0.6),
-                              ),
-                              const SizedBox(height: 2),
-                              Row(
-                                children: [
-                                  MaskedAmount(
-                                    formattedAmount: _formatCurrency(targetBufferAllowance),
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: theme.textPrimary),
-                                  ),
-                                  Text(
-                                    ' / day',
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: theme.textPrimary),
-                                  ),
-                                ],
-                              ),
-                            ],
+                          Text(
+                            'TARGET-BUFFER ALLOWANCE',
+                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: theme.textSecondary, letterSpacing: 0.6),
                           ),
                         ],
                       ),
-                      Tooltip(
-                        message: 'Based on total liquid reserves ÷ average daily burn rate.',
-                        child: Text(
-                          'Runway: ${moneyRunwayDays.toStringAsFixed(0)} days left',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: moneyRunwayDays > 15 ? const Color(0xFF34D399) : Colors.orangeAccent),
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            'Spent Today / Allowed:',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.textSecondary),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  const Divider(height: 16),
+                  const SizedBox(height: 6),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Spent Today / Allowed:',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.textSecondary),
+                      Row(
+                        children: [
+                          MaskedAmount(
+                            formattedAmount: _formatCurrency(targetBufferAllowance),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: theme.textPrimary),
+                          ),
+                          Text(
+                            ' / day',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: theme.textPrimary),
+                          ),
+                        ],
                       ),
                       Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1167,7 +1438,6 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
             ),
             const SizedBox(height: 14),
 
-            // 2. Emergency Runway box
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -1175,62 +1445,81 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: theme.containerBorder),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: (runway >= 3 ? const Color(0xFF34D399) : const Color(0xFFF87171)).withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          Icons.shield_outlined,
-                          size: 20,
-                          color: runway >= 3 ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'EMERGENCY RUNWAY',
-                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: theme.textSecondary, letterSpacing: 0.6),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${runway.toStringAsFixed(1)} mos (${moneyRunwayDays.toStringAsFixed(0)} days)',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              color: runway >= 3 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                  InkWell(
+                    onTap: () => _showRunwayFormulaModal(context, analysis),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: (runway >= 3 ? const Color(0xFF34D399) : const Color(0xFFF87171)).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                Icons.shield_outlined,
+                                size: 20,
+                                color: runway >= 3 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                              ),
                             ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'CURRENT RUNWAY (income not incl.)',
+                                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: theme.textSecondary, letterSpacing: 0.6),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${runway.toStringAsFixed(1)} mos (${moneyRunwayDays.toStringAsFixed(0)} days)',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    color: runway >= 3 ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Icon(Icons.calculate_rounded, size: 18, color: theme.textSecondary),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.event_busy_rounded, size: 16, color: deficitDate != null ? const Color(0xFFF87171) : const Color(0xFF34D399)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'TOTAL DEPLETION (income not incl.):',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.textSecondary),
                           ),
                         ],
                       ),
+                      Text(
+                        deficitDate != null ? DateFormat('MMM dd, yyyy').format(deficitDate) : 'Stable (> 1 Year)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: deficitDate != null ? const Color(0xFFF87171) : const Color(0xFF34D399),
+                        ),
+                      ),
                     ],
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.info_outline, size: 16, color: theme.textSecondary),
-                    onPressed: () => _showInfoDialog(
-                      context,
-                      'Emergency Fund Runway',
-                      'Calculates how many months of baseline living expenses your selected liquid reserves (${_selectedRunwayPools.join(', ')}) can cover based on your monthly burn rate.\n\n'
-                      'Total Reserves: ${_formatCurrency(totalLiquidChecking)}.\n'
-                      'Days Left = Total Reserves ÷ Average Daily Burn Rate.',
-                    ),
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    padding: EdgeInsets.zero,
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 10),
 
-            // Configure Pools Button
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -1249,11 +1538,11 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Included Pools in Runway',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.textPrimary),
+                            'Included in Runway',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                           ),
                           Text(
-                            _selectedRunwayPools.isEmpty ? 'None selected' : _selectedRunwayPools.join(', ').toUpperCase(),
+                            '${_selectedRunwayPools.isEmpty ? 'None' : _selectedRunwayPools.join(', ').toUpperCase()} • ${_runwayExcludeTransfers ? 'Excl. Transfers' : 'Incl. Transfers'} • ${_runwayIncludeAllLabels ? 'All Labels' : '${_selectedRunwayLabels.length} Labels'}',
                             style: TextStyle(fontSize: 9, color: theme.textSecondary),
                           ),
                         ],
@@ -1269,7 +1558,7 @@ class _SmartInsightsCardState extends State<SmartInsightsCard> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                     ),
                     onPressed: () => _showPoolSelectorDialog(context),
-                    child: const Text('Configure Pools', style: TextStyle(fontSize: 10)),
+                    child: const Text('Configure', style: TextStyle(fontSize: 10)),
                   ),
                 ],
               ),

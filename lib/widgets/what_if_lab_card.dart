@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/transaction_model.dart';
 import '../models/liability_model.dart';
 import '../models/label.dart';
-import '../services/privacy_service.dart';
+//import '../services/privacy_service.dart';
 import '../widgets/masked_amount.dart';
 
 class WhatIfScenarioCard extends StatefulWidget {
@@ -67,10 +67,59 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
   final Map<String, DateTime> _snoozedInsights = {};
   
   // Score history for sparkline and monthly delta
-  List<double> _scoreHistory = [68, 70, 72, 71, 75, 78];
+  final List<double> _scoreHistory = [68, 70, 72, 71, 75, 78];
 
   // Data cache key for staleness detection
   String _lastDataCacheKey = '';
+
+  double _getLiveLiquidBalance() {
+    final now = DateTime.now();
+    double totalBalance = 0;
+    bool hasMatchingTx = false;
+
+    final normalizedSelectedPools = _selectedPoolNames
+        .map((p) => p.trim().toLowerCase())
+        .toSet();
+    final bool isFilteringSpecificPools = normalizedSelectedPools.isNotEmpty;
+
+    for (var tx in widget.transactions) {
+      if (tx.isConfirmed != 1) continue;
+
+      final dt = DateTime.tryParse(tx.createdAt);
+      if (dt != null && dt.isAfter(now)) continue;
+
+      // Filter by selected owner if active
+      if (widget.selectedOwner != null &&
+          widget.selectedOwner!.isNotEmpty &&
+          widget.selectedOwner != 'All Owners' &&
+          tx.owner != widget.selectedOwner) {
+        continue;
+      }
+
+      // If specific pools are selected in the What-If card filter,
+      // restrict the sum strictly to those pools (e.g., Checking only).
+      // When filtering by specific pool(s), include transfers into/out of that pool;
+      // when viewing All Pools, exclude transfers so internal moves net out cleanly.
+      if (isFilteringSpecificPools) {
+        final txPool = tx.pool.trim().toLowerCase();
+        if (!normalizedSelectedPools.contains(txPool)) {
+          continue;
+        }
+      } else {
+        if (_isTransferTransaction(tx)) continue;
+      }
+
+      hasMatchingTx = true;
+      final normAmt = _normalizeAmount(tx.amount, null);
+      double signedVal = tx.type == 'income' ? normAmt : -normAmt;
+      totalBalance += signedVal;
+    }
+
+    if (isFilteringSpecificPools) {
+      return totalBalance;
+    }
+    return hasMatchingTx ? totalBalance : widget.basePrognosis;
+  }
 
   @override
   void initState() {
@@ -406,7 +455,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
       dailyLiabilityOutlay += (lib.monthlyInstallment / 30.0);
     }
 
-    double startingBalance = widget.basePrognosis;
+    double startingBalance = _getLiveLiquidBalance();
     double currentBaselineBalance = startingBalance;
     double currentScenarioBalance = startingBalance;
 
@@ -484,6 +533,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
     }
 
     return {
+      'startingBalance': startingBalance,
       'simulatedIncome': simulatedIncome,
       'simulatedExpense': simulatedExpense,
       'simulatedNetShift': simulatedNetShift,
@@ -1344,7 +1394,7 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
   @override
   Widget build(BuildContext context) {
     final results = _calculateSimulationResults();
-    final double simulatedNetShift = results['simulatedNetShift'];
+    final double startingBalance = results['startingBalance'];
     final double endingBalance = results['simulatedEndingBalance'];
     final int runwayDays = results['estimatedRunwayDays'];
     final DateTime? firstDipDate = results['firstDipDate'];
@@ -1853,9 +1903,14 @@ class _WhatIfScenarioCardState extends State<WhatIfScenarioCard> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Initial Balance', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          Text(
+                            _selectedPoolNames.isEmpty
+                                ? 'Initial Balance (All Pools):'
+                                : 'Initial Balance ($poolsButtonText):',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
                           MaskedAmount(
-                            formattedAmount: _formatCurrency(widget.basePrognosis),
+                            formattedAmount: _formatCurrency(startingBalance),
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,

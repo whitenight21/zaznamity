@@ -14,28 +14,28 @@ import 'package:zaznamity/services/snackbar_notification.dart';
 import '../services/privacy_service.dart';
 import 'package:zaznamity/services/notification_service.dart';
 
-import '../widgets/summary_metrics_card.dart';
-import '../widgets/future_metrics_card.dart';
+import '../widgets/metrics_card.dart';
+import '../widgets/pending_outlook_card.dart';
 import '../widgets/new_zaznam_card.dart';
 import '../widgets/transfer_funds_card.dart';
-import '../widgets/liquid_trend_chart_card.dart';
-import '../widgets/savings_chart_card.dart';
-import '../widgets/income_expenses_by_labels_card.dart';
-import '../widgets/transaction_history_card.dart';
-import '../widgets/app_settings_card.dart';
-import '../widgets/bottom_card_nav_bar.dart';
+//import '../widgets/liquid_trend_chart_card.dart';
+//import '../widgets/savings_chart_card.dart';
+import '../widgets/income_expenses_card.dart';
+import '../widgets/all_zaznams_card.dart';
+import '../widgets/zaznamity_settings_card.dart';
+import '../widgets/navigation_bar.dart';
 import '../widgets/calendar_card.dart';
-import '../widgets/budget_progress_card.dart';
-import '../widgets/selected_label_focus_card.dart';
-import '../widgets/sankey_flow_card.dart';
-import '../widgets/pools_analytics_card.dart';
-import '../widgets/monthly_cashflow_trend_card.dart';
+import '../widgets/budgets_card.dart';
+import '../widgets/label_focus_card.dart';
+import '../widgets/sankey_flow_trend_card.dart';
+//import '../widgets/pools_analytics_card.dart';
+import '../widgets/cash_flow_trend_card.dart';
 import '../widgets/savings_goals_card.dart';
-import '../widgets/title_card.dart';
+import '../widgets/welcome_card.dart';
 import '../widgets/liabilities_card.dart'; 
-import '../widgets/smart_insights_card.dart';
-import '../widgets/what_if_scenario_card.dart';
-import '../widgets/future_analytics_card.dart';
+import '../widgets/health_insights_card.dart';
+import '../widgets/what_if_lab_card.dart';
+import '../widgets/pending_breakdown_card.dart';
 import '../widgets/balance_trends_card.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -94,13 +94,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   DateTime? _labelsCardEndDate;
   String? _labelsCardSelectedOwner;
 
-  DateTime? _trendStartDate;
+/*   DateTime? _trendStartDate;
   DateTime? _trendEndDate;
   String? _trendSelectedOwner;
 
   DateTime? _savingsChartStartDate;
   DateTime? _savingsChartEndDate;
-  String? _savingsChartSelectedOwner;
+  String? _savingsChartSelectedOwner; */
 
   DateTime? _futureMetricsStartDate;
   DateTime? _futureMetricsEndDate;
@@ -215,12 +215,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     'loans': false,
   };
 
-  List<String> _owners = ['Mathias', 'Julia', 'Shared'];
+  List<String> _owners = ['Mathias', 'Julia'];
 
   final CardConfig _titleCardConfig = CardConfig(id: 'title_card', title: 'Welcome Card', key: GlobalKey());
 
   late final List<CardConfig> _cards = [
-    CardConfig(id: 'settings', title: 'Settings', key: GlobalKey(), isVisible: false),
+    CardConfig(id: 'settings', title: 'Zaznamity Settings', key: GlobalKey(), isVisible: false),
     CardConfig(id: 'metrics', title: 'Metrics', key: GlobalKey()),
     CardConfig(id: 'smart_insights', title: 'Health & Insights', key: GlobalKey()),
     CardConfig(id: 'future_metrics', title: 'Pending Outlook', key: GlobalKey()),
@@ -228,7 +228,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     CardConfig(id: 'savings_goals', title: 'Savings Goals', key: GlobalKey()),
     CardConfig(id: 'what_if_scenario', title: 'What-If Lab', key: GlobalKey()),
     CardConfig(id: 'label_focus', title: 'Label Focus', key: GlobalKey()),
-    CardConfig(id: 'income_expenses_labels', title: 'Money Breakdown', key: GlobalKey()),
+    CardConfig(id: 'income_expenses_labels', title: 'Income & Expenses', key: GlobalKey()),
     CardConfig(id: 'future_analytics', title: 'Pending Breakdown', key: GlobalKey()),
     CardConfig(id: 'new_entry', title: 'New Zaznam', key: GlobalKey()),
     CardConfig(id: 'transfer', title: 'Transfer Funds', key: GlobalKey()),
@@ -275,8 +275,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     _tabController.dispose();
     super.dispose();
   }
-
-  
 
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
@@ -788,13 +786,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                                 context: context,
                                 builder: (infoCtx) => AlertDialog(
                                   backgroundColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
-                                  title: Text('Cards Manager Guide', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 14, fontWeight: FontWeight.bold)),
+                                  title: Text('Cards Manager', style: TextStyle(color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B), fontSize: 14, fontWeight: FontWeight.bold)),
                                   content: Text(
                                     '• Click the title of any card to jump directly to it (unhides it automatically if hidden).\n\n'
                                     '• Long press any card title to rearrange its position within its tab.\n\n'
                                     '• Toggle card visibility with the eye icon.\n\n'
-                                    '• Zaznamity Settings are pinned at the bottom of Zaznams.\n\n'
-                                    '• Toggle app theme to Zaznamity or White at the bottom.',
+                                    '• Zaznamity Settings are pinned at the bottom of the Zaznams tab.\n\n'
+                                    '• Toggle Privacy to hide/show financial amounts.\n\n'
+                                    '• Toggle app theme to Zaznamity or White.',
                                     style: TextStyle(color: _isZaznamityMode ? Colors.white70 : Colors.black87, fontSize: 12),
                                   ),
                                   actions: [
@@ -1158,7 +1157,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     showSnackbarNotification(context, 'Funds removed from goal and returned to pool successfully!');
   }
 
-  Future<void> _deleteSavingsGoal(int id) async {
+/*   Future<void> _deleteSavingsGoal(int id) async {
     final goalToDelete = _goals.firstWhere((g) => g.id == id, orElse: () => _goals.first);
     
     final matchingTxs = _transactions.where((tx) => tx.description.contains(goalToDelete.name)).toList();
@@ -1173,7 +1172,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     await loadData();
     if (!mounted) return;
     showSnackbarNotification(context, 'Savings goal and all related Zaznams completely removed!');
-  }
+  } */
 
   Future<void> _completeSavingsGoal(int id) async {
     final goalToDelete = _goals.firstWhere((g) => g.id == id, orElse: () => _goals.first);
@@ -1938,7 +1937,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 foregroundColor: Colors.white,
               ),
               onPressed: () async {
-                final amount = double.tryParse(amountController.text) ?? tx.amount;
+                final parsed = double.tryParse(amountController.text.trim().replaceAll(',', '.'));
+                if (parsed == null || parsed <= 0) return;   // stay in the dialog instead of saving the wrong value
+                final amount = parsed;
                 final combinedDateTime = DateTime(
                   selectedDate.year,
                   selectedDate.month,
@@ -2398,7 +2399,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             );
           },
         );
-      case 'trend_chart':
+/*       case 'trend_chart':
         return LiquidTrendChartCard(
           transactions: _transactions,
           liquidNetPools: _liquidNetPools,
@@ -2463,7 +2464,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             _savingsChartStartDate = null;
             _savingsChartEndDate = null;
           }),
-        );
+        ); */
       case 'calendar':
         return CalendarCard(
           transactions: _transactions,

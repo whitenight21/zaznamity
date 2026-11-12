@@ -73,6 +73,12 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
   }
 
   @override
+  void didUpdateWidget(covariant SankeyFlowCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadPrefs();
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _loadPrefs();
@@ -866,11 +872,7 @@ class _SankeyFlowCardState extends State<SankeyFlowCard> with WidgetsBindingObse
                                     );
                                     if (tappedNode != null) {
                                       setState(() {
-                                        if (_isolatedNode == tappedNode) {
-                                          _showDrillDownModal(tappedNode);
-                                        } else {
-                                          _isolatedNode = tappedNode;
-                                        }
+                                        _isolatedNode = tappedNode;
                                       });
                                     }
                                   },

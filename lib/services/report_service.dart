@@ -5,7 +5,6 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
@@ -369,7 +368,7 @@ class ReportService {
           alignment: pw.Alignment.centerRight,
           margin: const pw.EdgeInsets.only(bottom: 16),
           child: pw.Text(
-            'Zaznamity Financial Statement [${options.templatePreset}]',
+            'ZAZNAMITY Financial Statement [$formattedDateRange]',
             style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600, fontWeight: pw.FontWeight.bold),
           ),
         ),
@@ -377,7 +376,7 @@ class ReportService {
           alignment: pw.Alignment.center,
           margin: const pw.EdgeInsets.only(top: 16),
           child: pw.Text(
-            'Page ${context.pageNumber} of ${context.pagesCount} — ZAZNAMITY — Record • Track • Focus',
+            'Page ${context.pageNumber} of ${context.pagesCount} --- ZAZNAMITY - Record - Track - Focus',
             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey500),
           ),
         ),
@@ -397,28 +396,31 @@ class ReportService {
                 children: [
                   pw.Row(
                     children: [
-                      if (logoImage != null) pw.Image(logoImage, width: 36, height: 36),
+                      if (logoImage != null) pw.Image(logoImage, width: 43, height: 43),
                       if (logoImage != null) pw.SizedBox(width: 12),
                       pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
-                          pw.Text('ZAZNAMITY REPORT', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+                          pw.Text('ZAZNAMITY REPORT', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
                           pw.SizedBox(height: 3),
-                          pw.Text('Timeframe: $formattedDateRange | Owner: ${options.ownerFilter}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.white)),
+                          pw.Text('Timeframe: $formattedDateRange', style: const pw.TextStyle(fontSize: 10, color: PdfColors.white)),
+                          pw.Text('Owner: ${options.ownerFilter}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.white)),
                         ],
                       ),
                     ],
                   ),
-                  pw.Text('Generated: ${DateFormat('yyyy-MM-dd').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.white)),
+                  pw.Text('Created: ${DateFormat('dd/MM/yyyy').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.white)),
                 ],
               ),
             ),
           );
           children.add(pw.SizedBox(height: 16));
 
-          // Summary Metrics Card
+    // METRICS CARDS 
+
+          // 1. Metrics / Metrics 
           if (options.includeSummaryCard) {
-            children.add(pw.Text('  Summary Metrics & Assets Overview', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
+            children.add(pw.Text('  Metrics', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
             children.add(pw.SizedBox(height: 6));
             children.add(
               pw.Container(
@@ -427,22 +429,22 @@ class ReportService {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('Filters — Pool: ${options.poolFilter} | Currency: ${options.currencyFilter} | Label: ${options.labelFilter}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                    pw.Text('Pool: ${options.poolFilter}  |  Currency: ${options.currencyFilter}  |  Label: ${options.labelFilter}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
                     pw.SizedBox(height: 6),
                     pw.Row(
                       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                       children: [
-                        pw.Text('Initial Balance ($startDateStr): ${_formatAmt(data.initialBalance, data.currencySymbol, options.maskAmounts)}', style: const pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                        pw.Text('End Balance ($endDateStr): ${_formatAmt(data.endBalance, data.currencySymbol, options.maskAmounts)}', style: const pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                        pw.Text('Initial Balance on $startDateStr: ${_formatAmt(data.initialBalance, data.currencySymbol, options.maskAmounts)}', style: const pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                        pw.Text('End Balance on $endDateStr: ${_formatAmt(data.endBalance, data.currencySymbol, options.maskAmounts)}', style: const pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
                       ],
                     ),
                     pw.Divider(color: PdfColors.grey300, height: 10),
                     pw.Row(
                       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                       children: [
-                        pw.Text('Income: ${_formatAmt(data.totalIncome, data.currencySymbol, options.maskAmounts)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
-                        pw.Text('Expenses: ${_formatAmt(data.totalExpense, data.currencySymbol, options.maskAmounts)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
-                        pw.Text('Net Balance: ${_formatAmt(data.netBalance, data.currencySymbol, options.maskAmounts)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF582F95))),
+                        pw.Text('Income: ${_formatAmt(data.totalIncome, data.currencySymbol, options.maskAmounts)}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
+                        pw.Text('Expenses: ${_formatAmt(data.totalExpense, data.currencySymbol, options.maskAmounts)}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
+                        pw.Text('Net Balance: ${_formatAmt(data.netBalance, data.currencySymbol, options.maskAmounts)}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF582F95))),
                       ],
                     ),
                   ],
@@ -452,9 +454,233 @@ class ReportService {
             children.add(pw.SizedBox(height: 14));
           }
 
-          // 1. Category Bar Chart
+          // 2. Pool Balances / Metrics 
+          if (options.includePoolBalancesCard && data.poolBalances.isNotEmpty) {
+            children.add(pw.Text('  Pool Balances', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
+            children.add(pw.SizedBox(height: 6));
+
+            final poolRows = data.poolBalances.entries.map((e) => [
+              pw.Text(e.key.toUpperCase(), style: const pw.TextStyle(fontSize: 8)),
+              pw.Text(_formatAmt(e.value, data.currencySymbol, options.maskAmounts), style: const pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+            ]).toList();
+
+            children.add(
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(2),
+                  1: pw.FlexColumnWidth(2),
+                },
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                    children: ['Pool', 'Net Balance']
+                        .map((h) => pw.Padding(
+                              padding: const pw.EdgeInsets.all(4),
+                              child: pw.Text(h, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                            ))
+                        .toList(),
+                  ),
+                  ...poolRows.map((rowCells) => pw.TableRow(
+                        children: rowCells.map((cellWidget) => pw.Padding(
+                              padding: const pw.EdgeInsets.all(4),
+                              child: cellWidget,
+                            )).toList(),
+                      )),
+                ],
+              ),
+            );
+            children.add(pw.SizedBox(height: 14));
+          }
+
+          // 3. Savings Goals / Metrics 
+          if (options.includeSavingsGoalsCard && data.savingsGoals.isNotEmpty) {
+            children.add(pw.Text('  Savings Goals', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
+            children.add(pw.SizedBox(height: 6));
+            children.add(
+              pw.Column(
+                children: data.savingsGoals.map((g) {
+                  final target = _n(g, ['target_amount', 'targetAmount']).toDouble();
+                  final current = _n(g, ['current_amount', 'currentAmount']).toDouble();
+                  final progress = target > 0 ? (current / target).clamp(0.0, 1.0) : 0.0;
+                  return pw.Container(
+                    margin: const pw.EdgeInsets.only(bottom: 8),
+                    padding: const pw.EdgeInsets.all(8),
+                    decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(6)),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Row(
+                          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                          children: [
+                            pw.Text(_s(g, ['name']), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                            pw.Text('${_formatAmt(current, data.currencySymbol, options.maskAmounts)} / ${_formatAmt(target, data.currencySymbol, options.maskAmounts)}', style: const pw.TextStyle(fontSize: 8)),
+                          ],
+                        ),
+                        pw.SizedBox(height: 6),
+                        pw.Stack(
+                          children: [
+                            pw.Container(height: 8, decoration: pw.BoxDecoration(color: PdfColors.grey200, borderRadius: pw.BorderRadius.circular(4))),
+                            pw.Container(
+                              height: 8,
+                              width: 450 * progress,
+                              decoration: pw.BoxDecoration(color: PdfColor.fromInt(0xFF582F95), borderRadius: pw.BorderRadius.circular(4)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            );
+            children.add(pw.SizedBox(height: 14));
+          }
+
+          // 4. Budgets / Metrics 
+          if (options.includeBudgetCard && data.budgets.isNotEmpty) {
+            children.add(pw.Text('  Budgets', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
+            children.add(pw.SizedBox(height: 6));
+
+            final budgetRows = data.budgets.map((b) {
+              final limitAmt = b['limit_amount'] as double;
+              final spentAmt = b['spent_amount'] as double;
+              return [
+                pw.Text(b['label_name'] ?? 'General', style: const pw.TextStyle(fontSize: 8)),
+                pw.Text(_formatAmt(limitAmt, data.currencySymbol, options.maskAmounts), style: const pw.TextStyle(fontSize: 8)),
+                pw.Text(_formatAmt(spentAmt, data.currencySymbol, options.maskAmounts), style: const pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+              ];
+            }).toList();
+
+            children.add(
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(2),
+                  1: pw.FlexColumnWidth(1.5),
+                  2: pw.FlexColumnWidth(1.5),
+                },
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                    children: ['Label', 'Limit Amount', 'Actually Spent']
+                        .map((h) => pw.Padding(
+                              padding: const pw.EdgeInsets.all(4),
+                              child: pw.Text(h, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                            ))
+                        .toList(),
+                  ),
+                  ...budgetRows.map((rowCells) => pw.TableRow(
+                        children: rowCells.map((cellWidget) => pw.Padding(
+                              padding: const pw.EdgeInsets.all(4),
+                              child: cellWidget,
+                            )).toList(),
+                      )),
+                ],
+              ),
+            );
+            children.add(pw.SizedBox(height: 14));
+          }
+          
+          // 5. Liabilities / Metrics 
+          if (options.includeLiabilitiesCard && data.liabilities.isNotEmpty) {
+            children.add(pw.Text('  Liabilities', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
+            children.add(pw.SizedBox(height: 6));
+
+            final liabilityRows = data.liabilities.map((l) => [
+              pw.Text(_s(l, ['name']), style: const pw.TextStyle(fontSize: 8)),
+              pw.Text(_formatAmt(_n(l, ['remaining_balance', 'remainingBalance']).toDouble(), data.currencySymbol, options.maskAmounts), style: const pw.TextStyle(fontSize: 8)),
+              pw.Text(_formatAmt(_n(l, ['monthly_installment', 'monthlyInstallment']).toDouble(), data.currencySymbol, options.maskAmounts), style: const pw.TextStyle(fontSize: 8)),
+              pw.Text('${_n(l, ['interest_rate', 'interestRate'])}%', style: const pw.TextStyle(fontSize: 8)),
+            ]).toList();
+
+            children.add(
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(2),
+                  1: pw.FlexColumnWidth(1.5),
+                  2: pw.FlexColumnWidth(1.5),
+                  3: pw.FlexColumnWidth(1),
+                },
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                    children: ['Liability', 'Balance', 'Installment', 'APR %']
+                        .map((h) => pw.Padding(
+                              padding: const pw.EdgeInsets.all(4),
+                              child: pw.Text(h, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                            ))
+                        .toList(),
+                  ),
+                  ...liabilityRows.map((rowCells) => pw.TableRow(
+                        children: rowCells.map((cellWidget) => pw.Padding(
+                              padding: const pw.EdgeInsets.all(4),
+                              child: cellWidget,
+                            )).toList(),
+                      )),
+                ],
+              ),
+            );
+            children.add(pw.SizedBox(height: 14));
+          }
+          
+
+    // TRENDS CARDS 
+
+          // 1. Balance trend / Trends 
+          if (options.includeBalanceTrendChart) {
+            children.add(
+              ReportCharts.section(
+                '  Balance Trend',
+                ReportCharts.balanceTrend(
+                  series: data.balanceSeries,
+                  start: options.startDate,
+                  opening: data.initialBalance,
+                  closing: data.endBalance,
+                  fmt: moneyFmt,
+                  mask: options.maskAmounts,
+                ),
+              ),
+            );
+          }
+
+          // 2. Cash flow trend / Trends
+          if (options.includeCashFlowTrendChart) {
+            children.add(
+              ReportCharts.section(
+                '  Cash Flow Trend',
+                ReportCharts.cashflowTrend(
+                  buckets: data.cashflowBuckets,
+                  fmt: moneyFmt,
+                  mask: options.maskAmounts,
+                ),
+              ),
+            );
+          }
+
+          // 3. Sankey Trend / Trends
+          if (options.includeSankeyFlowChart) {
+            children.add(
+              ReportCharts.section(
+                '  Sankey Flow Trend',
+                ReportCharts.sankey(
+                  income: data.incomeBreakdown,
+                  expenses: data.categoryBreakdown,
+                  totalIncome: data.totalIncome,
+                  totalExpense: data.totalExpense,
+                  fmt: moneyFmt,
+                  mask: options.maskAmounts,
+                ),
+              ),
+            );
+          }          
+
+    // ANALYTICS CARDS
+
+          // 1. Labels Bar Chart
           if (options.includeBarChart && data.categoryBreakdown.isNotEmpty) {
-            children.add(pw.Text('  Category Bar Chart ($formattedDateRange)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
+            children.add(pw.Text('  Label Focus Bars', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
             children.add(pw.SizedBox(height: 6));
             
             final sortedCats = data.categoryBreakdown.entries.toList()
@@ -497,7 +723,7 @@ class ReportService {
             children.add(pw.SizedBox(height: 14));
           }
 
-          // 2. Expense distribution (real donut chart)
+/*           // 2. Expense distribution (real donut chart)
           if (options.includePieChart && data.categoryBreakdown.isNotEmpty) {
             children.add(
               ReportCharts.section(
@@ -511,61 +737,13 @@ class ReportService {
                 ),
               ),
             );
-          }
+          } */
 
-          // 3. Balance trend (real line chart, one point per day)
-          if (options.includeBalanceTrendChart) {
-            children.add(
-              ReportCharts.section(
-                'Balance Trend ($formattedDateRange)',
-                ReportCharts.balanceTrend(
-                  series: data.balanceSeries,
-                  start: options.startDate,
-                  opening: data.initialBalance,
-                  closing: data.endBalance,
-                  fmt: moneyFmt,
-                  mask: options.maskAmounts,
-                ),
-              ),
-            );
-          }
-
-          // 4. Cash flow trend (income up, expenses down, net line)
-          if (options.includeCashFlowTrendChart) {
-            children.add(
-              ReportCharts.section(
-                'Cash Flow Trend ($formattedDateRange)',
-                ReportCharts.cashflowTrend(
-                  buckets: data.cashflowBuckets,
-                  fmt: moneyFmt,
-                  mask: options.maskAmounts,
-                ),
-              ),
-            );
-          }
-
-          // 5. Sankey flow (income sources -> total -> spending categories)
-          if (options.includeSankeyFlowChart) {
-            children.add(
-              ReportCharts.section(
-                'Money Flow ($formattedDateRange)',
-                ReportCharts.sankey(
-                  income: data.incomeBreakdown,
-                  expenses: data.categoryBreakdown,
-                  totalIncome: data.totalIncome,
-                  totalExpense: data.totalExpense,
-                  fmt: moneyFmt,
-                  mask: options.maskAmounts,
-                ),
-              ),
-            );
-          }
-
-          // 6. Money breakdown (expense categories + pool balances)
+          // 6. Money breakdown (expense categories)
           if (options.includeMoneyBreakdownChart) {
             children.add(
               ReportCharts.section(
-                'Money Breakdown',
+                '  Money Breakdown Donut',
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
@@ -576,20 +754,20 @@ class ReportService {
                       centerLabel: 'Expenses',
                       centerValue: data.totalExpense,
                     ),
-                    pw.SizedBox(height: 10),
+/*                     pw.SizedBox(height: 10),
                     pw.Divider(color: PdfColors.grey300, height: 8),
                     pw.Text('Pool balances', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 6),
-                    ReportCharts.poolBars(balances: data.poolBalances, fmt: moneyFmt),
+                    ReportCharts.poolBars(balances: data.poolBalances, fmt: moneyFmt), */
                   ],
                 ),
               ),
             );
           }
 
-          // Category Breakdown Table
+/*           // Label Focus Table
           if (options.includeCategoryBreakdownTable && data.categoryBreakdown.isNotEmpty) {
-            children.add(pw.Text('  Category Breakdown', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
+            children.add(pw.Text('  Label Focus', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
             children.add(pw.SizedBox(height: 6));
             
             final catRows = data.categoryBreakdown.entries.map((e) {
@@ -629,180 +807,9 @@ class ReportService {
               ),
             );
             children.add(pw.SizedBox(height: 14));
-          }
+          } */
 
-          // Savings Goals
-          if (options.includeSavingsGoalsCard && data.savingsGoals.isNotEmpty) {
-            children.add(pw.Text('  Savings Goals & Progress', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
-            children.add(pw.SizedBox(height: 6));
-            children.add(
-              pw.Column(
-                children: data.savingsGoals.map((g) {
-                  final target = _n(g, ['target_amount', 'targetAmount']).toDouble();
-                  final current = _n(g, ['current_amount', 'currentAmount']).toDouble();
-                  final progress = target > 0 ? (current / target).clamp(0.0, 1.0) : 0.0;
-                  return pw.Container(
-                    margin: const pw.EdgeInsets.only(bottom: 8),
-                    padding: const pw.EdgeInsets.all(8),
-                    decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(6)),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Row(
-                          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                          children: [
-                            pw.Text(_s(g, ['name']), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                            pw.Text('${_formatAmt(current, data.currencySymbol, options.maskAmounts)} / ${_formatAmt(target, data.currencySymbol, options.maskAmounts)}', style: const pw.TextStyle(fontSize: 8)),
-                          ],
-                        ),
-                        pw.SizedBox(height: 6),
-                        pw.Stack(
-                          children: [
-                            pw.Container(height: 8, decoration: pw.BoxDecoration(color: PdfColors.grey200, borderRadius: pw.BorderRadius.circular(4))),
-                            pw.Container(
-                              height: 8,
-                              width: 450 * progress,
-                              decoration: pw.BoxDecoration(color: PdfColor.fromInt(0xFF582F95), borderRadius: pw.BorderRadius.circular(4)),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-            );
-            children.add(pw.SizedBox(height: 14));
-          }
-
-          // Active Budgets
-          if (options.includeBudgetCard && data.budgets.isNotEmpty) {
-            children.add(pw.Text('  Active Budgets & Usage', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
-            children.add(pw.SizedBox(height: 6));
-
-            final budgetRows = data.budgets.map((b) {
-              final limitAmt = b['limit_amount'] as double;
-              final spentAmt = b['spent_amount'] as double;
-              return [
-                pw.Text(b['label_name'] ?? 'General', style: const pw.TextStyle(fontSize: 8)),
-                pw.Text(_formatAmt(limitAmt, data.currencySymbol, options.maskAmounts), style: const pw.TextStyle(fontSize: 8)),
-                pw.Text(_formatAmt(spentAmt, data.currencySymbol, options.maskAmounts), style: const pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
-              ];
-            }).toList();
-
-            children.add(
-              pw.Table(
-                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-                columnWidths: const {
-                  0: pw.FlexColumnWidth(2),
-                  1: pw.FlexColumnWidth(1.5),
-                  2: pw.FlexColumnWidth(1.5),
-                },
-                children: [
-                  pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                    children: ['Label Name', 'Limit Amount', 'Actual Spent']
-                        .map((h) => pw.Padding(
-                              padding: const pw.EdgeInsets.all(4),
-                              child: pw.Text(h, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
-                            ))
-                        .toList(),
-                  ),
-                  ...budgetRows.map((rowCells) => pw.TableRow(
-                        children: rowCells.map((cellWidget) => pw.Padding(
-                              padding: const pw.EdgeInsets.all(4),
-                              child: cellWidget,
-                            )).toList(),
-                      )),
-                ],
-              ),
-            );
-            children.add(pw.SizedBox(height: 14));
-          }
-
-          // Liabilities Schedule
-          if (options.includeLiabilitiesCard && data.liabilities.isNotEmpty) {
-            children.add(pw.Text('  Liabilities & Loans Schedule', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
-            children.add(pw.SizedBox(height: 6));
-
-            final liabilityRows = data.liabilities.map((l) => [
-              pw.Text(_s(l, ['name']), style: const pw.TextStyle(fontSize: 8)),
-              pw.Text(_formatAmt(_n(l, ['remaining_balance', 'remainingBalance']).toDouble(), data.currencySymbol, options.maskAmounts), style: const pw.TextStyle(fontSize: 8)),
-              pw.Text(_formatAmt(_n(l, ['monthly_installment', 'monthlyInstallment']).toDouble(), data.currencySymbol, options.maskAmounts), style: const pw.TextStyle(fontSize: 8)),
-              pw.Text('${_n(l, ['interest_rate', 'interestRate'])}%', style: const pw.TextStyle(fontSize: 8)),
-            ]).toList();
-
-            children.add(
-              pw.Table(
-                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-                columnWidths: const {
-                  0: pw.FlexColumnWidth(2),
-                  1: pw.FlexColumnWidth(1.5),
-                  2: pw.FlexColumnWidth(1.5),
-                  3: pw.FlexColumnWidth(1),
-                },
-                children: [
-                  pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                    children: ['Liability Name', 'Balance', 'Installment', 'APR %']
-                        .map((h) => pw.Padding(
-                              padding: const pw.EdgeInsets.all(4),
-                              child: pw.Text(h, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
-                            ))
-                        .toList(),
-                  ),
-                  ...liabilityRows.map((rowCells) => pw.TableRow(
-                        children: rowCells.map((cellWidget) => pw.Padding(
-                              padding: const pw.EdgeInsets.all(4),
-                              child: cellWidget,
-                            )).toList(),
-                      )),
-                ],
-              ),
-            );
-            children.add(pw.SizedBox(height: 14));
-          }
-
-          // Pool Balances
-          if (options.includePoolBalancesCard && data.poolBalances.isNotEmpty) {
-            children.add(pw.Text('  Pool Balances', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
-            children.add(pw.SizedBox(height: 6));
-
-            final poolRows = data.poolBalances.entries.map((e) => [
-              pw.Text(e.key.toUpperCase(), style: const pw.TextStyle(fontSize: 8)),
-              pw.Text(_formatAmt(e.value, data.currencySymbol, options.maskAmounts), style: const pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
-            ]).toList();
-
-            children.add(
-              pw.Table(
-                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-                columnWidths: const {
-                  0: pw.FlexColumnWidth(2),
-                  1: pw.FlexColumnWidth(2),
-                },
-                children: [
-                  pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                    children: ['Pool Name', 'Net Balance']
-                        .map((h) => pw.Padding(
-                              padding: const pw.EdgeInsets.all(4),
-                              child: pw.Text(h, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
-                            ))
-                        .toList(),
-                  ),
-                  ...poolRows.map((rowCells) => pw.TableRow(
-                        children: rowCells.map((cellWidget) => pw.Padding(
-                              padding: const pw.EdgeInsets.all(4),
-                              child: cellWidget,
-                            )).toList(),
-                      )),
-                ],
-              ),
-            );
-            children.add(pw.SizedBox(height: 14));
-          }
-
-          // Transactions Table History
+          // All Zaznams / Metrics
           if (options.includeTransactionTableHistory) {
             children.add(pw.Text('  All Zaznams (${data.filteredTransactions.length})', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
             children.add(pw.SizedBox(height: 6));

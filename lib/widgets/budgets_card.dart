@@ -117,6 +117,12 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
     });
   }
 
+  @override
+  void didUpdateWidget(covariant BudgetProgressCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadPrefs();
+  }
+
   String _getCurrencySymbol(String code) {
     switch (code.toUpperCase()) {
       case 'EUR': return '€';
@@ -685,15 +691,15 @@ class _BudgetProgressCardState extends State<BudgetProgressCard> {
                               height: 44,
                               child: ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
-                                  foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
+                                  backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                                  foregroundColor: _isZaznamityMode ? Colors.white : Colors.white,
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                   padding: const EdgeInsets.symmetric(horizontal: 4),
                                 ),
                                 onPressed: () => _showAddBudgetDialog(context),
                                 icon: const Icon(Icons.add, size: 14),
-                                label: const Text('Add', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                label: const Text('Budget', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                               ),
                             ),
                           ),

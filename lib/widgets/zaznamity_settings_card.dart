@@ -2796,7 +2796,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                         ),
                       ], 
                     ),
-                    _buildSubSectionCard(
+/*                     _buildSubSectionCard(
                       title: 'Metrics',
                       subtitle: 'Select which pools contribute to liquid net calculation (liabilites excluded)',
                       children: _pools.keys.map((poolKey) {
@@ -2815,7 +2815,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                           },
                         );
                       }).toList(),
-                    ),
+                    ), */
                     _buildSubSectionCard(
                       title: 'Pending Outlook',
                       subtitle: 'Select which pools update pending outlook projections (liabilities excluded)',
@@ -2910,7 +2910,7 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                     ),
                     _buildSubSectionCard(
                       title: 'Savings Goals',
-                      subtitle: 'Edit target amounts, names, due dates, and assigned owners for active savings goals',
+                      subtitle: 'Delete or Edit target amounts, names, and assigned owners for active savings goals',
                       children: [
                         Text(
                           'Active Savings Goals',
@@ -3777,11 +3777,11 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                   children: [
                     _buildSubSectionCard(
                       title: 'Zaznamity Reports',
-                      subtitle: 'Generate PDF reports and view report history log',
+                      subtitle: 'Create PDF reports and view history log',
                       children: [
                         Text(
-                          'Generate flexible customized PDF reports with custom date ranges, filters, custom card metrics, chart selections, and full Zaznams history lists.\n\n'
-                          'Previously generated Zaznamity Reports are logged below as an informational record.',
+                          'Create customized PDF reports with custom date ranges, filters, select from metrics cards, trends cards, analytics cards, and Zaznams history.\n\n'
+                          'Created Zaznamity Reports are saved by default to Internal Storage. Logged below are only an informational record. To view created Reports, open open their saved location "Files" app.',
                           style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
                         ),
                         const SizedBox(height: 16),
@@ -3851,7 +3851,8 @@ class _AppSettingsCardState extends State<AppSettingsCard> {
                       subtitle: 'Export Zaznams or full-system backups with Save to Phone choice',
                       children: [
                         Text(
-                          'Securely export your data for backups or to migrate between devices. Choose "Save to Phone" when prompted to store your backup files anywhere on your device or cloud storage.',
+                          'Securely export Zaznam data as CSV or JSON, or export for full-system backups as JSON.\n\n'
+                          'Created Exports and Backups are saved by default to Internal Storage. Logged below are only an informational record. To view created Exports and Backups, open their saved location in "Files" app.',
                           style: TextStyle(fontSize: 12, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B), height: 1.4),
                         ),
                         const SizedBox(height: 12),

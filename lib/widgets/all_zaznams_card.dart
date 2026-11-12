@@ -10,6 +10,7 @@ import '../models/history_display_prefs.dart';
 import '../services/privacy_service.dart';
 import '../widgets/masked_amount.dart';
 import 'dart:io';
+import 'package:zaznamity/services/snackbar_notification.dart';
 
 class TransactionHistoryCard extends StatefulWidget {
   final List<TransactionModel> transactions;
@@ -372,18 +373,7 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                widget.onDeleteTransaction(tx.id!);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Zaznam deleted'),
-                    action: SnackBarAction(
-                      label: 'Undo',
-                      onPressed: () {
-                        // Undo action if parent supports or handled
-                      },
-                    ),
-                  ),
-                );
+                widget.onDeleteTransaction(tx.id!);   // the dashboard shows the one real confirmation
               },
               child: const Text('Delete', style: TextStyle(color: Colors.red)),
             ),
@@ -655,20 +645,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
       displayLimit = int.tryParse(_selectedLimit) ?? 50;
     }
     final displayedTransactions = filteredTransactions.take(displayLimit).toList();
-
-    // Calculate running balances for displayed transactions
-    // To compute running balance correctly relative to list, let's compute from oldest to newest or cumulative
-    Map<int, double> runningBalances = {};
-    double runningSum = 0;
-    // Iterate chronological ascending for running balance sum
-    final sortedAscending = List<TransactionModel>.from(filteredTransactions).reversed.toList();
-    for (var tx in sortedAscending) {
-      final amt = tx.type == 'income' ? tx.amount : -tx.amount;
-      runningSum += amt;
-      if (tx.id != null) {
-        runningBalances[tx.id!] = runningSum;
-      }
-    }
 
     // Group displayed transactions by day
     final Map<String, List<TransactionModel>> groupedByDay = {};
@@ -1456,7 +1432,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
 
                                 final isIncome = tx.type == 'income';
                                 final amountString = _formatAmount(tx.amount, currencyCode, isIncome);
-                                final runningBal = runningBalances[tx.id] ?? 0.0;
 
                                 final bool isPending = tx.isConfirmed == 0;
 
@@ -1601,18 +1576,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                                   ),
                                                 ),
                                               ),
-                                            // =======================================================
-                                            // ADD 5: A running balance column
-                                            // =======================================================
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              'Bal: ${_formatAmount(runningBal.abs(), _primaryCurrency, runningBal >= 0)}',
-                                              style: TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.bold,
-                                                color: runningBal >= 0 ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                                              ),
-                                            ),
                                             if (showPool) ...[
                                               const SizedBox(height: 2),
                                               Text(
@@ -1656,9 +1619,6 @@ class _TransactionHistoryCardState extends State<TransactionHistoryCard> {
                                                     ),
                                                 ],
                                               ),
-                                            // =======================================================
-                                            // FIX 1: Status badge & Confirm Button
-                                            // =======================================================
                                             if (showStatus) ...[
                                               const SizedBox(height: 2),
                                               Row(

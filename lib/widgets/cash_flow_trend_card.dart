@@ -75,6 +75,12 @@ class _MonthlyCashflowTrendCardState extends State<MonthlyCashflowTrendCard> {
   }
 
   @override
+  void didUpdateWidget(covariant MonthlyCashflowTrendCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadPrefs();
+  }
+
+  @override
   void dispose() {
     _chartScrollController.dispose();
     super.dispose();

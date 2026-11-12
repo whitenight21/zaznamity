@@ -110,6 +110,12 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
     _loadPrefs();
   }
 
+  @override
+  void didUpdateWidget(covariant LiabilitiesCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadPrefs();
+  }
+
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
@@ -261,14 +267,14 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
             child: ListBody(
               children: <Widget>[
                 Text(
-                  'Liabilities Card tracks your loans, mortgages, and other debts clearly and effectively[cite: 11]:\n\n'
-                  '• Real Progress Tracking: Monitors real progress comparing original balance vs. current remaining balance[cite: 11].\n'
-                  '• Amortization & Splits: Calculates precise interest-versus-principal payment splits, remaining months, and exact payoff dates[cite: 11].\n'
-                  '• Start Date Tracking: Pins down your loan origination timeline for accurate structural logging[cite: 11].\n'
-                  '• Avalanche vs. Snowball: Sort debts by highest interest rate first (Avalanche) or lowest balance first (Snowball)[cite: 11].\n'
-                  '• Overdue Indicators: Flags payments past their scheduled due day (1–31)[cite: 11].\n'
-                  '• Split Guardian: Protects against negative amortization by verifying monthly installments cover interest[cite: 11].\n\n'
-                  'Tap any liability item to edit its parameters in place[cite: 11].',
+                  'This card tracks your loans, mortgages, and other debts clearly and effectively:\n\n'
+                  '• Real Progress Tracking: Monitors real progress comparing original balance vs. current remaining balance.\n'
+                  '• Amortization & Splits: Calculates interest-versus-principal payment splits, remaining months, and approximate payoff dates.\n'
+                  '• Start Date Tracking: Pins down your loan origination timeline for accurate structural logging.\n'
+                  '• Avalanche vs. Snowball: Sort debts by highest interest rate first (Avalanche) or lowest balance first (Snowball).\n'
+                  '• Overdue Indicators: Flags payments past their scheduled due day (1–31).\n'
+                  '• Split Guardian: Protects against negative amortization by verifying monthly installments cover interest.\n\n'
+                  '• Tap any liability item to edit its parameters in place.',
                   style: TextStyle(
                     fontSize: 13,
                     color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569),
@@ -878,6 +884,23 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                       children: [
                         SizedBox(
                           width: boxWidth,
+                          child: SizedBox(
+                            height: 40,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                                foregroundColor: _isZaznamityMode ? Colors.white : Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: () => _showLiabilityTypeSelector(context),
+                              icon: const Icon(Icons.add, size: 14),
+                              label: const Text('Liability', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)), 
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: boxWidth,
                           child: Container(
                             height: 40,
                             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -899,8 +922,8 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                                       dropdownColor: _isZaznamityMode ? const Color(0xFF2D1B4E) : Colors.white,
                                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : const Color(0xFF334155)),
                                       items: const [
-                                        DropdownMenuItem(value: 'Avalanche', child: Text('Avalanche (Highest Rate)')),
-                                        DropdownMenuItem(value: 'Snowball', child: Text('Snowball (Lowest Balance)')),
+                                        DropdownMenuItem(value: 'Avalanche', child: Text('Avalanche')),
+                                        DropdownMenuItem(value: 'Snowball', child: Text('Snowball')),
                                       ],
                                       onChanged: (val) {
                                         if (val != null) setState(() => _sortingMode = val);
@@ -912,23 +935,7 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                             ),
                           ),
                         ),
-                        SizedBox(
-                          width: boxWidth,
-                          child: SizedBox(
-                            height: 40,
-                            child: ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
-                                foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              onPressed: () => _showLiabilityTypeSelector(context),
-                              icon: const Icon(Icons.add, size: 14),
-                              label: const Text('Add Liability', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                        ),
+
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -964,8 +971,8 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Wtd. Avg Rate: ${weightedAverageRate.toStringAsFixed(1)}%', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
-                              Text('Debt-Free: ${filteredLiabilities.isEmpty ? 'N/A' : DateFormat('MMM yyyy').format(latestPayoffDate)}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                              Text('Weighted Avg Rate: ${weightedAverageRate.toStringAsFixed(1)}%', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF475569))),
+                              Text('Debt-Free Approx.: ${filteredLiabilities.isEmpty ? 'N/A' : DateFormat('MMM yyyy').format(latestPayoffDate)}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                             ],
                           ),
                         ],
@@ -986,15 +993,15 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text('Simulator: +${_formatCurrency(_extraPaymentSimulation)}/extra', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _isZaznamityMode ? Colors.white : Colors.black87)),
-                              Text('Saves Interest & Time', style: TextStyle(fontSize: 10, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
+                              Text('Saves Interest & Time', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                             ],
                           ),
                           Slider(
                             value: _extraPaymentSimulation,
                             min: 0,
-                            max: 500,
+                            max: 1000,
                             divisions: 20,
-                            activeColor: const Color(0xFFA855F7),
+                            activeColor: _isZaznamityMode ? Color(0xFFA855F7) : Color(0xFF582F95),
                             inactiveColor: _isZaznamityMode ? Colors.white24 : Colors.grey.shade300,
                             onChanged: (val) => setState(() => _extraPaymentSimulation = val),
                           ),
@@ -1095,9 +1102,9 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                                                   child: Row(
                                                     mainAxisSize: MainAxisSize.min,
                                                     children: [
-                                                      const Icon(Icons.bolt, size: 12, color: Color(0xFFA855F7)),
+                                                      Icon(Icons.bolt, size: 12, color: _isZaznamityMode ? Color(0xFFA855F7) : Color(0xFF582F95)),
                                                       const SizedBox(width: 2),
-                                                      const Text('Windfall', style: TextStyle(fontSize: 9, color: Color(0xFFA855F7), fontWeight: FontWeight.bold)),
+                                                      Text('Windfall', style: TextStyle(fontSize: 9, color: _isZaznamityMode ? Color(0xFFA855F7) : Color(0xFF582F95), fontWeight: FontWeight.bold)),
                                                     ],
                                                   ),
                                                 ),
@@ -1109,9 +1116,9 @@ class _LiabilitiesCardState extends State<LiabilitiesCard> {
                                                   child: Row(
                                                     mainAxisSize: MainAxisSize.min,
                                                     children: [
-                                                      const Icon(Icons.refresh, size: 12, color: Color(0xFFA855F7)),
+                                                      Icon(Icons.refresh, size: 12, color: _isZaznamityMode ? Color(0xFFA855F7) : Color(0xFF582F95)),
                                                       const SizedBox(width: 2),
-                                                      const Text('Recast', style: TextStyle(fontSize: 9, color: Color(0xFFA855F7), fontWeight: FontWeight.bold)),
+                                                      Text('Recast', style: TextStyle(fontSize: 9, color: _isZaznamityMode ? Color(0xFFA855F7) : Color(0xFF582F95), fontWeight: FontWeight.bold)),
                                                     ],
                                                   ),
                                                 ),

@@ -73,7 +73,7 @@ class _ReportConfigDialogState extends State<ReportConfigDialog> {
 
   bool includeTransactionTableHistory = true;
 
-  void _applyTemplate(String preset) {
+/*   void _applyTemplate(String preset) {
     setState(() {
       selectedTemplatePreset = preset;
       if (preset == 'Monthly Statement') {
@@ -99,7 +99,7 @@ class _ReportConfigDialogState extends State<ReportConfigDialog> {
         includeTransactionTableHistory = false;
       }
     });
-  }
+  } */
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +119,7 @@ class _ReportConfigDialogState extends State<ReportConfigDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+/*               Text(
                 '1. TEMPLATE PRESETS',
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: widget.isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
               ),
@@ -135,10 +135,10 @@ class _ReportConfigDialogState extends State<ReportConfigDialog> {
                 onChanged: (val) {
                   if (val != null) _applyTemplate(val);
                 },
-              ),
+              ), */
               const SizedBox(height: 14),
               Text(
-                '2. SELECT TIME & PRIVACY',
+                '1. SELECT TIMEFRAME & PRIVACY',
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: widget.isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
               ),
               const SizedBox(height: 6),
@@ -183,15 +183,15 @@ class _ReportConfigDialogState extends State<ReportConfigDialog> {
                 value: maskAmounts,
                 onChanged: (val) => setState(() => maskAmounts = val ?? false),
               ),
-              CheckboxListTile(
+              /* CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Include Previous-Period Comparison', style: TextStyle(fontSize: 12)),
                 value: includePreviousPeriodComparison,
                 onChanged: (val) => setState(() => includePreviousPeriodComparison = val ?? false),
-              ),
+              ), */
               const SizedBox(height: 10),
               Text(
-                '3. DRILL-DOWN FILTERS',
+                '2. DRILL-DOWN FILTERS',
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: widget.isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
               ),
               const SizedBox(height: 6),
@@ -252,41 +252,37 @@ class _ReportConfigDialogState extends State<ReportConfigDialog> {
               ),
               const SizedBox(height: 14),
               Text(
-                '4. SELECT "METRICS" CARDS',
+                '3. SELECT METRICS',
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: widget.isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
               ),
               CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Metrics Card', style: TextStyle(fontSize: 12)), value: includeSummaryCard, onChanged: (val) => setState(() => includeSummaryCard = val ?? true)),
               CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Pool Balances', style: TextStyle(fontSize: 12)), value: includePoolBalancesCard, onChanged: (val) => setState(() => includePoolBalancesCard = val ?? true)),
               //CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Labels Breakdown Table', style: TextStyle(fontSize: 12)), value: includeCategoryBreakdownTable, onChanged: (val) => setState(() => includeCategoryBreakdownTable = val ?? true)),
-              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Savings Goals Progress Bars', style: TextStyle(fontSize: 12)), value: includeSavingsGoalsCard, onChanged: (val) => setState(() => includeSavingsGoalsCard = val ?? true)),
-              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Active Budgets (Limit & Spent)', style: TextStyle(fontSize: 12)), value: includeBudgetCard, onChanged: (val) => setState(() => includeBudgetCard = val ?? true)),
-              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Liabilities Info', style: TextStyle(fontSize: 12)), value: includeLiabilitiesCard, onChanged: (val) => setState(() => includeLiabilitiesCard = val ?? true)),
-              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Zaznams History', style: TextStyle(fontSize: 12)), value: includeTransactionTableHistory, onChanged: (val) => setState(() => includeTransactionTableHistory = val ?? true)),
+              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Savings Goals', style: TextStyle(fontSize: 12)), value: includeSavingsGoalsCard, onChanged: (val) => setState(() => includeSavingsGoalsCard = val ?? true)),
+              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Budgets', style: TextStyle(fontSize: 12)), value: includeBudgetCard, onChanged: (val) => setState(() => includeBudgetCard = val ?? true)),
+              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Liabilities', style: TextStyle(fontSize: 12)), value: includeLiabilitiesCard, onChanged: (val) => setState(() => includeLiabilitiesCard = val ?? true)),
+              //CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Zaznams History', style: TextStyle(fontSize: 12)), value: includeTransactionTableHistory, onChanged: (val) => setState(() => includeTransactionTableHistory = val ?? true)),
 
               const SizedBox(height: 10),
               Text(
-                '5. SELECT "TRENDS" CARDS',
+                '4. SELECT TRENDS & ANALYTICS',
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: widget.isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
               ),
               //CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Labels Bar Chart', style: TextStyle(fontSize: 12)), value: includeBarChart, onChanged: (val) => setState(() => includeBarChart = val ?? true)),
               //CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Labels Pie Chart', style: TextStyle(fontSize: 12)), value: includePieChart, onChanged: (val) => setState(() => includePieChart = val ?? true)),
-              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Balance Trends Chart', style: TextStyle(fontSize: 12)), value: includeBalanceTrendChart, onChanged: (val) => setState(() => includeBalanceTrendChart = val ?? true)),
-              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('CashFlow Trends Chart', style: TextStyle(fontSize: 12)), value: includeCashFlowTrendChart, onChanged: (val) => setState(() => includeCashFlowTrendChart = val ?? true)),
-              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Sankey Flow Chart', style: TextStyle(fontSize: 12)), value: includeSankeyFlowChart, onChanged: (val) => setState(() => includeSankeyFlowChart = val ?? true)),
+              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Balance Trends', style: TextStyle(fontSize: 12)), value: includeBalanceTrendChart, onChanged: (val) => setState(() => includeBalanceTrendChart = val ?? true)),
+              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Cash Flow Trend', style: TextStyle(fontSize: 12)), value: includeCashFlowTrendChart, onChanged: (val) => setState(() => includeCashFlowTrendChart = val ?? true)),
+              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Sankey Flow Trend', style: TextStyle(fontSize: 12)), value: includeSankeyFlowChart, onChanged: (val) => setState(() => includeSankeyFlowChart = val ?? true)),
+              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Label Focus Bars', style: TextStyle(fontSize: 12)), value: includeBarChart, onChanged: (val) => setState(() => includeBarChart = val ?? true)),
+              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Income & Expenses Donut', style: TextStyle(fontSize: 12)), value: includeMoneyBreakdownChart, onChanged: (val) => setState(() => includeMoneyBreakdownChart = val ?? true)),
               //CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Money Breakdown Chart', style: TextStyle(fontSize: 12)), value: includeMoneyBreakdownChart, onChanged: (val) => setState(() => includeMoneyBreakdownChart = val ?? true)),
-
-
-              const SizedBox(height: 10),
+            
+                         const SizedBox(height: 10),
               Text(
-                '6. SELECT "ANALYTICS" CARDS',
+                '5. SELECT ZAZNAMS HISTORY',
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: widget.isZaznamityMode ? const Color(0xFFC4B5FD) : const Color(0xFF64748B)),
               ),
-              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Labels Bar Chart', style: TextStyle(fontSize: 12)), value: includeBarChart, onChanged: (val) => setState(() => includeBarChart = val ?? true)),
-              //CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Labels Pie Chart', style: TextStyle(fontSize: 12)), value: includePieChart, onChanged: (val) => setState(() => includePieChart = val ?? true)),
-              //CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Balance Trends Chart', style: TextStyle(fontSize: 12)), value: includeBalanceTrendChart, onChanged: (val) => setState(() => includeBalanceTrendChart = val ?? true)),
-              //CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('CashFlow Trends Chart', style: TextStyle(fontSize: 12)), value: includeCashFlowTrendChart, onChanged: (val) => setState(() => includeCashFlowTrendChart = val ?? true)),
-              //CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Sankey Flow Chart', style: TextStyle(fontSize: 12)), value: includeSankeyFlowChart, onChanged: (val) => setState(() => includeSankeyFlowChart = val ?? true)),
-              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Money Breakdown Chart', style: TextStyle(fontSize: 12)), value: includeMoneyBreakdownChart, onChanged: (val) => setState(() => includeMoneyBreakdownChart = val ?? true)),
+              CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('All Zaznams (by set Timeframe)', style: TextStyle(fontSize: 12)), value: includeTransactionTableHistory, onChanged: (val) => setState(() => includeTransactionTableHistory = val ?? true)),
             ],
           ),
         ),

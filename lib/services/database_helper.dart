@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 13, // Incremented version to support receipt_path and liability_type
+      version: 14, // Incremented version to support receipt_path and liability_type
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -85,7 +85,8 @@ class DatabaseHelper {
         start_date TEXT,
         last_processed_date TEXT,
         projection_end_date TEXT,
-        is_bi_weekly INTEGER DEFAULT 0
+        is_bi_weekly INTEGER DEFAULT 0,
+        last_generated_date TEXT
       )
     '''); // <--- Added original_amount, start_date, and is_bi_weekly columns
 
@@ -101,15 +102,9 @@ class DatabaseHelper {
       )
     ''');
 
-    await db.rawInsert("INSERT INTO labels (name, color) VALUES ('General', '#6366f1')");
     await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Food', '#f97316')");
-    await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Utilities', '#06b6d4')");
     await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Salary', '#10b981')");
-    await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Investments', '#3b82f6')");
-    await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Side Hustles', '#8b5cf6')");
-    await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Transfer', '#64748b')");
-    await db.rawInsert("INSERT INTO labels (name, color) VALUES ('GoalsSavings', '#10b981')");
-    await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Goals', '#10b981')");
+    await db.rawInsert("INSERT INTO labels (name, color) VALUES ('Utilities', '#06b6d4')");
   }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -196,15 +191,20 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE liabilities ADD COLUMN is_bi_weekly INTEGER DEFAULT 0;');
       } catch (_) {}
     }
-      if (oldVersion < 12) {
-        try {
-          await db.execute('ALTER TABLE liabilities ADD COLUMN liability_type TEXT DEFAULT "Long-Term Loan / Mortgage";');
-        } catch (_) {}
-      }
+    if (oldVersion < 12) {
+      try {
+        await db.execute('ALTER TABLE liabilities ADD COLUMN liability_type TEXT DEFAULT "Long-Term Loan / Mortgage";');
+      } catch (_) {}
+    }
     if (oldVersion < 13) {
       try {
         await db.execute('ALTER TABLE liabilities ADD COLUMN recurrence_unit TEXT DEFAULT "Months";');
         await db.execute('ALTER TABLE liabilities ADD COLUMN recurrence_interval INTEGER DEFAULT 1;');
+      } catch (_) {}
+    }
+    if (oldVersion < 14) {
+      try {
+        await db.execute('ALTER TABLE liabilities ADD COLUMN last_generated_date TEXT;');
       } catch (_) {}
     }
   }
@@ -326,119 +326,131 @@ class DatabaseHelper {
     final liabilities = await db.query('liabilities');
     final now = DateTime.now();
     final maxAllowedProjection = DateTime(now.year + 1, now.month, now.day);
-
+ 
     for (var row in liabilities) {
-      int id = row['id'] as int;
+      final int id = row['id'] as int;
       double balance = (row['remaining_balance'] as num).toDouble();
-      double installment = (row['monthly_installment'] as num).toDouble();
-      double apr = (row['interest_rate'] as num).toDouble();
-      int dueDay = (row['due_day'] as int?) ?? 1;
-      String owner = row['owner'] as String? ?? 'Shared';
-      String name = row['name'] as String? ?? 'Loan';
-      String liabilityType = row['liability_type'] as String? ?? 'Long-Term Loan / Mortgage';
-      
-      String recurrenceUnit = row['recurrence_unit'] as String? ?? 'Months';
-      int recurrenceInterval = (row['recurrence_interval'] as int?) ?? 1;
-      if (recurrenceInterval < 1) recurrenceInterval = 1;
-      
-      String? projectionEndDateStr = row['projection_end_date'] as String?;
-      DateTime projectionEndDate = projectionEndDateStr != null && projectionEndDateStr.isNotEmpty
-          ? (DateTime.tryParse(projectionEndDateStr) ?? maxAllowedProjection)
-          : maxAllowedProjection;
-
+      final double installment = (row['monthly_installment'] as num).toDouble();
+      final double apr = (row['interest_rate'] as num?)?.toDouble() ?? 0.0;
+      final int dueDay = (row['due_day'] as int?) ?? 1;
+      final String owner = row['owner'] as String? ?? 'Shared';
+      final String name = row['name'] as String? ?? 'Loan';
+ 
+      final String? projectionEndDateStr = row['projection_end_date'] as String?;
+      DateTime projectionEndDate =
+          projectionEndDateStr != null && projectionEndDateStr.isNotEmpty
+              ? (DateTime.tryParse(projectionEndDateStr) ?? maxAllowedProjection)
+              : maxAllowedProjection;
       if (projectionEndDate.isAfter(maxAllowedProjection)) {
         projectionEndDate = maxAllowedProjection;
       }
-      
-      String? lastProcessedStr = row['last_processed_date'] as String?;
-      DateTime lastProcessed = lastProcessedStr != null 
+ 
+      final String? lastProcessedStr = row['last_processed_date'] as String?;
+      DateTime lastProcessed = lastProcessedStr != null
           ? (DateTime.tryParse(lastProcessedStr) ?? DateTime(now.year, now.month - 1, dueDay))
           : DateTime(now.year, now.month - 1, dueDay);
-
+ 
+      // How far this liability's schedule has already been generated.
+      // First run after the upgrade: treat everything that already exists as generated.
+      final String? generatedStr = row['last_generated_date'] as String?;
+      DateTime? generatedUntil =
+          generatedStr != null ? DateTime.tryParse(generatedStr) : null;
+      if (generatedUntil == null) {
+        final latest = await db.rawQuery(
+          'SELECT MAX(created_at) AS latest FROM transactions WHERE description IN (?, ?, ?)',
+          ['Liability: $name', 'Liability Payment: $name', 'Liability Payment: ${name.trim()}'],
+        );
+        final String? latestStr = latest.isNotEmpty ? latest.first['latest'] as String? : null;
+        generatedUntil = (latestStr != null ? DateTime.tryParse(latestStr) : null) ?? lastProcessed;
+      }
+      DateTime newGeneratedUntil = generatedUntil;
+ 
       DateTime nextDue = DateTime(lastProcessed.year, lastProcessed.month, dueDay);
       if (!nextDue.isAfter(lastProcessed)) {
-        if (recurrenceUnit == 'Weeks') {
-          nextDue = nextDue.add(Duration(days: 7 * recurrenceInterval));
-        } else {
-          nextDue = DateTime(nextDue.year, nextDue.month + recurrenceInterval, dueDay);
-        }
+        nextDue = DateTime(nextDue.year, nextDue.month + 1, dueDay);
       }
-
+ 
       bool updated = false;
       int iterations = 0;
-
-      while (!nextDue.isAfter(projectionEndDate) && iterations < 50) {
+ 
+      while (!nextDue.isAfter(projectionEndDate) && iterations < 24) {
         iterations++;
-        bool isPastOrPresent = !nextDue.isAfter(now);
-
+        final bool isPastOrPresent = !nextDue.isAfter(now);
+ 
+        // The balance still follows the loan schedule.
         if (isPastOrPresent) {
-          if (liabilityType == 'Simple Recurring Payment') {
-            // Simple recurring option: flat payment of the installment reducing balance directly
-            balance -= installment;
-            if (balance < 0) balance = 0.0;
-          } else {
-            double monthlyRate = (apr / 100.0) / 12.0;
-            double interestAmount = balance * monthlyRate;
-            double principalReduction = installment - interestAmount;
-            if (principalReduction < 0) principalReduction = 0.0;
-            
-            balance -= principalReduction;
-            if (balance < 0) balance = 0.0;
-          }
+          final double monthlyRate = (apr / 100.0) / 12.0;
+          final double interestAmount = balance * monthlyRate;
+          double principalReduction = installment - interestAmount;
+          if (principalReduction < 0) principalReduction = 0.0;
+ 
+          balance -= principalReduction;
+          if (balance < 0) balance = 0.0;
         }
-
-        // Check and generate transaction entry for the calendar / zaznams
-        final existingTx = await db.query(
-          'transactions',
-          where: '(description = ? OR description = ? OR description = ?) AND created_at = ?',
-          whereArgs: ['Liability: $name', 'Liability Payment: $name', 'Liability Payment: ${name.trim()}', nextDue.toIso8601String()],
-        );
-
-        if (existingTx.isEmpty) {
-          final labelName = '$name (L)';
-          final labelResult = await db.query('labels', where: 'name = ?', whereArgs: [labelName]);
-          int targetLabelId = 1;
-          if (labelResult.isNotEmpty) {
-            targetLabelId = labelResult.first['id'] as int;
-          } else {
-            targetLabelId = await db.insert('labels', {'name': labelName, 'color': '#8B5CF6'});
-          }
-
-          final paymentTx = TransactionModel(
-            createdAt: nextDue.toIso8601String(),
-            description: 'Liability: $name',
-            amount: installment,
-            type: 'expense',
-            pool: 'checking', 
-            labelId: targetLabelId, 
-            owner: owner,
-            isConfirmed: isPastOrPresent ? 1 : 0,
-            isSavings: 0,
-            currencyCode: 'EUR',
+ 
+        // Only create installments that have never been generated before.
+        // Anything on or before `generatedUntil` is left exactly as the user has it.
+        if (nextDue.isAfter(generatedUntil)) {
+          final existingTx = await db.query(
+            'transactions',
+            where:
+                '(description = ? OR description = ? OR description = ?) AND created_at = ?',
+            whereArgs: [
+              'Liability: $name',
+              'Liability Payment: $name',
+              'Liability Payment: ${name.trim()}',
+              nextDue.toIso8601String(),
+            ],
           );
-          
-          await insertTransaction(paymentTx);
+ 
+          if (existingTx.isEmpty) {
+            final labelName = '$name (L)';
+            final labelResult =
+                await db.query('labels', where: 'name = ?', whereArgs: [labelName]);
+            int targetLabelId = 1;
+            if (labelResult.isNotEmpty) {
+              targetLabelId = labelResult.first['id'] as int;
+            } else {
+              targetLabelId = await db.insert('labels', {'name': labelName, 'color': '#8B5CF6'});
+            }
+ 
+            final paymentTx = TransactionModel(
+              createdAt: nextDue.toIso8601String(),
+              description: 'Liability: $name',
+              amount: installment,
+              type: 'expense',
+              pool: 'checking',
+              labelId: targetLabelId,
+              owner: owner,
+              isConfirmed: isPastOrPresent ? 1 : 0,
+              isSavings: 0,
+              currencyCode: 'EUR',
+            );
+ 
+            await insertTransaction(paymentTx);
+          }
+ 
+          if (nextDue.isAfter(newGeneratedUntil)) newGeneratedUntil = nextDue;
         }
-
+ 
         if (isPastOrPresent) {
           lastProcessed = nextDue;
           updated = true;
         }
-
-        // Step forward by custom interval (Weeks or Months)
-        if (recurrenceUnit == 'Weeks') {
-          nextDue = nextDue.add(Duration(days: 7 * recurrenceInterval));
-        } else {
-          nextDue = DateTime(nextDue.year, nextDue.month + recurrenceInterval, dueDay);
-        }
+ 
+        nextDue = DateTime(nextDue.year, nextDue.month + 1, dueDay);
       }
-
-      if (updated) {
+ 
+      final bool generatedChanged =
+          generatedStr == null || newGeneratedUntil.isAfter(generatedUntil);
+ 
+      if (updated || generatedChanged) {
         await db.update(
           'liabilities',
           {
-            'remaining_balance': balance,
-            'last_processed_date': lastProcessed.toIso8601String(),
+            if (updated) 'remaining_balance': balance,
+            if (updated) 'last_processed_date': lastProcessed.toIso8601String(),
+            'last_generated_date': newGeneratedUntil.toIso8601String(),
           },
           where: 'id = ?',
           whereArgs: [id],

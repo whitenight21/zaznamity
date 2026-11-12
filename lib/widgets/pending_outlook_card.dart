@@ -113,6 +113,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
   @override
   void didUpdateWidget(covariant FutureMetricsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _loadPrefs();
     _rebuildLabelNames();
     if (widget.selectedOwner != oldWidget.selectedOwner) {
       setState(() {
@@ -133,7 +134,6 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         });
       }
     }
-    _loadPrefs();
   }
 
   String _getCurrencySymbol() {
@@ -534,9 +534,9 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
         final daysToDeficit = deficitDate != null ? deficitDate.difference(now).inDays : 999;
         Color runwayColor;
         if (deficitDate != null && daysToDeficit < 30) {
-          runwayColor = const Color(0xFFF87171); // Red
+          runwayColor = const Color.fromARGB(255, 237, 69, 69); // Red
         } else if (deficitDate != null && daysToDeficit < 90) {
-          runwayColor = const Color(0xFFF59E0B); // Yellow
+          runwayColor = const Color(0xFFFBBF24); // Yellow
         } else {
           runwayColor = const Color(0xFF34D399); // Green
         }
@@ -954,7 +954,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'RUNWAY DEPLETION DATE:',
+                            'TOTAL DEPLETION (income incl.):',
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w900,
@@ -966,8 +966,8 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                           InkWell(
                             onTap: () => _showMetricInfo(
                               context,
-                              'RUNWAY DEPLETION DATE',
-                              'Starts from your current liquid balance and applies scheduled income and expenses in date order, extending using your burn rate basis. Alerts red if <30 days, yellow if <90 days, green if >180 days.',
+                              'TOTAL DEPLETION (income incl.)',
+                              'Starts from your current selected pool(s) balance and includes scheduled income and expenses in date order (or extending using your burn rate basis). Alerts red if <30 days, yellow if <90 days, green if >180 days.',
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(2.0),
@@ -1073,7 +1073,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                                 Icon(Icons.pie_chart_rounded, size: 16, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'View details in "Future Breakdown"',
+                                  'View details in "Pending Breakdown"',
                                   style: TextStyle(
                                     fontSize: 10.5,
                                     fontWeight: FontWeight.bold,
@@ -1168,7 +1168,7 @@ class _FutureMetricsCardState extends State<FutureMetricsCard> {
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.notification_important_rounded, size: 16, color: Color(0xFFF59E0B)),
+                                const Icon(Icons.notification_important_rounded, size: 16, color: Color.fromARGB(255, 239, 120, 0)),
                                 const SizedBox(width: 8),
                                 Text(
                                   'NEXT 7-DAY PENDING ZAZNAMS :',

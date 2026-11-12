@@ -101,6 +101,12 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
   }
 
   @override
+  void didUpdateWidget(covariant BalanceTrendsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadPrefs();
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -454,7 +460,7 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
       );
     }
 
-    String explanation = _generateExplanation(dailySeries, changeAmt);
+//   String explanation = _generateExplanation(dailySeries, changeAmt);
 
     final double yRange = highest - lowest;
     final double yPadding = yRange == 0 ? 50 : yRange * 0.15;
@@ -472,7 +478,7 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
     _cachedLowestDate = lowestDate;
     _cachedHighestPoint = highest;
     _cachedHighestDate = highestDate;
-    _cachedExplanation = explanation;
+    // _cachedExplanation = explanation;
     _cachedEffectiveStartDate = timelineStart;
     _cachedEffectiveEndDate = timelineEnd;
 
@@ -490,7 +496,7 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
     _lastViewModeKey = viewModeKey;
   }
 
-  String _generateExplanation(List series, double changeAmt) {
+/*   String _generateExplanation(List series, double changeAmt) {
     if (series.length < 2) return 'Stable balance over the period.';
     
     Map<String, double> categoryDeltas = {};
@@ -511,7 +517,7 @@ class _BalanceTrendsCardState extends State<BalanceTrendsCard> with WidgetsBindi
       return '$direction ${pct.toStringAsFixed(0)}% vs start, mainly driven by expenses in ${sortedCats.first.key} (${_formatCurrency(sortedCats.first.value, includeDecimals: false)}).';
     }
     return '$direction ${pct.toStringAsFixed(0)}% over the selected range.';
-  }
+  } */
 
   @override
   Widget build(BuildContext context) {

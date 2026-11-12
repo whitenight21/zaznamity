@@ -112,35 +112,12 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     _localOwner = widget.selectedOwner;
     _localStartDate = widget.startDate;
     _localEndDate = widget.endDate;
-    _loadMultiLabelSettingsOnce();
+    _loadPrefs(); // Replaces/combines initial settings load
   }
 
-  Future<void> _loadMultiLabelSettingsOnce() async {
+  Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-
-    final savedTheme = prefs.getString('app_theme') ?? 'zaznamity';
-    final collapsed = prefs.getBool('set_incomeExpensesByLabels_collapsed') ?? false;
-    final primaryCurr = prefs.getString('primaryCurrency') ?? prefs.getString('currency') ?? 'USD';
     
-    final savedIncomeStr = prefs.getString('selected_income_labels');
-    if (savedIncomeStr != null && savedIncomeStr.isNotEmpty) {
-      selectedIncomeLabels.clear();
-      for (var idStr in savedIncomeStr.split(',')) {
-        final id = int.tryParse(idStr);
-        if (id != null) selectedIncomeLabels.add(id);
-      }
-    }
-
-    final savedExpenseStr = prefs.getString('selected_expense_labels');
-    if (savedExpenseStr != null && savedExpenseStr.isNotEmpty) {
-      selectedExpenseLabels.clear();
-      for (var idStr in savedExpenseStr.split(',')) {
-        final id = int.tryParse(idStr);
-        if (id != null) selectedExpenseLabels.add(id);
-      }
-    }
-
     final Map<int, bool> fixedById = {};
     final Map<String, bool> fixedByName = {};
     final Map<int, double> budgetsById = {};
@@ -161,13 +138,33 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       }
     }
 
+    final savedIncomeStr = prefs.getString('selected_income_labels');
+    if (savedIncomeStr != null && savedIncomeStr.isNotEmpty) {
+      selectedIncomeLabels.clear();
+      for (var idStr in savedIncomeStr.split(',')) {
+        final id = int.tryParse(idStr);
+        if (id != null) selectedIncomeLabels.add(id);
+      }
+    }
+
+    final savedExpenseStr = prefs.getString('selected_expense_labels');
+    if (savedExpenseStr != null && savedExpenseStr.isNotEmpty) {
+      selectedExpenseLabels.clear();
+      for (var idStr in savedExpenseStr.split(',')) {
+        final id = int.tryParse(idStr);
+        if (id != null) selectedExpenseLabels.add(id);
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _multiLabelDefaultRange = prefs.getString('set_multiLabel_range') ?? 'Current Month';
-      _isZaznamityMode = (savedTheme == 'zaznamity');
+      final themeStr = prefs.getString('app_theme') ?? 'zaznamity';
+      _isZaznamityMode = (themeStr == 'zaznamity');
+      _isCollapsed = prefs.getBool('set_incomeExpensesByLabels_collapsed') ?? false;
+      _primaryCurrency = prefs.getString('primaryCurrency') ?? prefs.getString('currency') ?? 'USD';
       _excludeTransfers = prefs.getBool('exclude_transfers_insights') ?? true;
-      _isCollapsed = collapsed;
-      _primaryCurrency = primaryCurr;
+      
       _multiLabelFixedCategoriesById.clear();
       _multiLabelFixedCategoriesById.addAll(fixedById);
       _multiLabelFixedCategories.clear();
@@ -175,6 +172,21 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
       _labelBudgetsById = budgetsById;
       _labelBudgetsByName = budgetsByName;
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant IncomeExpensesByLabelsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadPrefs(); // Instantly catches theme and setting updates
+    if (widget.selectedOwner != oldWidget.selectedOwner) {
+      _localOwner = widget.selectedOwner;
+    }
+    if (widget.startDate != oldWidget.startDate) {
+      _localStartDate = widget.startDate;
+    }
+    if (widget.endDate != oldWidget.endDate) {
+      _localEndDate = widget.endDate;
+    }
   }
 
   void _showMoneyBreakdownInfoModal(BuildContext context) {
@@ -190,7 +202,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Money Breakdown',
+                  'Income & Expenses',
                   style: TextStyle(
                     color: _isZaznamityMode ? Colors.white : const Color(0xFF1E293B),
                     fontWeight: FontWeight.bold,
@@ -201,7 +213,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
           ),
           content: SingleChildScrollView(
             child: Text(
-              '“What is my money made of?” - Money Breakdown provides a detailed view of your income and expenses categorized by labels.\n\n' 
+              '“What is my money made of?” - Income & Expenses provides a detailed view of your income and expenses categorized by labels.\n\n' 
               '• This card helps you understand where your money is coming from and where it is going, allowing for better financial planning and decision-making.\n'
               '• You can select which income and expense labels to include in the analysis, giving you a tailored view of your finances.\n'
               '• It displays the total income, total expenses, and a breakdown of each label\'s contribution to the overall financial picture.\n'
@@ -249,20 +261,6 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('selected_income_labels', selectedIncomeLabels.join(','));
     await prefs.setString('selected_expense_labels', selectedExpenseLabels.join(','));
-  }
-
-  @override
-  void didUpdateWidget(covariant IncomeExpensesByLabelsCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.selectedOwner != oldWidget.selectedOwner) {
-      _localOwner = widget.selectedOwner;
-    }
-    if (widget.startDate != oldWidget.startDate) {
-      _localStartDate = widget.startDate;
-    }
-    if (widget.endDate != oldWidget.endDate) {
-      _localEndDate = widget.endDate;
-    }
   }
 
   bool _isFixedExpenseLabel(LabelModel label) {
@@ -742,7 +740,7 @@ class _IncomeExpensesByLabelsCardState extends State<IncomeExpensesByLabelsCard>
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        'MONEY BREAKDOWN',
+                        'INCOME & EXPENSES',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

@@ -150,6 +150,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
   @override
   void didUpdateWidget(covariant SavingsGoalsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _loadPrefs();
     if (widget.goals != oldWidget.goals) {
       setState(() {}); 
     }
@@ -181,7 +182,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
 
     int monthsNeeded = (remaining / goal.monthlyContribution).ceil();
     DateTime projectedDate = DateTime(now.year, now.month + monthsNeeded, now.day);
-    String formattedDate = DateFormat('MMMM yyyy').format(projectedDate);
+    String formattedDate = DateFormat('MMM yyyy').format(projectedDate);
 
     if (targetDate != null) {
       if (projectedDate.isAfter(targetDate)) {
@@ -294,7 +295,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
             child: Text(
               'Savings Goals help you build toward milestones, future purchases, bills or any financial targets:\n\n'
               '• Due-Date Pace & Forecasts: Track whether you are ahead or behind your monthly target installment.\n'
-              '• Emergency Fund Template: Quickly spin up 3–6 months burn-rate safety buffers.\n'
+              '• Create an Emergency Fund: Ensure 3–6 months burn-rate safety buffers.\n'
               '• Scheduled Transfers: Turn monthly installments into automated recurring transfers for accurate cash flow runway.\n'
               '• Withdraw Funds: Move funds from a goal and return them to your pool balance if needed.\n'
               '• Milestone Notifications: Receive instant alerts as you cross 25%, 50%, 75%, and 100%.\n'
@@ -1037,6 +1038,23 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                       width: boxWidth,
                       child: SizedBox(
                         height: 40,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFF582F95),
+                            foregroundColor: _isZaznamityMode ? Colors.white : Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () => _showCreateGoalDialog(isEmergencyFundTemplate: false),
+                          icon: const Icon(Icons.add, size: 14),
+                          label: const Text('Savings Goal', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ),
+/*                     SizedBox(
+                      width: boxWidth,
+                      child: SizedBox(
+                        height: 40,
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
                             side: BorderSide(color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95)),
@@ -1048,24 +1066,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                           label: Text('Emergency Fund', style: TextStyle(fontSize: 11, color: _isZaznamityMode ? const Color(0xFFA855F7) : const Color(0xFF582F95))),
                         ),
                       ),
-                    ),
-                    SizedBox(
-                      width: boxWidth,
-                      child: SizedBox(
-                        height: 40,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isZaznamityMode ? const Color(0xFF582F95) : const Color(0xFFF1F5F9),
-                            foregroundColor: _isZaznamityMode ? Colors.white : const Color(0xFF334155),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          onPressed: () => _showCreateGoalDialog(isEmergencyFundTemplate: false),
-                          icon: const Icon(Icons.add, size: 14),
-                          label: const Text('Add Goal', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ),
+                    ), */
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -1265,7 +1266,7 @@ class _SavingsGoalsCardState extends State<SavingsGoalsCard> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
-                                          'Needed: ',
+                                          ' ',
                                           style: TextStyle(fontSize: 10, color: _isZaznamityMode ? Colors.white60 : Colors.grey.shade600),
                                         ),
                                         MaskedAmount(
